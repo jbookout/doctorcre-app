@@ -137,9 +137,11 @@ test("views, keyboard selection, refresh, source change and retirement at both w
         assert.equal(await page.locator(".lead-card").count(), 1);
         failure = "invalid";
         await page.locator("#refreshBoard").click();
-        await page
-          .getByText("Source refused · invalid reachability response. Previous snapshot is stale.", { exact: true })
-          .waitFor();
+        await page.waitForFunction(
+          () =>
+            document.getElementById("leadBoardError")?.textContent ===
+            "Source refused · invalid reachability response. Previous snapshot is stale. Retry",
+        );
         failure = "denied";
         await page.locator("#refreshBoard").click();
         await page.getByText("Sign-in required", { exact: false }).first().waitFor();
