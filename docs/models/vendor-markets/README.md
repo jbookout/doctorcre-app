@@ -12,7 +12,7 @@ One request has a 15-second deadline. Failure clears results and offers explicit
 
 ## Statechart
 
-The Mermaid sketch preceded implementation. The generated TLA+ model adds actual session and active-read guards. The initial unguarded sketch allowed late completions after an empty read. The checked model forbids them. `TypeOK`, `EmptySelected`, and `RetiredClears` hold over 14 states and 46 transitions. Identity, network timing and DOM layout are abstracted and covered by browser tests.
+The Mermaid sketch preceded implementation. The generated TLA+ model adds actual session and active-read guards. The initial unguarded sketch allowed late completions after an empty read. The checked model forbids them. `TypeOK`, `EmptySelected`, and `RetiredClears` hold over 14 distinct states. The retired session stutters without re-enabling reads or restoring selection, so TLC also checks cleanly with deadlock detection enabled. Identity, network timing and DOM layout are abstracted and covered by browser tests.
 
 To regenerate, copy this folder to scratch and run the statechart skill with `from-spec Markets.tla`. The first run writes a mapping file. Repeat the command to check the model.
 

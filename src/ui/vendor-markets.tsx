@@ -16,7 +16,6 @@ function Members({ market, page, href }: { market: VendorMarket; page: VendorMar
       <h3>
         {market.name} <span data-market-count>{market.vendor_count} vendors</span>
       </h3>
-      <p>{market.boundary}</p>
       <ul className="market-vendors">
         {market.memberships.map((member) => {
           const vendor = page.vendors.find((v) => v.id === member.vendor_id);
@@ -34,28 +33,35 @@ function Members({ market, page, href }: { market: VendorMarket; page: VendorMar
                   .map((slug) => page.markets.find((m) => m.slug === slug)?.name)
                   .join(", ") || "None"}
               </p>
-              <ul aria-label="People">
-                {vendor.people.map((p) => (
-                  <li key={p.contact.id} data-market-person={p.contact.id}>
-                    <strong>{p.contact.name}</strong>
-                    <p>{p.company?.name || "Company not recorded"}</p>
-                    <p data-office-evidence>
-                      Office location:{" "}
-                      {p.office
-                        ? `${p.office.street_address}, ${p.office.city}, ${p.office.state}`
-                        : "Verified street address not recorded"}
-                    </p>
-                    {p.office && <p>Office source: {p.office.source}</p>}
-                    <p>{p.contact.email || "Email not recorded"}</p>
-                    <p>{p.contact.phone || p.contact.cell || "Phone not recorded"}</p>
-                  </li>
-                ))}
-              </ul>
+              <details className="market-evidence">
+                <summary>People &amp; evidence · {vendor.people.length}</summary>
+                <ul aria-label="People">
+                  {vendor.people.map((p) => (
+                    <li key={p.contact.id} data-market-person={p.contact.id}>
+                      <strong>{p.contact.name}</strong>
+                      {p.company && <p>{p.company.name}</p>}
+                      <p data-office-evidence>
+                        Office location:{" "}
+                        {p.office
+                          ? `${p.office.street_address}, ${p.office.city}, ${p.office.state}`
+                          : "Verified street address not recorded"}
+                      </p>
+                      {p.office && <p>Office source: {p.office.source}</p>}
+                      {p.contact.email && <p>{p.contact.email}</p>}
+                      {(p.contact.phone || p.contact.cell) && <p>{p.contact.phone || p.contact.cell}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             </li>
           );
         })}
       </ul>
-      <p className="note-summary">Registry source: {market.source}</p>
+      <details className="market-registry">
+        <summary>Registry evidence</summary>
+        <p>{market.boundary}</p>
+        <p>Registry source: {market.source}</p>
+      </details>
     </section>
   );
 }
@@ -104,7 +110,7 @@ function VendorMarketsView({ options }: { options: Options }) {
   const page = read.kind === "ready" ? read.page : null;
   const market = page?.markets.find((m) => m.slug === page.selected_market);
   return (
-    <section className="module-card glass vendor-markets" aria-label="Vendor directory view">
+    <section className="vendor-markets" aria-label="Vendor directory view">
       <div className="market-toolbar">
         <fieldset aria-label="Browse vendors by">
           {["category", "market"].map((v) => (
@@ -122,7 +128,6 @@ function VendorMarketsView({ options }: { options: Options }) {
       {view === "market" && (
         <div aria-busy={read.kind === "loading"}>
           <h2>Reviewed vendor markets</h2>
-          <p>Exact market memberships and separate Regional coverage references.</p>
           {read.kind === "loading" && <p role="status">Loading reviewed markets…</p>}
           {read.kind === "unavailable" && (
             <p role="alert">Reviewed markets unavailable. Refresh markets to try again.</p>

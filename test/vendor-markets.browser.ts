@@ -11,7 +11,7 @@ async function setup(t: import("node:test").TestContext, width = 1440, theme = "
   t.after(() => server.stop());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  const page = await browser.newPage({ viewport: { width, height: 844 } });
   let mode = "ready";
   const selectors: unknown[] = [];
   await page.route("https://**", (r) => r.abort());
@@ -89,8 +89,19 @@ for (const width of [390, 1440])
           .count(),
         1,
       );
-      await mkdir("/tmp/WR591.S25.J4-shots", { recursive: true });
-      await section.screenshot({ path: `/tmp/WR591.S25.J4-shots/populated-${width}-${theme}.png` });
+      const evidence = local.locator(".market-evidence");
+      assert.equal(await evidence.getAttribute("open"), null);
+      await evidence.locator("summary").click();
+      assert.deepEqual(
+        await local.locator("[data-market-person] strong").allTextContents(),
+        fixture.vendors
+          .find((v: { id: string }) => v.id === "7cc31999-d3c9-4f8f-865a-1aa2a0ffe066")
+          .people.map((p: { contact: { name: string } }) => p.contact.name),
+      );
+      assert.equal(await local.locator("[data-office-evidence]").isVisible(), true);
+      await evidence.locator("summary").click();
+      await mkdir("/tmp/WR591.S25.J6-shots", { recursive: true });
+      await page.screenshot({ path: `/tmp/WR591.S25.J6-shots/populated-${width}-${theme}.png` });
       await page.reload();
       await section.locator('[data-market-slug="sandestin"]').waitFor();
       assert.equal(selectors.at(-1), "sandestin");
@@ -100,11 +111,11 @@ for (const width of [390, 1440])
       await select.selectOption("panhandle");
       await section.locator('[data-market-slug="panhandle"]').waitFor();
       assert.equal(await section.getByRole("region", { name: "Regional coverage references" }).count(), 0);
-      await section.screenshot({ path: `/tmp/WR591.S25.J4-shots/regional-${width}-${theme}.png` });
+      await page.screenshot({ path: `/tmp/WR591.S25.J6-shots/regional-${width}-${theme}.png` });
       setMode("empty");
       await section.getByRole("button", { name: "Refresh markets" }).click();
       await section.getByText(/^No reviewed markets yet/).waitFor();
-      await section.screenshot({ path: `/tmp/WR591.S25.J4-shots/empty-${width}-${theme}.png` });
+      await page.screenshot({ path: `/tmp/WR591.S25.J6-shots/empty-${width}-${theme}.png` });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await section.getByRole("button", { name: "Category", exact: true }).click();
       assert.equal(await page.locator("#recordList").isVisible(), true);
@@ -174,5 +185,8 @@ for (const theme of ["light", "dark"])
     await section.locator('[data-market-slug="sandestin"]').waitFor();
     const regional = section.getByRole("heading", { name: "Regional coverage references", exact: true });
     const box = await regional.boundingBox();
-    assert.ok(box && box.y >= 0 && box.y + box.height <= 844, "Regional references must start in the first phone viewport");
+    assert.ok(
+      box && box.y >= 0 && box.y + box.height <= 844,
+      "Regional references must start in the first phone viewport",
+    );
   });

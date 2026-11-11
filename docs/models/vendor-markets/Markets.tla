@@ -106,7 +106,11 @@ SessionEnds ==
     /\ selection' = "Unselected"
     /\ view' = "Category"
 
-Next == OpenMarket \/ OpenCategory \/ Refresh \/ ProducerResolvesSelection \/ SelectMarket \/ RegistryEmpty \/ ReadFails \/ SessionEnds
+RetiredStutter ==
+    /\ session = "Retired"
+    /\ UNCHANGED vars
+
+Next == RetiredStutter \/ OpenMarket \/ OpenCategory \/ Refresh \/ ProducerResolvesSelection \/ SelectMarket \/ RegistryEmpty \/ ReadFails \/ SessionEnds
 
 Spec == Init /\ [][Next]_vars
 

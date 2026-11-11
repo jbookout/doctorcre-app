@@ -163,9 +163,9 @@ async function syncQuietVendors() {
     const { mountVendorMarkets } = await import('./ui-vendor-markets.js');
     if (generation !== quietVendorsGeneration) return;
     vendorMarketsHost = document.createElement('div');
-    vendorMeetingsHost.before(vendorMarketsHost);
+    document.querySelector('.result-heading').append(vendorMarketsHost);
     vendorMarkets = mountVendorMarkets(vendorMarketsHost, {
-      category: [...document.querySelectorAll('.business-controls, .result-column, .search-dock, .result-heading')],
+      category: [...document.querySelectorAll('.business-controls, .result-column, .search-dock, .result-heading > h1, .result-heading > p')],
       load: async (market, signal) => {
         const result = await requestMeetings('read-vendor-markets-v1', market ? { market } : {}, { signal, timeoutMs: 15000 });
         if (result.kind !== 'payload' || result.isError) throw new Error('Vendor markets unavailable');
