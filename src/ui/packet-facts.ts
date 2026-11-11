@@ -37,6 +37,9 @@ function packetMetric(value: unknown): string {
   const period = metric.period ? `${unit} / ${metric.period}` : unit;
   return packetText(metric.label ? `${metric.label}: ${period}` : period);
 }
+export function packetStopHeading(routeLabel: string): string {
+  return `Stop ${routeLabel}`;
+}
 export function packetFacts(value: unknown): [string, string][] {
   const facts = record(value) ? value : {};
   return [

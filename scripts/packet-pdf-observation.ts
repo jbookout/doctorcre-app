@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { packetStopHeading } from "../src/ui/packet-facts.ts";
 
 export type PacketStop = {
   property: string;
@@ -68,7 +69,7 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
       const name = band(650, 700),
         address = band(607, 622);
       const allowed = [
-        `Stop ${label}`,
+        packetStopHeading(label),
         name,
         address,
         appointment,
@@ -124,5 +125,11 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
 export function comparePacketStops(preview: PacketStop[], download: PacketStop[], share: PacketStop[]): void {
   assert.ok(preview.length > 0, "Populated packet required");
   assert.ok(isDeepStrictEqual(preview, download), "Preview property fields differ from downloaded PDF");
-  assert.ok(isDeepStrictEqual(share, download), "Client share property fields differ from downloaded PDF");
+  assert.ok(
+    isDeepStrictEqual(
+      share,
+      download.map((stop) => ({ ...stop, label: packetStopHeading(stop.label) })),
+    ),
+    "Client share property fields differ from downloaded PDF",
+  );
 }

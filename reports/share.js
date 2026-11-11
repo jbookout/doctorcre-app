@@ -1,4 +1,4 @@
-import { readPacketPresentation } from "../js/ui-packet-facts.js";
+import { packetStopHeading, readPacketPresentation } from "../js/ui-packet-facts.js";
 import { UnsupportedPublicTourPacketError, parsePublicTourPacket, packetMapPoints, appendPublicTourFacts } from "../src/ui/public-tour-packet.ts";
 import { mountTourClientDownload } from "../js/ui-tour-client-download.js";
 import { mountNavigation } from "../js/navigation.js";
@@ -211,7 +211,7 @@ mountNavigation(document, location.pathname, { report: true });
       const row = document.createElement("li");
       row.className = "report-item";
       row.dataset.propertyRef = item.property_ref;
-      const route = document.createElement("p"); route.className = "route-label"; route.textContent = presentation ? item.route_label : `Stop ${item.route_label}`;
+      const route = document.createElement("p"); route.className = "route-label"; route.textContent = packetStopHeading(item.route_label);
       const heading = document.createElement("h3"); heading.textContent = item.name;
       const detail = document.createElement("p"); detail.textContent = item.address;
       row.append(route, heading, detail);

@@ -3,14 +3,14 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { packetFixturePdf } from "../scripts/packet-fixture.ts";
 import { comparePacketStops, observePdf } from "../scripts/packet-pdf-observation.ts";
-import { readPacketPresentation } from "../src/ui/packet-facts.ts";
+import { packetStopHeading, readPacketPresentation } from "../src/ui/packet-facts.ts";
 import packet from "./fixtures/packet-parity/share.json" with { type: "json" };
 
 const presentation = readPacketPresentation(packet);
 assert.ok(presentation);
 const expected = presentation.stops.map((p) => ({
   property: p.property_ref,
-  label: p.route_label,
+  label: packetStopHeading(p.route_label),
   name: p.name,
   address: p.address,
   facts: p.facts.map((f) => f.value),
@@ -30,6 +30,10 @@ test("recorded CARR PDF text agrees exactly with the current client fact formatt
   }
   const changed = structuredClone(expected);
   assert.ok(changed[0]);
+  changed[0].label = "A";
+  assert.throws(() => comparePacketStops(pdf, pdf, changed));
+  assert.ok(expected[0]);
+  changed[0].label = expected[0].label;
   changed[0].facts[1] = "11600 SF";
   assert.throws(() => comparePacketStops(pdf, pdf, changed));
   assert.throws(() => comparePacketStops(pdf, pdf, []));
@@ -132,7 +136,7 @@ test("the recorded producer HTML has the same ordered fields as the actual PDF",
     const stop = expected[index];
     assert.ok(stop);
     assert.equal(page.getAttribute("data-property-ref"), stop.property);
-    assert.equal(page.querySelector("h2")?.textContent, `Stop ${stop.label}`);
+    assert.equal(page.querySelector("h2")?.textContent, stop.label);
     assert.equal(page.querySelector("h3")?.textContent, stop.name);
     assert.deepEqual(
       Array.from(page.querySelectorAll("dd"), (node) => node.textContent),

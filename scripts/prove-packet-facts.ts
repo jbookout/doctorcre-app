@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { PDFDocument } from "pdf-lib";
 import type { Page } from "playwright";
-import { readPacketPresentation } from "../src/ui/packet-facts.ts";
+import { packetStopHeading, readPacketPresentation } from "../src/ui/packet-facts.ts";
 import { packetFixturePdf } from "./packet-fixture.ts";
 import { comparePacketStops, observePdf } from "./packet-pdf-observation.ts";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
@@ -67,7 +67,7 @@ export async function provePacket(options: {
     assert.ok(presentation);
     const share = presentation.stops.map((p) => ({
       property: p.property_ref,
-      label: p.route_label,
+      label: packetStopHeading(p.route_label),
       name: p.name,
       address: p.address,
       facts: p.facts.map((f) => f.value),
