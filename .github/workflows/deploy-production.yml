@@ -82,11 +82,13 @@ jobs:
           const candidate = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/production-candidate.json`, 'utf8'));
           await writeFile(`${process.env.RUNNER_TEMP}/production-release.json`, JSON.stringify({
             ...candidate, disposition: process.env.DISPOSITION, release,
+            publication_observed_at: process.env.PUBLICATION_OBSERVED_AT,
             deploy_run_id: process.env.GITHUB_RUN_ID, deploy_run_attempt: process.env.GITHUB_RUN_ATTEMPT,
             verified_at: new Date().toISOString(),
           }));
           NODE
         env:
+          PUBLICATION_OBSERVED_AT: ${{ steps.publish.outputs.publication_observed_at }}
           DISPOSITION: ${{ steps.publish.outputs.disposition }}
           PROVIDER_VERSION_ID: ${{ steps.publish.outputs.provider_version_id }}
           SOURCE_COMMIT: ${{ steps.candidate.outputs.source_commit }}

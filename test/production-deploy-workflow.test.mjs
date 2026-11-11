@@ -144,7 +144,7 @@ test('release identity produces a durable receipt and rejects a mismatched provi
   const run = async providerVersion => {
     const child = spawn('bash', ['-e', '-c', step.run.replaceAll('https://app.doctorcre.com', fixture.origin)], { env: {
       PATH: process.env.PATH, RUNNER_TEMP: root, SOURCE_COMMIT: sha, PROVIDER_VERSION_ID: providerVersion,
-      DISPOSITION: 'already-live', GITHUB_RUN_ID: '456', GITHUB_RUN_ATTEMPT: '1',
+      PUBLICATION_OBSERVED_AT: '2026-11-11T09:00:00Z', DISPOSITION: 'already-live', GITHUB_RUN_ID: '456', GITHUB_RUN_ATTEMPT: '1',
     } });
     let errors = '';
     child.stderr.on('data', bytes => { errors += bytes; });
@@ -154,6 +154,7 @@ test('release identity produces a durable receipt and rejects a mismatched provi
   assert.equal((await run(version)).status, 0);
   const receipt = JSON.parse(readFileSync(join(root, 'production-release.json'), 'utf8'));
   assert.equal(receipt.disposition, 'already-live');
+  assert.equal(receipt.publication_observed_at, '2026-11-11T09:00:00Z');
   assert.equal(receipt.release.source_commit, sha);
   assert.equal(receipt.release.provider_version_id, version);
   rmSync(join(root, 'production-release.json'));

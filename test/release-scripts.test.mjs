@@ -322,6 +322,7 @@ test('duplicate exact-SHA wakes promote once and emit already-live receipts', t 
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(readFileSync(output, 'utf8'), attempt === 0 ? /disposition=published/ : /disposition=already-live/);
+    assert.match(readFileSync(output, 'utf8'), /publication_observed_at=\d{4}-/);
     assert.match(readFileSync(output, 'utf8'), /provider_version_id=0f1e2d3c-4b5a-4968-8776-655443322110/);
   }
   const rows = readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse);

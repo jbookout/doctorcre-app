@@ -23,7 +23,7 @@ const run = (command, args, { capture = false } = {}) => execFileSync(command, a
 
 const receipt = (disposition, providerVersionId) => {
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT,
-    `disposition=${disposition}\nprovider_version_id=${providerVersionId}\n`);
+    `disposition=${disposition}\nprovider_version_id=${providerVersionId}\npublication_observed_at=${new Date().toISOString()}\n`);
 };
 
 const sourceCommit = run("git", ["rev-parse", "HEAD"], { capture: true }).trim();
