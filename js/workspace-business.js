@@ -103,11 +103,17 @@ view.evidence = { id: null, sequence: 0, result: null };
 view.sessionGeneration = 0;
 view.panelState = null;
 view.trustOperation = null;
+let vendorMeetings = null;
+let vendorMeetingsHost = null;
 let quietVendors = null;
 let quietVendorsHost = null;
 let quietVendorsGeneration = 0;
 
 function clearQuietVendors() {
+  vendorMeetings?.dispose();
+  vendorMeetings = null;
+  vendorMeetingsHost?.remove();
+  vendorMeetingsHost = null;
   quietVendorsGeneration++;
   quietVendors?.dispose();
   quietVendors = null;
@@ -127,6 +133,27 @@ async function syncQuietVendors() {
   try {
     const { mountQuietVendors } = await import('./ui-quiet-vendors.js');
     if (generation !== quietVendorsGeneration) return;
+    const { mountVendorMeetings } = await import('./ui-vendor-meetings.js');
+    const { createMcpRequests } = await import('./mcp-requests.mjs');
+    if (generation !== quietVendorsGeneration) return;
+    vendorMeetingsHost = document.createElement('div');
+    vendorMeetingsHost.className = 'vendor-meetings-host';
+    vendorMeetingsHost.setAttribute('data-panel-background', '');
+    host.before(vendorMeetingsHost);
+    const requestMeetings = createMcpRequests();
+    vendorMeetings = mountVendorMeetings(vendorMeetingsHost, {
+      load: async (query, signal) => {
+        const result = await requestMeetings('read-vendor-meetings', query, { signal, timeoutMs: 15000 });
+        if (result.kind !== 'payload' || result.isError) throw new Error('Vendor meetings unavailable');
+        return result.payload;
+      },
+      href: id => viewHref(view.query, id),
+      open: (href, returnFocusId) => {
+        view.returnFocusId = returnFocusId;
+        const url = new URL(href, window.location.href);
+        navigate(`${url.pathname}${url.search}`);
+      },
+    });
     quietVendors = mountQuietVendors(host, {
       load: async () => {
         const { createLeadBoardClient } = await import('./leads-client.js');

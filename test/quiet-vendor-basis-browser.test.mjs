@@ -6,6 +6,7 @@ import { chromium } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 import { validateQuietFollowUps } from '../js/leads-client.js';
+const meetingRecordings = JSON.parse(readFileSync(new URL('./fixtures/vendor-meetings/recordings.json', import.meta.url)));
 const recorded = () => JSON.parse(readFileSync(new URL('./fixtures/quiet-vendor-basis/recordings.json', import.meta.url)));
 
 test('mixed basis variants retain the registered recording shape and parser refusal', async () => {
@@ -28,8 +29,11 @@ for (const width of [390, 1280]) test(`history intersects owner before stable pa
   await page.route('https://**', route => route.abort());
   await page.route('**/api/v1/business/**', route => route.fulfill({ json: directoryFixture(route.request().url()) }));
   await page.route('**/mcp', route => {
-    reads++;
-    return route.fulfill({ json: { jsonrpc: '2.0', id: route.request().postDataJSON().id, result: { content: [{ type: 'text', text: JSON.stringify(response) }] } } });
+    const request = route.request().postDataJSON();
+    const quiet = request.params.name === 'quiet-follow-ups';
+    if (quiet) reads++;
+    const payload = quiet ? response : meetingRecordings[request.params.arguments.view];
+    return route.fulfill({ json: { jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.goto(server.url + '/vendors');
   const section = page.getByRole('region', { name: 'Quiet vendor follow-ups' });
