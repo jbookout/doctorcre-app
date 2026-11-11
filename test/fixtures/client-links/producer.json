@@ -1,0 +1,214 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "source_commit": "a90886e741f8d8d390c2427080da08e904ece7d8",
+  "inputs": {
+    "packet": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic clinic",
+          "address": "6 Medical Drive"
+        }
+      ]
+    },
+    "nearMiss": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic clinic",
+          "address": "16 Medical Drive"
+        }
+      ]
+    },
+    "active": {
+      "projection_ref": "projection:public:synthetic_projection_01",
+      "permission_scopes": [
+        "view_packet",
+        "download"
+      ],
+      "items": []
+    },
+    "viewOnly": {
+      "projection_ref": "projection:public:synthetic_projection_01",
+      "permission_scopes": [
+        "view_packet"
+      ],
+      "items": []
+    },
+    "feedback": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [
+        "view_packet",
+        "shortlist",
+        "comment"
+      ],
+      "items": []
+    },
+    "feedbackDownload": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [
+        "view_packet",
+        "shortlist",
+        "comment",
+        "download"
+      ],
+      "items": []
+    },
+    "feedbackReadOnly": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [
+        "view_packet"
+      ],
+      "items": []
+    },
+    "missingScope": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [],
+      "items": []
+    },
+    "expired": null,
+    "revoked": null,
+    "feedbackSaved": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [
+        "view_packet",
+        "shortlist",
+        "comment"
+      ],
+      "items": [
+        {
+          "property_ref": "property:public:synthetic_property_01"
+        }
+      ]
+    }
+  },
+  "responses": {
+    "packet": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic clinic",
+          "address": "6 Medical Drive"
+        }
+      ]
+    },
+    "nearMiss": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic clinic",
+          "address": "16 Medical Drive"
+        }
+      ]
+    },
+    "active": {
+      "projection_ref": "projection:public:synthetic_projection_01",
+      "permission_scopes": [],
+      "can_download": true,
+      "items": []
+    },
+    "viewOnly": {
+      "projection_ref": "projection:public:synthetic_projection_01",
+      "permission_scopes": [],
+      "can_download": false,
+      "items": []
+    },
+    "exchange": {
+      "ok": true
+    },
+    "mapUnavailable": {
+      "error": "not_found"
+    },
+    "exchangeRefused": {
+      "error": "forbidden"
+    },
+    "feedback": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [
+            "shortlist",
+            "comment"
+          ],
+          "can_download": false,
+          "items": []
+        }
+      }
+    },
+    "feedbackDownload": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [
+            "shortlist",
+            "comment"
+          ],
+          "can_download": true,
+          "items": []
+        }
+      }
+    },
+    "feedbackReadOnly": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [],
+          "can_download": false,
+          "items": []
+        }
+      }
+    },
+    "missingScope": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [],
+          "can_download": false,
+          "items": []
+        }
+      }
+    },
+    "expired": {
+      "status": 503,
+      "body": {
+        "error": "share_unavailable"
+      }
+    },
+    "revoked": {
+      "status": 503,
+      "body": {
+        "error": "share_unavailable"
+      }
+    },
+    "feedbackSaved": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [
+            "shortlist",
+            "comment"
+          ],
+          "can_download": false,
+          "items": [
+            {
+              "property_ref": "property:public:synthetic_property_01"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

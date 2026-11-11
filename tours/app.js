@@ -1,4 +1,5 @@
 import { mountStopDrag, reorderFlexibleStops } from "/js/ui-tour-stop-drag.js";
+import { prepareClientGrant, grantReceipt, renderClientGrants } from '../js/ui-tour-client-grants.js';
 import { generatedSheet, sheetHistory, appendSheetSections } from "../js/ui-broker-cheat-sheet.js";
 import { createPageBudget } from '../js/read-budget.mjs';
 import { sessionFetch } from '../js/private-session.js';
@@ -43,9 +44,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     $('#create-subject-type').value = 'deal'; $('#create-subject-id').value = dealContext;
     $('#create-tour-panel').open = !new URLSearchParams(window.location.search).has('tour');
   }
-  const base64url = (bytes) => btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
   async function sha256(value) { const bytes = new TextEncoder().encode(value); const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)); return `sha256:${[...hash].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`; }
-  function newShareToken() { const bytes = new Uint8Array(32); crypto.getRandomValues(bytes); return base64url(bytes); }
   async function request(path, options = {}) {
     if (state.sessionInvalidated) throw new Error("session_changed");
     const generation = state.sessionGeneration;
@@ -799,7 +798,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     persistPending();
     await runComposerPlan(current); current.busy = false; if (composer === current) renderComposer();
   }
-  function renderShareGrants() { const list = $("#share-grants"); list.replaceChildren(); for (const grant of state.shareGrants) { if (!id(grant?.share_grant_id)) continue; const row = document.createElement("li"); const summary = document.createElement("span"); summary.textContent = `${text(grant.status, "unknown")} · projection ${text(grant.projection_id, "unknown")} · expires ${formatTourDate(grant.expires_at) || "unknown"}`; row.append(summary); if (grant.status === "active") { const button = document.createElement("button"); button.type = "button"; button.textContent = "Revoke"; button.dataset.shareGrantId = grant.share_grant_id; row.append(button); } list.append(row); } if (!list.children.length) list.textContent = "No active or rotatable confidential links."; }
+  function renderShareGrants() { renderClientGrants($("#share-grants"), state.shareGrants); }
   function renderFeedback() {
     const list = $("#feedback-list"); list.replaceChildren();
     const items = Array.isArray(state.feedback?.items) ? state.feedback.items : [];
@@ -1083,14 +1082,12 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
         const scopes = [...document.querySelectorAll('input[name="scope"]:checked')].map(box => box.value);
         if ((scopes.includes("shortlist") || scopes.includes("comment")) && !scopes.includes("view_packet")) throw new Error("packet_scope_required");
         const expires = new Date($("#share-expiry").value).toISOString();
-        const receipt = $("#receipt-digest").value.trim();
-        if (!digest(receipt) || !scopes.length || !Number.isFinite(Date.parse(expires))) throw new Error("share_details_invalid");
         if (rotate && !id(state.shareGrantId)) throw new Error("share_grant_required");
-        const raw = newShareToken(), tokenDigest = await sha256(raw);
+        const prepared = await prepareClientGrant({ projectionId, scopes, expiresAt: expires,
+          ...(rotate ? { grantId: state.shareGrantId } : {}) });
+        const raw = prepared.token;
         if (state.tour?.id !== tourId || state.projectionId !== projectionId) return;
-        const payload = { projection_id: projectionId, token_digest: tokenDigest, permission_scopes: scopes,
-          expires_at: expires, receipt_digest: receipt, idempotency_key: uuid(),
-          ...(rotate ? { share_grant_id: state.shareGrantId } : {}) };
+        const payload = prepared.payload;
         state.pendingShare = { tourId, projectionId, raw, payload, path: rotate ? "/api/tours/share/rotate" : "/api/tours/share/issue" };
       }
       const pending = state.pendingShare;
@@ -1100,11 +1097,17 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       state.rawShareToken = pending.raw;
       const currentProjection = state.projectionId === pending.projectionId;
       if (currentProjection) state.shareGrantId = data.share_grant_id;
+      state.shareGrants = state.shareGrants.map(grant => pending.payload.share_grant_id === grant.share_grant_id
+        ? { ...grant, status: "rotated" } : grant);
+      if (!state.shareGrants.some(grant => grant.share_grant_id === data.share_grant_id)) state.shareGrants.push({
+        share_grant_id: data.share_grant_id, status: "active", permission_scopes: pending.payload.permission_scopes,
+        expires_at: pending.payload.expires_at });
+      renderShareGrants();
       state.pendingShare = null;
       $("#share-url").value = `https://reports.doctorcre.com/share#token=${pending.raw}`;
       $("#share-link").hidden = false;
       $("#share-state").textContent = currentProjection ? "Active" : "Active · earlier projection";
-      $("#rotate-share").textContent = "Rotate current";
+      $("#rotate-share").textContent = "Replace current link";
       status("Confidential link generated. Copy it now.");
     } catch (error) {
       if (state.pendingShare && state.tour?.id === tourId) {
@@ -1112,7 +1115,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
         if (validationRefused && !state.pendingShare.uncertain) {
           state.pendingShare = null;
           $("#share-state").textContent = "Request refused";
-          $("#rotate-share").textContent = "Rotate current";
+          $("#rotate-share").textContent = "Replace current link";
           status("Link request refused. Correct the fields and try again.");
         } else {
           state.pendingShare.uncertain = true;
@@ -1127,9 +1130,9 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   }
   async function revokeShare(grantId) {
     if (!id(grantId)) return;
-    const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt)) throw new Error("receipt_digest_required");
-    await startTourAction("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link",
-      revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }, "Share link revocation");
+    const payload = { share_grant_id: grantId, reason: "Internal operator revoked link",
+      revoked_at: new Date().toISOString(), idempotency_key: uuid() };
+    await startTourAction("/api/tours/share/revoke", { ...payload, receipt_digest: await grantReceipt(payload) }, "Share link revocation");
   }
   async function action(work) { try { await work(); } catch { if (!state.sessionInvalidated) status("The request could not be completed."); } }
   // Versioned route and cheat-sheet writes ignore a second click while a write to the same record is in flight.
@@ -1335,7 +1338,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       candidate_digest: state.candidateDigest, receipt_digest: receipt, idempotency_key: uuid() }, "Reviewed facts approval",
     latest => latest.projection_draft_id === projection);
   }));
-  $("#share-form").addEventListener("submit", (event) => { event.preventDefault(); void action(() => issueShare(id(state.shareGrantId))); }); $("#rotate-share").addEventListener("click", () => void action(() => issueShare(true)));
+  $("#share-form").addEventListener("submit", (event) => { event.preventDefault(); void action(() => issueShare(false)); }); $("#rotate-share").addEventListener("click", () => void action(() => issueShare(true)));
   $("#revoke-share").addEventListener("click", () => void action(() => revokeShare(state.shareGrantId)));
   $("#share-grants").addEventListener("click", (event) => { const grantId = event.target?.dataset?.shareGrantId; if (id(grantId)) void action(() => revokeShare(grantId)); });
   $("#refresh-feedback").addEventListener("click", () => void action(loadFeedback));
@@ -1361,7 +1364,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       event.preventDefault(); event.returnValue = '';
     }
   });
-  $("#share-expiry").value = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16); renderCreate(); void action(loadLibrary);
+  $("#share-expiry").value = new Date(Date.now() + 7 * 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16); renderCreate(); void action(loadLibrary);
   mountAutoRefresh({ document, window, refresh: async () => {
     await loadLibrary();
     const draftOpen = stopDrag?.active() || state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || sheetPending || sheetConflict || sheetBusy || tourAction || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
