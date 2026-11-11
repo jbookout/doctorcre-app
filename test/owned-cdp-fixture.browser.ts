@@ -251,7 +251,6 @@ test("ready fixture disposes after owned process death", async () => {
   assert.deepEqual(ownedBrowserProcesses(fixture.profile), []);
 });
 
-
 test("fixture closes owned resources when transport disposal fails", async () => {
   const fixture = await ownedCdpFixture({
     connect: async (endpoint, options) => {
