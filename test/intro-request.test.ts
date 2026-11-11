@@ -35,9 +35,9 @@ function harness() {
       if (!network.edges.some((e) => e.id === `link:${receipt.link_id}`))
         network.edges.push({
           id: `link:${receipt.link_id}`,
-          from: `party:${from}`,
-          to: `party:${to}`,
-          via: `party:${via}`,
+          from: `party:${args.from_party}`,
+          to: `party:${args.to_party}`,
+          via: args.via_party ? `party:${args.via_party}` : null,
           kind: "intro_requested",
           when: `${args.occurred_on}T00:00:00Z`,
           summary: args.note,
@@ -164,21 +164,6 @@ test("direct offered paths omit a separate introducer without inventing one", as
   assert.ok(h.network.suggestions[0]);
   h.network.edges[0].via = null;
   h.network.suggestions[0].via = null;
-  h.client.linkParties = async (args) => {
-    h.calls.push(args);
-    h.network.edges.push({
-      id: `link:${receipt.link_id}`,
-      from: `party:${from}`,
-      to: `party:${to}`,
-      via: null,
-      kind: "intro_requested",
-      when: `${args.occurred_on}T00:00:00Z`,
-      detail: args.note,
-      summary: args.note,
-    });
-    h.network.suggestions = [];
-    return receipt;
-  };
   h.model.open(h.network, offerId);
   await h.model.submit("2026-11-10", "Direct request", true);
   assert.equal(h.model.view().status, "confirmed");
@@ -276,4 +261,32 @@ test("transport session refusal retires and clears the retained review", async (
   assert.equal(h.model.view().status, "retired");
   assert.equal(h.model.view().path, null);
   assert.equal(h.model.view().request, null);
+});
+
+test("review selects the named offered path and preserves the exact note", async () => {
+  const h = harness();
+  assert.ok(h.network.nodes[2]);
+  assert.ok(h.network.edges[0]);
+  assert.ok(h.network.suggestions[0]);
+  const otherId = "99999999-9999-4999-8999-999999999999";
+  h.network.nodes.push({
+    ...h.network.nodes[2],
+    id: `party:${otherId}`,
+    name: "Demo Other Practice",
+    ref: "DEMO-OTHER",
+  });
+  const selected = {
+    ...h.network.suggestions[0],
+    id: "link:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    to: `party:${otherId}`,
+  };
+  h.network.suggestions.push(selected);
+  h.network.edges.push({ ...h.network.edges[0], id: selected.id, to: selected.to });
+  h.model.open(h.network, selected.id);
+  assert.equal(h.model.view().path?.to.name, "Demo Other Practice");
+  const note = "  Demo note with\nline breaks.  ";
+  await h.model.submit("2026-11-10", note, true);
+  assert.equal(h.model.view().status, "confirmed");
+  assert.equal(h.calls[0]?.to_party, otherId);
+  assert.equal(h.calls[0]?.note, note);
 });

@@ -379,7 +379,7 @@ export function createIntroductionRequest({
           ...(path.via ? { via_party: path.via.id.slice(6) } : {}),
           kind: "intro_requested",
           occurred_on: date,
-          note: note.trim(),
+          note,
         }),
       };
       await send(false);
