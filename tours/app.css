@@ -342,6 +342,9 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 
 .workspace-grid > details > summary { display: flex; align-items: center; min-height: var(--touch); cursor: pointer; font-weight: var(--font-weight-strong); }
 
+.stop-drag-handle { touch-action: none; cursor: grab; user-select: none; min-width: 44px; min-height: 44px; }
+.stop-dragging { opacity: .65; }
+.stop-drop-target { outline: 2px solid var(--accent); outline-offset: -2px; }
 #sheet-generated, #sheet-history pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 #sheet-history summary { min-height: 44px; padding-block: 12px; cursor: pointer; }
 @media print {
