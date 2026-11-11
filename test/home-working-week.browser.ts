@@ -67,6 +67,40 @@ test("Home working week preserves day, exact details, coverage and retirement", 
     }
 });
 
+test("working day strip stays compact with full dates only in accessible names", async (t) => {
+  const server = await startWorkerFixture({
+    assets: await workingWeekAssets("2026-11-11"),
+    env: { APP_ENV: "fixture", CARR: { fetch: async () => new Response("synthetic") } },
+  });
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const width of [1440, 390])
+    for (const theme of ["light", "dark"] as const)
+      await t.test(`${width} ${theme}`, async () => {
+        const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
+        try {
+          await page.goto(`${server.origin}/?fixture=1`);
+          await page.evaluate((theme) => {
+            document.documentElement.dataset.theme = theme;
+          }, theme);
+          const days = page.locator(".working-week-days button");
+          await days.last().waitFor();
+          for (const day of await days.all()) {
+            const height = await day.evaluate((button) => button.getBoundingClientRect().height);
+            assert.ok(height <= (width === 390 ? 60 : 72), `${width} ${theme}: compact day height, got ${height}px`);
+            assert.match(
+              await day.innerText(),
+              /^[A-Z][a-z]{2}\s*\d{1,2}$/,
+              "Only weekday and number render in the strip",
+            );
+          }
+        } finally {
+          await page.close();
+        }
+      });
+});
+
 test("working week refreshes, replaces selected sources and refuses retired late reads", async (t) => {
   const server = await startWorkerFixture({
     assets: await workingWeekAssets("2026-11-11"),
