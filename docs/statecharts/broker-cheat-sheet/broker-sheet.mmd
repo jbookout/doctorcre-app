@@ -1,0 +1,45 @@
+stateDiagram-v2
+  [*] --> Editor
+  state Editor {
+    state Sync {
+      [*] --> Saved
+      Saved --> Editing: type notes
+      Editing --> Saving: pause or save now
+      Saving --> Saved: save confirmed
+      Saving --> Conflict: newer revision found
+      Conflict --> Editing: review current and keep draft
+      Saving --> Uncertain: response lost
+      Uncertain --> Saving: check outcome
+      Saved --> Regenerating: regenerate
+      Editing --> Regenerating: regenerate
+      Regenerating --> Editing: current facts received
+      Regenerating --> Editing: facts unavailable resumes autosave
+      Saved --> Saved: read revisions
+      Editing --> Editing: read revisions
+      Saved --> Retired: session revoked
+      Editing --> Retired: session revoked
+      Saving --> Retired: session revoked
+      Conflict --> Retired: session revoked
+      Uncertain --> Retired: session revoked
+      Regenerating --> Retired: session revoked
+    }
+    --
+    state Access {
+      [*] --> Authorized
+      Authorized --> Revoked: session revoked
+    }
+    --
+    state History {
+      [*] --> Closed
+      Closed --> Reading: read revisions
+      Reading --> Visible: revisions received
+      Reading --> Closed: revisions unavailable
+      Reading --> Hidden: session revoked
+      Visible --> Visible: read revisions
+      Visible --> Hidden: session revoked
+      Closed --> Hidden: session revoked
+    }
+  }
+  %% never NoRevokedSave: Saving & Revoked -- A revoked session cannot save.
+  %% never NoRevokedRegeneration: Regenerating & Revoked -- A revoked session cannot regenerate.
+  %% never NoHistoryLeak: Visible & Revoked -- A revoked session cannot view broker history.

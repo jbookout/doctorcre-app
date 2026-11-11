@@ -1,6 +1,6 @@
 {
   "repository": "DoctorCRE/carr-system",
-  "source_commit": "385f2efd6b5d55ad442150f63acecd4454ab7870",
+  "source_commit": "a90886e741f8d8d390c2427080da08e904ece7d8",
   "inputs": {
     "packet": {
       "stops": [
@@ -66,11 +66,13 @@
     "active": {
       "projection_ref": "projection:public:synthetic_projection_01",
       "permission_scopes": [],
+      "can_download": true,
       "items": []
     },
     "viewOnly": {
       "projection_ref": "projection:public:synthetic_projection_01",
       "permission_scopes": [],
+      "can_download": false,
       "items": []
     },
     "exchange": {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import test, { after } from "node:test";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -140,6 +140,13 @@ test("client download controls follow projected capability before open and after
               kind === "active" && recorded.responses.active.can_download === true ? 1 : 0,
             );
             assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+            if (process.env.CLIENT_LINKS_SCREENSHOTS) {
+              await mkdir(process.env.CLIENT_LINKS_SCREENSHOTS, { recursive: true });
+              await page.screenshot({
+                path: `${process.env.CLIENT_LINKS_SCREENSHOTS}/${kind}-${width}-${colorScheme}.png`,
+                fullPage: true,
+              });
+            }
           } finally {
             await context.close();
           }

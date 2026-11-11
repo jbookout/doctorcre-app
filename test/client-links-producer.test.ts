@@ -6,7 +6,7 @@ test("client-link response recordings match the exact CARR production projectors
   skip:
     !process.env.CARR_CLIENT_LINKS_PRODUCER_CHECKOUT && "Set CARR_CLIENT_LINKS_PRODUCER_CHECKOUT to verify recordings",
 }, async () => {
-  const { readFile } = await import("node:fs/promises");
+  const { readFile, writeFile } = await import("node:fs/promises");
   const { pathToFileURL } = await import("node:url");
   const recorded = JSON.parse(
     await readFile(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"),
@@ -19,6 +19,16 @@ test("client-link response recordings match the exact CARR production projectors
   );
   execFileSync("git", ["-C", root, "diff", "--quiet", "HEAD", "--", "mcp-server/src"]);
   const producer = await import(pathToFileURL(root + "/mcp-server/src/tour-sharing.js").href);
+  if (process.env.RECORD_CLIENT_LINKS_CONTRACT === "1") {
+    for (const name of ["packet", "nearMiss"])
+      recorded.responses[name] = producer.projectTourClientPacket(recorded.inputs[name]);
+    for (const name of ["active", "viewOnly"])
+      recorded.responses[name] = producer.projectTourClientFeedback(recorded.inputs[name]);
+    await writeFile(
+      new URL("./fixtures/client-links/producer.json", import.meta.url),
+      `${JSON.stringify(recorded, null, 2)}\n`,
+    );
+  }
   for (const name of ["packet", "nearMiss"])
     assert.deepEqual(producer.projectTourClientPacket(recorded.inputs[name]), recorded.responses[name]);
   for (const name of ["active", "viewOnly"])
