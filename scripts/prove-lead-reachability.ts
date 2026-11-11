@@ -132,7 +132,7 @@ export async function proveReachability(options: {
     const settings = {
       origin: options.origin,
       expectedCommit: options.expectedCommit,
-      timeoutMs: options.timeoutMs,
+      timeoutMs: options.timeoutMs ?? 30000,
       readRelease: async () => ({ source_commit: options.expectedCommit }),
       contains: async () => {},
       engine: { launch: async () => ({ newPage: async () => ({}), close: async () => {} }) },

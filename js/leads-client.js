@@ -64,7 +64,7 @@ export function createLeadBoardClient(options = {}) {
     getWorkspace: async () => {
       const payload = validateLeadWorkspace(await rpc("lead-board", { workspace: "leads" }));
       if (payload.leads.some(lead => lead.reachability !== undefined)) {
-        const { parseReachability } = await import('./ui-lead-reachability.js');
+        const { parseReachability } = await import('./ui-lead-reachability.generated.js');
         payload.leads.forEach(lead => parseReachability(lead.reachability));
       }
       return payload;
