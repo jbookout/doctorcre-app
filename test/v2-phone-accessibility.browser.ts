@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { buildArtifact } from "../scripts/artifact.mjs";
+import { inspectPhoneAccessibility } from "../scripts/phone-accessibility.ts";
 import { createQaServer } from "../scripts/qa-fixture-server.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { walkV2Accessibility } from "../scripts/v2-accessibility-walk.ts";
@@ -96,6 +97,33 @@ test("V2 surfaces fit phone and desktop in both accessible themes", async (t) =>
             property,
             "Keyboard reorder moves the first property down",
           );
+          if (width === 390 && theme === "light") {
+            await t.test("Phone audit catches a 20 px Navigate tour link above the viewport", async () => {
+              const link = page.locator("#tour-day-link");
+              const originalStyle = await link.getAttribute("style");
+              try {
+                await link.evaluate((node) => {
+                  node.style.setProperty("height", "20px", "important");
+                  node.style.setProperty("min-height", "20px", "important");
+                  node.style.setProperty("padding", "0", "important");
+                  window.scrollTo(0, document.documentElement.scrollHeight);
+                });
+                const box = await link.evaluate((node) => node.getBoundingClientRect().toJSON());
+                assert.equal(box.height, 20);
+                assert.ok(box.bottom < 0, "Navigate tour is rendered above the current viewport");
+                const audit = await inspectPhoneAccessibility(page);
+                assert.ok(
+                  audit.small.some((target) => target.id === "tour-day-link" && target.height === 20),
+                  "The audit reports the undersized Navigate tour link regardless of scroll position",
+                );
+              } finally {
+                await link.evaluate((node, style) => {
+                  if (style === null) node.removeAttribute("style");
+                  else node.setAttribute("style", style);
+                }, originalStyle);
+              }
+            });
+          }
           const dragHandles = await page.locator("#route-stops [draggable=true]").count();
           await writeFile(
             `${shots}/reorder-${width}-${theme}.json`,
