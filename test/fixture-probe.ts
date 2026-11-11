@@ -71,7 +71,7 @@ type Options = {
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
   delayMs?: number;
-  scenario?: "early-exit" | "never-ready" | "early-ready" | "late-ready" | "ignore-close";
+  scenario?: "early-exit" | "never-ready" | "early-ready" | "ignore-close";
   acquisitionMs?: number;
   scheduleExercise?: (callback: () => void) => () => void;
 };
@@ -292,7 +292,6 @@ async function runFixtureChild() {
       return;
     }
     if (options.delayMs) await delay(options.delayMs);
-    if (options.scenario === "late-ready") await delay(100);
     if (options.scenario === "early-ready" || options.scenario === "ignore-close") {
       process.send?.({ origin: "http://127.0.0.1:1", fixturePid: process.pid });
       return;
@@ -305,7 +304,7 @@ async function runFixtureChild() {
     server = { origin: fixture.url, close: fixture.stop };
     const fixturePid = Number(execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).trim());
     assert.ok(Number.isSafeInteger(fixturePid) && fixturePid > 0, "one owned fixture child");
-    if (!closing || options.scenario === "late-ready") process.send?.({ origin: server.origin, fixturePid });
+    if (!closing) process.send?.({ origin: server.origin, fixturePid });
   })();
   await acquisition;
   process.on("message", async (message: unknown) => {
