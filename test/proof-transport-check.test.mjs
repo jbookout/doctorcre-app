@@ -154,6 +154,16 @@ for (const indirect of [false, true]) test(`local helper transport is refused, t
   assert.deepEqual(await checkProofTransports(pathToFileURL(root + '/')), []);
 });
 
+test('proof graph accepts JSON data and refuses malformed JSON', async t => {
+  const root = temporaryDirectory('proof-json-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-json.mjs', "import schema from './schema.json' with { type: 'json' }; export default schema;");
+  await writeFile(root + '/scripts/schema.json', '{"type":"object"}');
+  assert.deepEqual(await checkProofTransports(pathToFileURL(root + '/')), []);
+  await writeFile(root + '/scripts/schema.json', 'fetch("https://example.invalid")');
+  assert.ok((await checkProofTransports(pathToFileURL(root + '/'))).some(error => error.includes('invalid JSON import')));
+});
+
 test('fixture refuses helper fetch and variable browser release navigation but admits the reader', async t => {
   const server = await startFixture({ routes: new Map([
     ['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) }],

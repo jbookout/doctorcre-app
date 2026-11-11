@@ -1,0 +1,27 @@
+# Vendor client needs
+
+Card: WR591.S27.J4
+
+Selecting a vendor shows the approved deal-owned needs returned by CARR. The app never infers matches from geography, category or vertical.
+
+The producer schema and synthetic recording are pinned from DoctorCRE/carr-system at b1d820087d6d0c260980405581640508da4765cd. Both production and tests use `parseClientNeeds`, which checks that schema and the selected vendor, current approval revision and freshness. The interpreted schema validator works under the app's CSP without runtime code generation.
+
+The existing business view owns vendor selection in its URL. A React island owns the read state and a five-row page. Its host survives activity-only redraws. Selection changes, record failures, closure and session retirement dispose it and cancel pending reads. Refresh clears visible rows before reading; no stale cache is retained. The server owns matching and authorization. Source references are displayed as text because the contract does not promise a navigable URL.
+
+Two designs were considered. Putting reads into the business view would spread typed parsing and paging across legacy state. A single mounted island keeps those concerns together behind a mount/dispose interface. Reusing the meeting list would mix two different contracts and was rejected.
+
+At current and tenfold load, one selected vendor costs one bounded read per opening, refresh or page. No per-row request, background loop, queue, write or persistent cache exists. A read has a 15-second deadline and zero automatic retries. Failure opens the unavailable or permission state; an explicit retry is the only recovery. Requests remain serial per panel and abort on disposal. CARR owns storage, indexes and server capacity; the app adds no database access. No write idempotency key applies.
+
+The chart in `vendor-client-needs.mmd` models session, deadline and results. It checks that retired sessions and passed deadlines never show approved matches. Approved means fresh; Reading means revalidating. The finite model treats deadline passage as an event and leaves out HTTP timing and database races. Browser-clock tests check the actual deadline and resume scheduling.
+
+Throughput checkpoint. Contract and statechart are the blocking first steps. Parser and UI are one coupled workstream with one owner. The only shared state is the existing vendor URL and host lifecycle. No fan-out or new orchestration is needed.
+
+Production proof runs `node scripts/prove-vendor-client-needs.ts --origin https://app.doctorcre.com --expected-commit <app-merge-sha> --vendor <existing-vendor-uuid> --cdp-url <signed-in-browser-url>`. Exit 0 requires a containing app release and exact equality of every displayed need, client, deal, applicability, source revision and approval, at 1440 and 390 in both themes. Exit 78 reports insufficient release, session or positive data evidence. The coordinator must also verify that the containing CARR release includes the producer. No production need is created to satisfy proof.
+
+Independent staging taste review and positive production proof are outside this builder's observations. Synthetic screenshots are not independent scores.
+
+Freshness fix (WR591.S27.J6). Data remains the parsed five-row page. A row is fresh until its deadline, expired at that deadline, and revalidating when Refresh clears results for a new read. The existing mountLocalTicker owns the next earliest deadline and the resume repaint. Expired rows are removed locally; later fresh rows remain. Returning before a deadline rearms it, and returning after a deadline removes expired rows immediately. No automatic HTTP read or second timer mechanism is added. Disposal cancels the ticker with the island.
+
+The clock schedules one local callback for the earliest row deadline, then schedules the next remaining deadline. Hidden panels stop clocks and repaint on resume. Local expiry remains active without human input; freshness is a disclosure limit, not a network polling budget. Capacity is at most five deadline removals per loaded page at current and tenfold load. Reads, failure handling, storage, authorization and pagination retain their existing owners.
+
+Throughput checkpoint. One focused browser-clock regression precedes the production edit. Then run clean-source browser acceptance, parser and proof cases, app checks and local journeys. No delegated work or database fixture is needed.
