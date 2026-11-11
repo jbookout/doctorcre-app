@@ -75,6 +75,11 @@ test("deal workspace opens Client view without replacing Documents or Tours", as
       await page.getByRole("tab", { name: "Client view", exact: true }).getAttribute("aria-selected"),
       "true",
     );
+    const activeTab = await page.getByRole("tab", { name: "Client view", exact: true }).boundingBox();
+    assert.ok(
+      activeTab && activeTab.x >= 0 && activeTab.x + activeTab.width <= 390,
+      "selected Client view tab fits the phone viewport",
+    );
     assert.equal(await page.getByRole("tab", { name: "Documents", exact: true }).count(), 1);
     assert.equal(await page.getByRole("tab", { name: "Tours", exact: true }).count(), 1);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

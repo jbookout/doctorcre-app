@@ -1063,7 +1063,11 @@ function selectWorkspaceTab(id) {
   }
   if (id === 'market-terms') void marketTermsPanel?.load();
   if (id === 'documents') void dealDocumentsPanel?.load();
-  if (id === 'client-view') void clientPublicationsPanel?.load();
+  if (id === 'client-view') {
+    const strip = $('workspaceTabs');
+    strip.scrollLeft += $('tab-client-view').getBoundingClientRect().left - strip.getBoundingClientRect().left;
+    void clientPublicationsPanel?.load();
+  }
   if (id === 'tours') void dealToursPanel?.load();
   $('panelContextOpenWrap').hidden = id !== 'overview' || !state.panelDetail;
   if (id === 'correspondence' && state.panelDetail) {
