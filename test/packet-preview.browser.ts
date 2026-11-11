@@ -235,14 +235,13 @@ test("the public packet renders the same synthetic stop facts at both widths", a
       const url = new URL(route.request().url());
       const moduleAsset = sourceAssets.get(url.pathname);
       if (moduleAsset && url.pathname.endsWith(".js")) return route.fulfill(moduleAsset);
+      if (url.pathname === "/api/share/map") return route.fulfill({ status: 404, json: { error: "not_found" } });
       const payload =
         url.pathname === "/api/share/report"
           ? packet
-          : url.pathname === "/api/share/map"
-            ? { points: [] }
-            : url.pathname === "/api/share/feedback"
-              ? { projection_ref: "projection:public:synthetic_projection", permission_scopes: [], items: [] }
-              : null;
+          : url.pathname === "/api/share/feedback"
+            ? { projection_ref: "projection:public:synthetic_projection", permission_scopes: [], items: [] }
+            : null;
       if (payload) return route.fulfill({ json: { data: payload } });
       const alias: Record<string, string> = {
         "/": "/reports/share.html",
