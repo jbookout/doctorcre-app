@@ -27,8 +27,8 @@ test("Home working week preserves day, exact details, coverage and retirement", 
         const days = week.getByRole("button", { name: /\d{4}/ });
         assert.equal(await days.count(), 7);
         for (const day of await days.all()) {
-          const weekday = await day.locator("span").first().innerText();
-          const date = await day.locator("strong").innerText();
+          const weekday = await day.locator("span").first().textContent();
+          const date = await day.locator("strong").textContent();
           assert.equal(
             await week.getByRole("button", { name: new RegExp(`^${weekday}\\s*${date}\\b.*\\d{4}$`) }).count(),
             1,

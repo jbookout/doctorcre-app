@@ -135,7 +135,6 @@ export async function mountWorkingWeek(host: HTMLElement) {
                   <button
                     type="button"
                     key={day.day}
-                    aria-label={label(day.day)}
                     aria-pressed={day.day === viewedDay}
                     onClick={() => {
                       viewedDay = day.day;
@@ -152,6 +151,7 @@ export async function mountWorkingWeek(host: HTMLElement) {
                       })}
                     </span>
                     <strong>{Number(day.day.slice(-2))}</strong>
+                    <span className="sr-only"> {label(day.day)}</span>
                   </button>
                 ))}
               </fieldset>
