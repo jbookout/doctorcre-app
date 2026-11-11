@@ -41,4 +41,3 @@ SelectionNeverRegresses == visibleProperty # 0 => visibleVersion = freshest[prop
 \* Refresh may only advance a property's producer version.
 SnapshotsNeverRegress == \A p \in 1..2: snapshots[p] = freshest[p]
 ====
-

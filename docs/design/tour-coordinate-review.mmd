@@ -1,12 +1,4 @@
 stateDiagram-v2
-  note right of Comparing
-    Each property retains its newest accepted producer as-of.
-    Selector label and displayed evidence use that same snapshot.
-  end note
-  note right of Reading
-    Retain per-property versions while evidence is hidden.
-    Accept same or newer as-of; reject older responses.
-  end note
   [*] --> Comparing: Open existing stop evidence
   Comparing --> Reading: Refresh evidence
   Reading --> Comparing: Matching evidence arrives at same or newer snapshot time
