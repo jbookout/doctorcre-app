@@ -5,8 +5,12 @@ import test from "node:test";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { parseSearchResponse } from "../src/ui/deal-space-search-model.ts";
+import { parseDealUpdateSummary } from "../src/ui/deal-update-summary-model.ts";
 import { chromium } from "./browser-harness.mjs";
 
+const summaryRecording = JSON.parse(
+  await readFile(new URL("../contracts/deal-update-summary.v1/fixture.json", import.meta.url), "utf8"),
+);
 const responses = JSON.parse(
   await readFile(new URL("./fixtures/deal-space-searches/responses.json", import.meta.url), "utf8"),
 );
@@ -70,6 +74,18 @@ test("saved search to saved cart to reviewed route preserves identities and expl
           );
           await page.route("**/mcp", async (request) => {
             const rpc = request.request().postDataJSON();
+            if (rpc.params.name === "read-deal-update-summary-v1") {
+              assert.equal(rpc.params.arguments.deal_id, deal);
+              const value = { ...structuredClone(summaryRecording), deal_id: deal };
+              parseDealUpdateSummary(value, deal);
+              return request.fulfill({
+                json: {
+                  jsonrpc: "2.0",
+                  id: rpc.id,
+                  result: { content: [{ type: "text", text: JSON.stringify(value) }] },
+                },
+              });
+            }
             assert.equal(rpc.params.arguments.deal_id, deal);
             const reading = rpc.params.name === "read-deal-space-searches-v1";
             assert.ok(reading || rpc.params.name === "run-deal-space-search-v1");

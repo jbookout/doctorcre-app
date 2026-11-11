@@ -1,13 +1,23 @@
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
-
+import { parseDealUpdateSummary } from '../src/ui/deal-update-summary-model.ts';
+const recording = JSON.parse(await readFile(new URL('../contracts/deal-update-summary.v1/fixture.json', import.meta.url), 'utf8'));
+async function serveSummary(page) {
+  await page.route('**/mcp', async route => {
+    const rpc = route.request().postDataJSON();
+    if (rpc.params.name !== 'read-deal-update-summary-v1') return route.continue();
+    const value = {...structuredClone(recording), deal_id:rpc.params.arguments.deal_id};
+    parseDealUpdateSummary(value, value.deal_id);
+    return route.fulfill({json:{jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify(value)}]}}});
+  });
+}
 const root = fileURLToPath(new URL('../', import.meta.url));
 const evidence = join(root, 'out/test-artifacts/dealroom-acceptance');
 let outDir, server, browser, origin;
@@ -28,6 +38,7 @@ after(async () => {
 for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`signed-in deal room preserves board rows and unobstructed titles at ${width}px in ${theme}`, async t => {
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   t.after(() => page.close());
+  await serveSummary(page);
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({theme})), theme);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -60,7 +71,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
   assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(), 1);
   assert.equal(await page.locator('.timeline-chart').count(), 0);
   assert.equal(await page.locator('#detailOwner').inputValue(), 'dell');
-  assert.equal(await page.locator('.deal-updates').count(), 0, 'the signed-in empty note feed renders no section');
+  await page.locator('[data-summary]').filter({hasText:recording.summary.text}).waitFor();
+  assert.equal(await page.locator('[data-summary]').textContent(), recording.summary.text);
+  assert.equal(await page.locator('.deal-note').count(), 0, 'producer history stays collapsed');
   assert.equal(await page.locator('#recordPanel').evaluate(node => node.scrollWidth <= node.clientWidth), true);
   await page.screenshot({ path: join(evidence, `${width}-${theme}-snapshot.png`), animations: 'disabled' });
   const header = await page.locator('#recordPanel > header').evaluate(node => ({
@@ -75,7 +88,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
     state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,vendors:Array.from({length:6},(_,i)=>({party_id:`demo-vendor-${i}`,role:i<3?'lender':'landlord_rep',company:{id:`demo-company-${i}`,name:`Demo regional healthcare property and finance company ${i}`},contact:{id:`demo-contact-${i}`,name:`Demo assigned representative number ${i}`}}))},thread:Array.from({length:30},(_,i)=>({id:`demo-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Synthetic context. '.repeat(20),recorded_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}))};};
   });
   await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
-  await page.locator('.updates-history > summary').waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('#recordPanel .deal-vendor-company').length === 6);
   assert.equal(await page.locator('#recordPanel .deal-vendor-company').count(),6);
   const action=await page.getByRole('button',{name:'Add update',exact:true}).boundingBox();
   const panel=await page.locator('#recordPanel').boundingBox();
@@ -108,6 +121,8 @@ for (const width of [390, 1280]) test(`signed-in Add deal persists through reloa
   const page = await browser.newPage({ viewport:{width,height:960}, timezoneId:'America/Chicago', reducedMotion:'reduce' });
   const partner = await browser.newPage({ viewport:{width,height:960}, timezoneId:'America/Chicago', reducedMotion:'reduce' });
   t.after(() => Promise.all([page.close(),partner.close()]));
+  await serveSummary(page);
+  await serveSummary(partner);
   const errors = [];
   for (const current of [page,partner]) current.on('pageerror',error => errors.push(error.message));
   const namespace = `create-deal-${width}`;
@@ -165,10 +180,16 @@ for (const width of [390, 1280]) test(`signed-in Add deal persists through reloa
   await partner.goto(`${origin}/deals?mode=live&owner=dell&deal=${encodeURIComponent(id)}`);
   await partner.locator('#detailUpdateForm').waitFor();
   assert.equal(await partner.locator('#detailOwner').inputValue(),'dell');
-  const renderedNote = partner.locator('.deal-note').filter({hasText:note.text});
+  await partner.locator('[data-summary]').filter({hasText:recording.summary.text}).waitFor();
+  assert.equal(await partner.locator('[data-summary]').textContent(), recording.summary.text);
+  assert.equal(await partner.locator('.deal-note').filter({hasText:note.text}).count(), 0, 'local note is not a producer summary');
+  await partner.locator('.updates-history > summary').click();
+  const producerNote = recording.history.entries.find(entry => entry.source === 'note');
+  const renderedNote = partner.locator('.deal-note').filter({hasText:producerNote.text});
+  await renderedNote.waitFor();
   assert.equal(await renderedNote.count(),1);
   assert.equal(await renderedNote.locator('b').textContent(),'Joe');
-  assert.equal(await renderedNote.locator('time').getAttribute('datetime'),note.recorded_at);
+  assert.equal(await renderedNote.locator('time').getAttribute('datetime'),producerNote.at);
   assert.ok((await renderedNote.locator('time').textContent()).trim());
   assert.doesNotMatch(await renderedNote.locator('time').textContent(),/Date not recorded/);
   assert.deepEqual((await rpc(partner,'get-deal-room',{deal:id})).thread,[note]);

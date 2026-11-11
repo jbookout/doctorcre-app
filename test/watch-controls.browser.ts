@@ -5,11 +5,15 @@ import { Ajv } from "ajv";
 import { buildArtifact } from "../scripts/artifact.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { uiAssets } from "../scripts/ui-bundle.mjs";
+import { parseDealUpdateSummary } from "../src/ui/deal-update-summary-model.ts";
 import { parseWatch, type Watch } from "../src/ui/watches/model.ts";
 import { chromium, componentDocument } from "./browser-harness.mjs";
 import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { subjectWatchV2ResponseSchema } from "./fixtures/watches/producer-schema.ts";
 
+const summaryRecording = JSON.parse(
+  await readFile(new URL("../contracts/deal-update-summary.v1/fixture.json", import.meta.url), "utf8"),
+);
 const recordedValue: unknown = JSON.parse(
   await readFile(new URL("./fixtures/watches/recorded.json", import.meta.url), "utf8"),
 );
@@ -32,6 +36,16 @@ test("built Deal Room and lease detail mount controls for the exact record", asy
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     try {
       await page.route("**/mcp", (route) => {
+        const rpc = route.request().postDataJSON();
+        if (rpc.params.name === "read-deal-update-summary-v1") {
+          assert.equal(kind, "deal");
+          assert.equal(rpc.params.arguments.deal_id, originalWatch.subject_id);
+          const value = { ...structuredClone(summaryRecording), deal_id: originalWatch.subject_id };
+          parseDealUpdateSummary(value, originalWatch.subject_id);
+          return route.fulfill({
+            json: { jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: JSON.stringify(value) }] } },
+          });
+        }
         if (route.request().postDataJSON().params.name === "list-subject-watches-v2") {
           const payload = {
             ok: true,

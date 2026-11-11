@@ -11,7 +11,11 @@ import { chromium } from "../scripts/proof-browser.mjs";
 import { proveJourney } from "../scripts/prove-cart-journey.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { parseSearchResponse } from "../src/ui/deal-space-search-model.ts";
+import { parseDealUpdateSummary } from "../src/ui/deal-update-summary-model.ts";
 
+const summaryRecording = JSON.parse(
+  await readFile(new URL("../contracts/deal-update-summary.v1/fixture.json", import.meta.url), "utf8"),
+);
 const responses = JSON.parse(
   await readFile(new URL("./fixtures/deal-space-searches/responses.json", import.meta.url), "utf8"),
 );
@@ -56,6 +60,14 @@ for (const mode of ["ready", "wrong-order", "deadline"] as const) {
     );
     await page.route("**/mcp", async (route) => {
       const rpc = route.request().postDataJSON();
+      if (rpc.params.name === "read-deal-update-summary-v1") {
+        assert.equal(rpc.params.arguments.deal_id, deal);
+        const value = { ...structuredClone(summaryRecording), deal_id: deal };
+        parseDealUpdateSummary(value, deal);
+        return route.fulfill({
+          json: { jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: JSON.stringify(value) }] } },
+        });
+      }
       assert.equal(rpc.params.name, "read-deal-space-searches-v1");
       assert.equal(rpc.params.arguments.deal_id, deal);
       await route.fulfill({

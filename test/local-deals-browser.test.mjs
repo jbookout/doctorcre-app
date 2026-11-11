@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
+import { parseDealUpdateSummary } from '../src/ui/deal-update-summary-model.ts';
+const assets = await appAssetSnapshot();
+const recording = JSON.parse(await readFile(new URL('../contracts/deal-update-summary.v1/fixture.json', import.meta.url), 'utf8'));
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
 async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false, legalDestination = false, timezoneId } = {}) {
@@ -25,12 +29,20 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost') return route.abort();
+    if (url.pathname === '/mcp') {
+      const rpc = route.request().postDataJSON();
+      if (rpc.params.name === 'read-deal-update-summary-v1') {
+        const value = {...structuredClone(recording), deal_id:rpc.params.arguments.deal_id};
+        parseDealUpdateSummary(value, value.deal_id);
+        return route.fulfill({json:{jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify(value)}]}}});
+      }
+      return route.fulfill({status:404,body:'Unregistered fixture verb'});
+    }
     if (url.pathname === '/data/board-seed.json') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(seed) });
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' }) });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ contentType: 'application/json', body: '{}' });
-    const file = url.pathname === '/deals' ? 'pipeline.html' : url.pathname.slice(1);
-    try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
-    catch { return route.fulfill({ status: 404, body: '' }); }
+    const asset = assets.get(url.pathname === '/deals' ? '/pipeline.html' : url.pathname);
+    return route.fulfill(asset || {status:404,body:''});
   });
   await page.goto('http://localhost/deals' + (deal ? '?deal='+encodeURIComponent(deal) : ''));
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.size > 0);
@@ -152,10 +164,12 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     await page.locator('[data-filter="all"]').click();
     await page.locator('.kanban-column [data-id="d14"] .card-open').click(); await page.waitForSelector('#detailPhase');
     const box = await page.locator('#recordPanel').boundingBox(); assert.ok(box.width >= Math.min(1100, width - 30));
-    assert.ok((await page.locator('.deal-note p').first().textContent()).length <= 150);
+    await page.locator('[data-summary]').filter({hasText:recording.summary.text}).waitFor();
+    assert.equal(await page.locator('.deal-note').count(),0);
     await page.locator('.updates-history > summary').click();
-    await page.locator('.deal-note[data-id="demo-note"] summary').click();
-    assert.match(await page.locator('.deal-note[data-id="demo-note"] .note-original').textContent(), /Full original demo entry/);
+    await page.locator('.deal-note[data-id="activity:00000000-0000-4000-8000-000000000003"] summary').click();
+    assert.ok((await page.locator('.deal-note > p').first().textContent()).length <= 150);
+    assert.equal(await page.locator('.deal-note[data-id="activity:00000000-0000-4000-8000-000000000003"] .note-original').textContent(), 'Landlord offered $24.\n\nOriginal source detail.');
     await page.locator('#recordPanel').evaluate(e => { e.scrollTop = 0; });
     assert.equal(await page.locator('#recordPanel').evaluate(e => e.scrollWidth <= e.clientWidth), true);
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/detail-${width}.png`, root).pathname });
@@ -325,7 +339,8 @@ test('W4 lost park response retries the original field exactly once; next-step e
   await page.locator('[data-id="d14"] .card-open').click();
   for (const text of ['Demo first next step', 'Demo second next step']) {
     await page.locator('#detailUpdateForm textarea').fill(text); await page.locator('#detailUpdateForm button[type=submit]').click();
-    await page.waitForFunction(expected => document.querySelector('.deal-updates').textContent.includes(expected), text);
+    await waitForAsync(page, async expected => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')).thread.some(note => note.text === expected), text);
+    assert.equal(await page.locator('[data-summary]').textContent(),recording.summary.text);
   }
   assert.deepEqual(errors, []);
 });
@@ -334,7 +349,7 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
   const { page, errors } = await open(t);
   await page.locator('[data-id="d14"] .card-open').click();
   await page.locator('.updates-history > summary').click();
-    await page.locator('.deal-note[data-id="demo-note"] summary').click();
+  await page.locator('.deal-note[data-id="activity:00000000-0000-4000-8000-000000000003"] summary').click();
   await page.locator('#detailUpdateForm textarea').fill('Demo unsaved draft');
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js'); const original = state.client.getDeal;
@@ -350,9 +365,10 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
 
   assert.equal(await page.locator('[data-detail-read="dates"]').count(),1);
 
-  assert.match(await page.locator('.deal-updates').textContent(),/Demo scheduled tour/);
+  assert.equal(await page.locator('[data-summary]').textContent(),recording.summary.text);
+  assert.doesNotMatch(await page.locator('.deal-updates').textContent(),/Demo scheduled tour/);
   assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Demo unsaved draft');
-  assert.equal(await page.locator('.deal-note[data-id="demo-note"] details').evaluate(e => e.open), true);
+  assert.equal(await page.locator('.deal-note[data-id="activity:00000000-0000-4000-8000-000000000003"] details').evaluate(e => e.open), true);
   assert.deepEqual(errors, []);
 });
 
@@ -393,7 +409,8 @@ test('detail reads recover without losing an update draft', async t => {
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Unsaved demo update');
  await page.evaluate(()=>restoreRead());await page.clock.fastForward(61_000);
  await page.locator('#detailUpdateForm button[type=submit]').click();
- await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Unsaved demo update'));
+ await waitForAsync(page,async()=> (await (await import('/js/pipeline.js')).state.client.getDeal('d14')).thread.some(note=>note.text==='Unsaved demo update'));
+ assert.equal(await page.locator('[data-summary]').textContent(),recording.summary.text);
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
  assert.deepEqual(errors,[]);
 });
