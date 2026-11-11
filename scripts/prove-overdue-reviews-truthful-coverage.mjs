@@ -7,7 +7,7 @@ import { init, parse } from 'es-module-lexer';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function assertCoverage() {
-  const { mountDealUpdateReviews } = await import('/js/ui-deal-reviews.js');
+  const { mountDealUpdateReviews } = await import('/js/ui-deal-reviews.generated.js');
   const assertions = [];
   const check = (name, ok) => { assertions.push({ name, passed: Boolean(ok) }); if (!ok) throw Error(name); };
   const container = document.createElement('section'); document.body.append(container);
@@ -80,7 +80,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
         if (!file || typeof file.path !== 'string' || file.path.startsWith('/') || file.path.split('/').some(p => p === '..' || p === '.') || !/^[a-f0-9]{64}$/.test(file.sha256) || !Number.isSafeInteger(file.bytes) || file.bytes < 0 || files.has(file.path)) throw unavailable('Malformed manifest entry');
         files.set(file.path, file);
       }
-      const assets = new Map(); const pending = [origin + '/js/ui-deal-reviews.js'];
+      const assets = new Map(); const pending = [origin + '/js/ui-deal-reviews.generated.js'];
       await init;
       while (pending.length) {
         const url = pending.shift(); if (assets.has(url)) continue;

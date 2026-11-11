@@ -25,7 +25,7 @@ export async function observeNatural(page, origin) {
   const activityId=await button.getAttribute('data-attribution-id');
   const response=await page.evaluate(async activityId=>{
     const {createActivityAttributionRead}=await import('/js/deal-timeline.js');
-    const {parseActivityDealAttribution}=await import('/js/ui-activity-attribution.js');
+    const {parseActivityDealAttribution}=await import('/js/ui-activity-attribution.generated.js');
     return parseActivityDealAttribution(await createActivityAttributionRead()(activityId),activityId);
   },activityId);
   await button.click();
@@ -77,7 +77,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
     try {
       if(cdpUrl){
         const endpoint=new URL(cdpUrl);
-        if(endpoint.protocol!=='http:' || !['localhost','127.0.0.1'].includes(endpoint.hostname) || endpoint.username || endpoint.password)throw unavailable('Loopback CDP endpoint required');
+        if(!['http:','ws:'].includes(endpoint.protocol) || !['localhost','127.0.0.1'].includes(endpoint.hostname) || endpoint.username || endpoint.password)throw unavailable('Loopback CDP endpoint required');
       }
       if(cdpUrl){
         const connection=engine.connectOverCDP(cdpUrl,{timeout:remaining()}).then(async acquired=>{

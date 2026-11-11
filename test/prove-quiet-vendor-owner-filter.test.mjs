@@ -1,5 +1,7 @@
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
-import test from 'node:test';
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -23,7 +25,7 @@ async function fixture(t) {
   const start = async () => {
     await server?.close();
     const snapshot = new Map([...assets].map(([path, value]) => [path, {
-      ...value, body: corrupt && path === '/js/ui-quiet-vendors.js'
+      ...value, body: corrupt && path === '/js/ui-quiet-vendors.generated.js'
         ? value.body.toString().replaceAll('data-vendor-id','data-wrong-id') : value.body,
     }]));
     server = await startWorkerFixture({ assets: snapshot, env: {
@@ -100,13 +102,13 @@ test('CLI executes a pass and insufficient evidence',async t=>{
 
 test('CDP observation closes its page and disconnects while preserving the existing browser and page',async t=>{
   const f=await fixture(t);
-  const portFixture=await startFixture();
-  const port=new URL(portFixture.origin).port;await portFixture.close();
+
   const {chromium}=await import('../scripts/proof-browser.mjs');
-  const existing=await chromium.launch({args:[`--remote-debugging-port=${port}`]});
+  const existingFixture = await ownedCdpFixture(); t.after(() => existingFixture.close());
+  const existing=existingFixture.browser;
   t.after(()=>existing.close());
-  const page=await existing.newPage();await page.goto('about:blank');
-  const receipt=await prove({origin:f.origin,expectedCommit:commit,cdpUrl:`http://127.0.0.1:${port}`});
+  const page=existingFixture.page;await page.goto('about:blank');
+  const receipt=await prove({origin:f.origin,expectedCommit:commit,cdpUrl:existingFixture.endpoint});
   assert.equal(receipt.scope,'natural');
   assert.equal(existing.isConnected(),true);assert.equal(page.isClosed(),false);
   assert.equal(existing.contexts()[0].pages().length,1);
@@ -167,12 +169,12 @@ for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable
       return connection;
     };
   `);
-  const listener = await startFixture();
-  const port = new URL(listener.origin).port; await listener.close();
+
   const { chromium: owner } = await import('../scripts/proof-browser.mjs');
-  const browser = await owner.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   t.after(() => browser.close());
-  const cliArgs = ['--import', preload, 'scripts/prove-quiet-vendor-owner-filter.mjs', '--origin', f.origin, '--expected-commit', commit, '--cdp-url', `http://127.0.0.1:${port}`];
+  const cliArgs = ['--import', preload, 'scripts/prove-quiet-vendor-owner-filter.mjs', '--origin', f.origin, '--expected-commit', commit, '--cdp-url', browserFixture.endpoint];
   const execution = promisify(execFile)(process.execPath, cliArgs);
   if (['extra read', 'future read'].includes(mode)) {
     assert.equal(JSON.parse((await execution).stdout).status, 'passed');

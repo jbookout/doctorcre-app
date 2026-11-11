@@ -10,7 +10,7 @@ test('agenda rendering preserves text, commands, focus, pending state and recove
   await page.goto(`${server.origin}/deals?mode=fixture&view=national`);
   await page.locator('.account-card').first().waitFor();
   const result = await page.evaluate(async () => {
-    const { mountDealRoomAgenda } = await import('/js/ui-agenda.js');
+    const { mountDealRoomAgenda } = await import('/js/ui-agenda.generated.js');
     const host = document.createElement('div');
     document.body.append(host);
     host.innerHTML = '<button></button><aside></aside><div></div>';

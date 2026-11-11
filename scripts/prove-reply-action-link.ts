@@ -33,7 +33,10 @@ const insufficient = (message: string) => Object.assign(Error(message), { exitCo
 export function signedInReplyEngine(endpoint: string, engine: Connector = chromium) {
   const url = new URL(endpoint);
   assert.ok(
-    url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname) && !url.username && !url.password,
+    ["http:", "ws:"].includes(url.protocol) &&
+      ["localhost", "127.0.0.1"].includes(url.hostname) &&
+      !url.username &&
+      !url.password,
     "loopback CDP required",
   );
   return {
@@ -174,7 +177,7 @@ export async function prove({ origin, commit, ref, proposalId, foreignRef, timeo
     stage = "independent resolve";
     const independent: unknown = await page.evaluate(async (ref: string) => {
       const { createMcpRequests } = await import(String("/js/mcp-requests.mjs"));
-      const { parseDraft } = await import(String("/js/ui-action.js"));
+      const { parseDraft } = await import(String("/js/ui-action.generated.js"));
       const response = await createMcpRequests()(
         "resolve-action-link",
         { ref },

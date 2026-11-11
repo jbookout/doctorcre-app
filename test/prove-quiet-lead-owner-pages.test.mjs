@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { startFixture } from '../scripts/fixture-http.mjs';
@@ -55,10 +57,9 @@ for (const registryMode of ['read-only', 'stale write flag', 'unknown', 'unreada
   const { chromium } = await import('playwright');
   const { CHROMIUM_SAFETY_ARGS } = await import('../scripts/chromium-safety-args.mjs');
   const { routeLeads } = await import('./leads-browser-fixture.mjs');
-  const listener = await startFixture();
-  const port = new URL(listener.origin).port;
-  await listener.close();
-  const owned = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+
+  const ownedFixture = await ownedCdpFixture(); t.after(() => ownedFixture.close());
+  const owned = ownedFixture.browser;
   t.after(() => owned.close());
   const recording = JSON.parse(await readFile(new URL('./fixtures/quiet-lead-owner-pages/recordings.json', import.meta.url)));
   const registry = JSON.parse(await readFile(new URL('./fixtures/walk-verb-registry.json', import.meta.url))).response;
@@ -85,7 +86,7 @@ for (const registryMode of ['read-only', 'stale write flag', 'unknown', 'unreada
     });
     return borrowed;
   } };
-  const execution = prove({ expectedCommit: commit, origin: 'http://localhost', cdpUrl: `http://127.0.0.1:${port}`, engine,
+  const execution = prove({ expectedCommit: commit, origin: 'http://localhost', cdpUrl: ownedFixture.endpoint, engine,
     timeoutMs: registryMode === 'deadline' ? 5000 : 30000, readRelease: async () => ({ source_commit: commit }) });
   if (registryMode === 'read-only') {
     const result = await execution;
@@ -97,13 +98,12 @@ for (const registryMode of ['read-only', 'stale write flag', 'unknown', 'unreada
   assert.equal(registryReads, 1, 'one live registry read, no snapshot fallback or retries');
   assert.equal(borrowed.isConnected(), false, 'proof disconnects its CDP connection');
   assert.equal(owned.isConnected(), true, 'shared browser process stays alive');
-  assert.equal((await owned.newPage()).isClosed(), false, 'shared browser remains usable');
+  assert.equal((await ownedFixture.context.newPage()).isClosed(), false, 'shared browser remains usable');
 });
 
 test('one total deadline includes release reads', async () => {
   await assert.rejects(prove({ expectedCommit: commit, timeoutMs: 20, readRelease: () => new Promise(() => {}) }), { exitCode: 78 });
 });
-
 
 test('missing expected commit remains insufficient evidence regardless of argument order', async () => {
   for (const options of [['--fixture'], ['--origin', 'http://localhost', '--timeout-ms', '1']]) {
@@ -125,12 +125,12 @@ for (const stage of ['connectOverCDP', 'newPage']) test(`rejected ${stage} is in
 test('late newPage closes before CDP disconnect and fresh connection sees no added tab', async t => {
   const { chromium } = await import('playwright');
   const { chromium: ownedEngine } = await import('../scripts/proof-browser.mjs');
-  const listener = await startFixture();
-  const endpoint = listener.origin, port = new URL(endpoint).port;
-  await listener.close();
-  const owned = await ownedEngine.launch({ args: [`--remote-debugging-port=${port}`] });
+
+  const ownedFixture = await ownedCdpFixture(); t.after(() => ownedFixture.close());
+  const owned = ownedFixture.browser;
+  const endpoint = ownedFixture.endpoint;
   t.after(() => owned.close());
-  const existing = await owned.newPage();
+  const existing = ownedFixture.page;
   let created;
   const engine = { connectOverCDP: async () => {
     const browser = await chromium.connectOverCDP(endpoint);
@@ -180,7 +180,6 @@ test('leading-digit near miss in displayed matching count fails the CLI', async 
     return true;
   });
 });
-
 
 test('newPage rejection exits 78 through the CLI', async t => {
   const root = temporaryDirectory('quiet-page-rejection-', t), preload = join(root, 'preload.mjs');

@@ -18,7 +18,7 @@ function cli(origin) {
 async function fixture(t, fail = false) {
   const routes=new Map(snapshot);
   routes.set('/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)})});
-  if(fail)routes.set('/js/ui-quick-switcher.js',{contentType:'text/javascript',body:'export function openQuickSwitcher() { throw Error("Broken deployed fixture"); }'});
+  if(fail)routes.set('/js/ui-quick-switcher.generated.js',{contentType:'text/javascript',body:'export function openQuickSwitcher() { throw Error("Broken deployed fixture"); }'});
   const server=await startFixture({routes});
   t.after(()=>server.close());
   return server.origin;

@@ -275,3 +275,6 @@ dialog::backdrop { background: var(--scrim); }
 .reachability-summary { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); }
 .reachability-summary output { padding: 0; }
 .lead-reachability { overflow-wrap: anywhere; font-size: var(--font-size-1); }
+
+.skip:not(:focus) { clip-path: inset(50%); }
+.skip:focus { min-width: 44px; min-height: 44px; align-content: center; }

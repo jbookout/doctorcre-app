@@ -70,6 +70,9 @@ export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeout
           if (${JSON.stringify(evaluationTarget)} === 'locator') {
             const locator = page.locator('html');
             Object.getPrototypeOf(locator).evaluate = stall;
+          } else if (${JSON.stringify(evaluationTarget)} === 'locatorAll') {
+            const locator = page.locator('html');
+            Object.getPrototypeOf(locator).evaluateAll = stall;
           } else page.evaluate = stall;
           return page;
         };

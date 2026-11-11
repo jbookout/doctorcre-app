@@ -1,8 +1,8 @@
-import { parseReachability, reachabilityText } from './ui-lead-reachability.js';
-import { mountLeadResearch } from './ui-lead-research.js';
-import { mountQuietLeads } from './ui-quiet-leads.js';
-import { mountTerritoryEvidence } from './ui-territory-evidence.js';
-import { mountLeadGuidance } from './ui-lead.js';
+import { parseReachability, reachabilityText } from './ui-lead-reachability.generated.js';
+import { mountLeadResearch } from './ui-lead-research.generated.js';
+import { mountQuietLeads } from './ui-quiet-leads.generated.js';
+import { mountTerritoryEvidence } from './ui-territory-evidence.generated.js';
+import { mountLeadGuidance } from './ui-lead.generated.js';
 import { createPageBudget } from './read-budget.mjs';
 import { mountContactReasons } from './contact-reasons.mjs';
 import { workCard } from './work-card.js';

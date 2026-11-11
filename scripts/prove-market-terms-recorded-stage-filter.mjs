@@ -11,7 +11,7 @@ export function recordings() {
 
 export async function exerciseStage(page, origin) {
   await page.evaluate(async ({ origin, records }) => {
-    const { mountMarketTerms } = await import('/js/ui-market.js');
+    const { mountMarketTerms } = await import('/js/ui-market.generated.js');
     window.stageRecords = records;
     window.stageResponse = records.full.response;
     window.stageCalls = [];

@@ -137,9 +137,9 @@ async function syncQuietVendors() {
   host.style.position = 'relative';
   document.querySelector('.business-controls').before(host);
   try {
-    const { mountQuietVendors } = await import('./ui-quiet-vendors.js');
+    const { mountQuietVendors } = await import('./ui-quiet-vendors.generated.js');
     if (generation !== quietVendorsGeneration) return;
-    const { mountVendorMeetings } = await import('./ui-vendor-meetings.js');
+    const { mountVendorMeetings } = await import('./ui-vendor-meetings.generated.js');
     const { createMcpRequests } = await import('./mcp-requests.mjs');
     if (generation !== quietVendorsGeneration) return;
     vendorMeetingsHost = document.createElement('div');
@@ -160,7 +160,7 @@ async function syncQuietVendors() {
         navigate(`${url.pathname}${url.search}`);
       },
     });
-    const { mountVendorMarkets } = await import('./ui-vendor-markets.js');
+    const { mountVendorMarkets } = await import('./ui-vendor-markets.generated.js');
     if (generation !== quietVendorsGeneration) return;
     vendorMarketsHost = document.createElement('div');
     document.querySelector('.result-heading').append(vendorMarketsHost);

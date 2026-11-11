@@ -1,6 +1,9 @@
+import { unreachableCdpEndpoint } from "./unreachable-cdp-fixture.ts";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { readAppRelease } from '../scripts/app-release-reader.mjs';
 import { admitRecording } from './fixtures/quiet-vendor-basis/producer.mjs';
-import test from 'node:test';
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -26,8 +29,8 @@ async function fixture(t) {
   const start = async () => {
     await server?.close();
     const snapshot = new Map([...assets].map(([path, value]) => [path, {
-      ...value, body: corrupt && path === '/js/ui-quiet-vendors.js'
-        ? value.body.toString().replaceAll(corrupt === 'history' ? 'Contact history' : 'data-vendor-id', corrupt === 'history' ? 'History unavailable' : 'data-wrong-id') : nearMiss && path === '/js/ui-quiet-vendors.js' ? value.body.toString().replaceAll('matching loaded vendors','matching loaded vendorsx') : value.body,
+      ...value, body: corrupt && path === '/js/ui-quiet-vendors.generated.js'
+        ? value.body.toString().replaceAll(corrupt === 'history' ? 'Contact history' : 'data-vendor-id', corrupt === 'history' ? 'History unavailable' : 'data-wrong-id') : nearMiss && path === '/js/ui-quiet-vendors.generated.js' ? value.body.toString().replaceAll('matching loaded vendors','matching loaded vendorsx') : value.body,
     }]));
     server = await startWorkerFixture({ assets: snapshot, env: {
       APP_ENV: 'production', GIT_SHA: source,
@@ -102,13 +105,13 @@ test('CLI executes a pass and insufficient evidence',async t=>{
 
 test('CDP observation closes its page and disconnects while preserving the existing browser and page',async t=>{
   const f=await fixture(t);
-  const portFixture=await startFixture();
-  const port=new URL(portFixture.origin).port;await portFixture.close();
+
   const {chromium}=await import('../scripts/proof-browser.mjs');
-  const existing=await chromium.launch({args:[`--remote-debugging-port=${port}`]});
+  const existingFixture = await ownedCdpFixture(); t.after(() => existingFixture.close());
+  const existing=existingFixture.browser;
   t.after(()=>existing.close());
-  const page=await existing.newPage();await page.goto('about:blank');
-  const receipt=await prove({origin:f.origin,expectedCommit:commit,cdpUrl:`http://127.0.0.1:${port}`});
+  const page=existingFixture.page;await page.goto('about:blank');
+  const receipt=await prove({origin:f.origin,expectedCommit:commit,cdpUrl:existingFixture.endpoint});
   assert.equal(receipt.scope,'natural');
   assert.equal(existing.isConnected(),true);assert.equal(page.isClosed(),false);
   assert.equal(existing.contexts()[0].pages().length,1);
@@ -116,21 +119,20 @@ test('CDP observation closes its page and disconnects while preserving the exist
 
 test('containing release with unreachable CDP is insufficient evidence', async t => {
   const f = await fixture(t);
-  const portFixture = await startFixture();
-  const endpoint = portFixture.origin; await portFixture.close();
+  const endpoint = await unreachableCdpEndpoint();
   await assert.rejects(prove({origin:f.origin,expectedCommit:commit,cdpUrl:endpoint,timeoutMs:1000}), {exitCode:78});
 });
 
-
 test('closed CDP context during CLI page acquisition is insufficient evidence', async t => {
   const f = await fixture(t);
-  const portFixture = await startFixture();
-  const endpoint = portFixture.origin; await portFixture.close();
+
   const { chromium } = await import('../scripts/proof-browser.mjs');
   const { chromium: driver } = await import('playwright');
-  const existing = await chromium.launch({args:[`--remote-debugging-port=${new URL(endpoint).port}`]});
+  const existingFixture = await ownedCdpFixture(); t.after(() => existingFixture.close());
+  const existing = existingFixture.browser;
+  const endpoint = existingFixture.endpoint;
   t.after(() => existing.close());
-  const preexisting = await existing.newPage();
+  const preexisting = existingFixture.page;
   const root = temporaryDirectory('quiet-vendor-closed-context-', t);
   const preload = root + '/preload.mjs';
   await writeFile(preload, `
@@ -161,15 +163,15 @@ test('closed CDP context during CLI page acquisition is insufficient evidence', 
 
 test('late CDP page acquisition drains before disconnect and preserves borrowed pages', async t => {
   const f = await fixture(t);
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port; await portFixture.close();
+
   const { chromium } = await import('../scripts/proof-browser.mjs');
   const { chromium: driver } = await import('playwright');
-  const existing = await chromium.launch({args:[`--remote-debugging-port=${port}`]});
+  const existingFixture = await ownedCdpFixture(); t.after(() => existingFixture.close());
+  const existing = existingFixture.browser;
   t.after(() => existing.close());
-  const preexisting = await existing.newPage();
+  const preexisting = existingFixture.page;
   let acquired = false;
-  const endpoint = `http://127.0.0.1:${port}`;
+  const endpoint = existingFixture.endpoint;
   const engine = { async connectOverCDP(...args) {
     const browser = await driver.connectOverCDP(...args);
     const context = browser.contexts()[0], original = context.newPage.bind(context);

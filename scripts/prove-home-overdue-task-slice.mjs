@@ -51,7 +51,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium }) {
         return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(overdueFixture()) }] } } });
       }
       if (req.method() !== 'GET') return route.abort();
-      if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script>' });
+      if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.generated.js"></script>' });
       if (url.pathname === '/auth/session') return route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-proof-only' } });
       if (url.pathname === '/js/app-shell.js') return route.fulfill({ contentType: 'text/javascript', body: '' });
       if (!/^\/js\/[a-zA-Z0-9._-]+\.m?js$/.test(url.pathname)) return route.abort();

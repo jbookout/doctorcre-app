@@ -106,7 +106,7 @@ test("CLI rejects deployed module with failed behavioral assertions", async () =
   const bad = Buffer.from(
     'export const actionModel=()=>({state:{kind:"idle"}}); export function mountEmailActions(){throw Error("Broken deployed mount")}',
   );
-  assets = new Map([["js/ui-email-actions.js", bad]]);
+  assets = new Map([["js/ui-email-actions.generated.js", bad]]);
   const f = await fixture("valid");
   const result = await cli(f.origin);
   assets = original;

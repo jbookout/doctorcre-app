@@ -516,3 +516,6 @@ button.crumb:focus-visible { color: var(--fg); }
   .coverage-row small { grid-column: 1 / -1; }
   .card-heading .btn-group { flex-wrap: wrap; }
 }
+
+.skip:not(:focus) { clip-path: inset(50%); }
+.skip:focus { min-width: 44px; min-height: 44px; align-content: center; }

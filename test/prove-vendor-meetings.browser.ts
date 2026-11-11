@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import { chromium as driver } from "playwright";
-import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-vendor-meetings.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { directoryFixture } from "./fixtures/vendor-directory.synthetic.mjs";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { assertProofDeadlineCleanup } from "./proof-browser-harness.mjs";
 
 const exec = promisify(execFile);
@@ -26,7 +25,7 @@ async function fixture(t: import("node:test").TestContext, mode = "ready", sourc
       {
         ...value,
         body:
-          mode === "near-miss" && path === "/js/ui-vendor-meetings.js"
+          mode === "near-miss" && path === "/js/ui-vendor-meetings.generated.js"
             ? Buffer.from(
                 value.body
                   .toString()
@@ -139,11 +138,11 @@ test("proof release gate admits equality and descendants and refuses old unrelat
   await git("init", "-q");
   await git("config", "user.name", "Synthetic");
   await git("config", "user.email", "synthetic@example.invalid");
-  await writeFile(root + "/file", "one");
+  await writeFile(`${root}/file`, "one");
   await git("add", "file");
   await git("commit", "-qm", "one");
   const first = await git("rev-parse", "HEAD");
-  await writeFile(root + "/file", "two");
+  await writeFile(`${root}/file`, "two");
   await git("commit", "-qam", "two");
   const second = await git("rev-parse", "HEAD");
   await git("checkout", "--orphan", "unrelated");
@@ -194,17 +193,14 @@ for (const mode of ["late launch", "stalled evaluation"])
   });
 
 test("real CDP deadline closes delayed page and preserves the original tab", async (t) => {
-  const root = temporaryDirectory("vendor-meetings-cdp-", t);
-  const context = await driver.launchPersistentContext(root, {
-    headless: true,
-    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0"],
-  });
+  const contextFixture = await ownedCdpFixture();
+  t.after(() => contextFixture.close());
+  const context = contextFixture.context;
   t.after(() => context.close());
   const originalTab = context.pages()[0];
   assert.ok(originalTab);
   const before = context.pages().length;
-  const port = (await readFile(join(root, "DevToolsActivePort"), "utf8")).split("\n")[0];
-  const cdpUrl = `http://127.0.0.1:${port}`;
+  const cdpUrl = contextFixture.endpoint;
   const connect = driver.connectOverCDP.bind(driver);
   let delayedTab: import("playwright").Page | undefined;
   t.mock.method(driver, "connectOverCDP", async (...args: Parameters<typeof connect>) => {

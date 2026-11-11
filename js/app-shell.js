@@ -1,4 +1,4 @@
-import { isTextEntry } from './ui-keyboard-input.js';
+import { isTextEntry } from './ui-keyboard-input.generated.js';
 import { createMcpRequests } from './mcp-requests.mjs';
 import { privateSession } from './private-session.js';
 import { mountAppLayout } from "./app-layout.js";
@@ -14,7 +14,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
   if (!base && pathname !== '/share') {
-    const history = () => import('./ui-switcher-history.js');
+    const history = () => import('./ui-switcher-history.generated.js');
     // eslint-disable-next-line no-restricted-syntax -- One frame after initial page readiness records local recents; it performs no network reads or polling.
     const track = () => root.defaultView.requestAnimationFrame(() => {
       void Promise.all([history(), import('./doc-context.js')]).then(([{ rememberAddress, rememberDestination }, { pageDocContext }]) => {
@@ -46,7 +46,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
       const opener = root.activeElement instanceof HTMLElement && root.activeElement !== root.body ? root.activeElement : toggle;
       try {
         const [{ openQuickSwitcher, readQuickSwitcherSources }, { navigationItems, routeEntries }, { createClient }] = await Promise.all([
-          import('./ui-quick-switcher.js'), import('./routes.js'), import('./client.js'),
+          import('./ui-quick-switcher.generated.js'), import('./routes.js'), import('./client.js'),
         ]);
         if (retired) return;
         const boot = resolveDealroomBoot(location);
@@ -163,7 +163,7 @@ function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
     if (loading) return;
     loading = true;
     try {
-      const { mountZoomableWorkspace } = await import("./ui-zoom.js");
+      const { mountZoomableWorkspace } = await import("./ui-zoom.generated.js");
       if (disposed || !identity || phone.matches || !sessionIsValid()) return;
       layout = root.getElementById("appLayout");
       if (!layout) return;
@@ -289,7 +289,8 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
   panel.querySelector("#accountSignOut").onclick = async (event) => {
     if (boot.mode === "fixture") { panel.querySelector("#accountStatus").textContent = "Demo account"; return; }
     if (!session?.csrf_token) { panel.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
-    event.target.disabled = true;
+    const button = event.currentTarget;
+    button.disabled = true;
     try {
       // The auth service responds with a redirect to /. Fetch must not follow
       // that redirect into a fresh login flow before we check revocation.
@@ -303,7 +304,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       if (after.status !== 401) throw new Error();
       session = null;
       boundary.revoke('signed-out');
-    } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; } }
+    } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; button.disabled = false; } }
   };
   if (pathname === "/calls") root.querySelector(".app-shell-call-availability").hidden = true;
   if (pathname !== "/calls" && !root.getElementById("callModeDialog")) {
@@ -312,7 +313,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       const call = await mountGlobalCallMode(root);
       if (boundary?.revoked) { call.dispose(); return; }
       root.querySelector("#callModeButton").onclick = () => { close(); call.open(); };
-      root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
+      root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.currentTarget);
     });
   }
 }
@@ -321,7 +322,7 @@ if (typeof document !== "undefined") {
   mountAppShell();
   const actionHost = document.getElementById('actionLink');
   if (actionHost && location.pathname.startsWith('/a/')) {
-    const { mountActionLink } = await import("./ui-action.js");
+    const { mountActionLink } = await import("./ui-action.generated.js");
     if (!privateSession()?.revoked) {
       const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests(), principal: async () => (await privateSession()?.verify({ fresh: true }))?.actor.slug || null });
       window.addEventListener('doctorcre-session-invalidated', () => view.dispose(), { once: true });

@@ -34,7 +34,7 @@ export function contractFixture() {
 
 export async function observeKindFilter(page, payload) {
   await page.evaluate(async payload => {
-    const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+    const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
     window.kindProofReads = 0;
     openQuickSwitcher({ opener: document.querySelector('button'), pages: [{ label: 'Fixture Page', href: '/calendar' }], read: async () => { window.kindProofReads++; return payload; } });
   }, payload);

@@ -83,7 +83,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
   const controller = new AbortController();
   const deadline = performance.now() + timeoutMs;
   const assets = new Map();
-  const allowed = new Set(['/js/ui-inbox.js', '/js/boot-mode.js', '/js/private-session.js', '/js/mcp-requests.mjs']);
+  const allowed = new Set(['/js/ui-inbox.generated.js', '/js/boot-mode.js', '/js/private-session.js', '/js/mcp-requests.mjs']);
   const receipt = { release: null, assets: [], assertions: [], synthetic: true };
   const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
   const fetchBytes = async path => {
@@ -143,7 +143,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
           } catch { return route.abort(); }
         }
         if (request.method() !== 'GET') return route.abort();
-        if (target.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script>' });
+        if (target.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.generated.js"></script>' });
         if (target.pathname === '/auth/session') return route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-proof' } });
         try { return await route.fulfill({ contentType: 'text/javascript', body: await asset(target.pathname) }); }
         catch (error) { assetFailure = error; return route.abort(); }
@@ -154,7 +154,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
       await page.goto(url.origin + '/inbox?mode=live');
       try { receipt.assertions = await observeWaiting(page, synthetic, writes, () => { lost = true; }); }
       catch (error) { throw assetFailure || error; }
-      if (!receipt.assets.some(entry => entry.path === '/js/ui-inbox.js')) throw unavailable('Inbox entry unavailable');
+      if (!receipt.assets.some(entry => entry.path === '/js/ui-inbox.generated.js')) throw unavailable('Inbox entry unavailable');
       receipt.fetched_bytes = bytes;
       if (Buffer.byteLength(JSON.stringify(receipt)) > 65536) throw Error('Receipt budget exceeded');
       return receipt;

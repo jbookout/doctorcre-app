@@ -7,7 +7,7 @@ import { init, parse } from 'es-module-lexer';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function assertAnswerSourceVersions() {
-  const api = await import('/js/ui-answers.js');
+  const api = await import('/js/ui-answers.generated.js');
   const results = [];
   const check = (name, ok) => {
     results.push({ name, passed: Boolean(ok) });
@@ -88,7 +88,7 @@ export async function prove({ origin, timeoutMs }) {
       };
       receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.href) }));
       const assets = new Map();
-      const pending = [`${origin}/js/ui-answers.js`];
+      const pending = [`${origin}/js/ui-answers.generated.js`];
       await init;
       while (pending.length) {
         const url = pending.shift();

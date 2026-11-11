@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
@@ -36,7 +38,7 @@ test('declaration command reaches real fixture assertions and refuses missing pr
       for (const [path, asset] of routes) routes.set(path, { ...asset, body: String(asset.body).replaceAll('Received', 'Received extra') });
     }
     routes.set('/app-release',{contentType:'application/json',body:JSON.stringify(mode==='release'?{}:{service:'doctorcre-app',environment:'production',source_commit:commit}),...(mode==='timeout'?{hold:'timeout'}:{})});
-    if(mode==='export'||mode==='assertion')routes.set('/js/ui-checklist.js',{contentType:'text/javascript',body:mode==='export'?'export const wrong = true;':'export function mountDealChecklist() { return {update(){},dispose(){}}; }'});
+    if(mode==='export'||mode==='assertion')routes.set('/js/ui-checklist.generated.js',{contentType:'text/javascript',body:mode==='export'?'export const wrong = true;':'export function mountDealChecklist() { return {update(){},dispose(){}}; }'});
     const server = await startFixture({routes});servers.push(server);return server.origin;
   }
   t.after(()=>Promise.all(servers.map(server=>server.close())));
@@ -50,7 +52,7 @@ test('declaration command reaches real fixture assertions and refuses missing pr
   const receipt = JSON.parse(result.stdout);
   assert.equal(receipt.natural.origin, origin);
   assert.equal(receipt.natural.assertions.length, 3);
-  assert.ok(receipt.natural.loaded_module_urls.includes(`${origin}/js/ui-checklist.js`));
+  assert.ok(receipt.natural.loaded_module_urls.includes(`${origin}/js/ui-checklist.generated.js`));
   for (const failure of ['release', 'export', 'assertion', 'near-miss', 'timeout']) {
     const origin = await prepare(failure);
     const failed = await cli(['--origin', origin, '--expected-commit',commit, '--timeout-ms', failure === 'timeout' ? '100' : '30000']);
@@ -143,10 +145,11 @@ test('CLI acquisition failures refuse evidence and late CDP pages are closed bef
  const server=await startWorkerFixture({env:{APP_ENV:'production',GIT_SHA:commit}});
  t.after(()=>server.close());
  const origin=server.origin;
- const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
- const endpoint=`http://127.0.0.1:${port}`;
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
- const existing=await browser.newPage();
+
+ const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+ const endpoint = browserFixture.endpoint;
+ const browser=browserFixture.browser;t.after(()=>browser.close());
+ const existing=browserFixture.page;
  const scratch=temporaryDirectory('attribution-acquisition-',t);
  const playwrightURL=import.meta.resolve('playwright');
  for(const mode of ['unreachable','connect-rejection','retired-context','missing-context','late-page'])await t.test(mode,async()=>{
