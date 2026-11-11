@@ -1,5 +1,6 @@
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { mountLocalTicker } from "../../js/visibility-poll.mjs";
 import { type Criteria, SavedSearches, type SearchCall } from "./deal-space-search-model.ts";
 
 export function mountSavedSearches(
@@ -15,6 +16,7 @@ export function mountSavedSearches(
   const root = createRoot(element);
   let disposed = false;
   let hydratedVersion = "";
+  let clock: ReturnType<typeof mountLocalTicker> | undefined;
   const model = new SavedSearches(options.dealId, options.call, render);
   function update(field: string, value: string | number | boolean | string[] | null, criteria = false) {
     if (!model.draft) return;
@@ -56,7 +58,21 @@ export function mountSavedSearches(
   }
   function render() {
     if (disposed) return;
+    clock?.dispose();
+    clock = undefined;
     const row = model.current;
+    if (row?.last_run_at && row.status === "saved" && !model.stale() && model.phase !== "retired") {
+      const remaining = Math.min(2147483647, Date.parse(row.last_run_at) + 86400000 - Date.now());
+      clock = mountLocalTicker({
+        tick: () => {
+          model.age();
+          render();
+        },
+        intervalMs: remaining,
+        maxTicks: 1,
+        idleMs: Infinity,
+      });
+    }
     const draft = model.draft;
     const locked = model.working || model.phase === "retired";
     flushSync(() =>
@@ -329,9 +345,13 @@ export function mountSavedSearches(
   return {
     refresh: render,
     dirty: () => model.dirty || model.working,
-    retire: () => model.retire(),
+    retire: () => {
+      clock?.dispose();
+      model.retire();
+    },
     dispose: () => {
       disposed = true;
+      clock?.dispose();
       model.retire();
       root.unmount();
     },

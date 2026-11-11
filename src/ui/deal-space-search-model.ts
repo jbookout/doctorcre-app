@@ -1,6 +1,3 @@
-import { Ajv } from "ajv";
-import { searchResponseContract as schema } from "./deal-space-search-contract.ts";
-
 export type Criteria = {
   query: string | null;
   counties: string[];
@@ -34,22 +31,135 @@ export type Search = Draft & {
   next_cursor: string | null;
   updated_at: string;
 };
-const validator = new Ajv({
-  strict: false,
-  formats: {
-    uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    "date-time": (value: string) => Number.isFinite(Date.parse(value)),
-  },
-});
-const one = validator.compile<{ search: Search }>(schema.one);
-const list = validator.compile<{ searches: Search[]; truncated: boolean }>(schema.list);
+const record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const uuid = (value: unknown): value is string =>
+  typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const date = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
+const nullableString = (value: unknown): value is string | null => value === null || typeof value === "string";
+const nullableBoolean = (value: unknown): value is boolean | null => value === null || typeof value === "boolean";
+const integer = (value: unknown, min: number, max: number): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
+function exact(value: Record<string, unknown>, required: string[], optional: string[] = []) {
+  return (
+    required.every((key) => Object.hasOwn(value, key)) &&
+    Object.keys(value).every((key) => required.includes(key) || optional.includes(key))
+  );
+}
+function strings(value: unknown, max: number, valid: (item: string) => boolean): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= max &&
+    new Set(value).size === value.length &&
+    Array.from(value).every((item) => typeof item === "string" && valid(item))
+  );
+}
+function criteria(value: unknown): value is Criteria {
+  return (
+    record(value) &&
+    exact(value, [
+      "query",
+      "counties",
+      "property_types",
+      "min_square_feet",
+      "max_square_feet",
+      "availability",
+      "entrance_verified",
+      "public_projection_ready",
+      "photos_available",
+      "sort",
+      "cursor",
+      "limit",
+    ]) &&
+    nullableString(value.query) &&
+    (value.query === null || Array.from(value.query).length <= 200) &&
+    strings(value.counties, 5, (item) => ["Escambia", "Santa Rosa", "Okaloosa", "Walton", "Bay"].includes(item)) &&
+    strings(value.property_types, 12, (item) => /^[a-z0-9][a-z0-9_-]{0,63}$/.test(item)) &&
+    (value.min_square_feet === null || integer(value.min_square_feet, 0, 100000000)) &&
+    (value.max_square_feet === null || integer(value.max_square_feet, 0, 100000000)) &&
+    strings(value.availability, 4, (item) =>
+      ["available", "coming_soon", "under_contract", "unknown"].includes(item),
+    ) &&
+    nullableBoolean(value.entrance_verified) &&
+    nullableBoolean(value.public_projection_ready) &&
+    nullableBoolean(value.photos_available) &&
+    typeof value.sort === "string" &&
+    ["updated_desc", "address_asc", "size_asc", "size_desc"].includes(value.sort) &&
+    nullableString(value.cursor) &&
+    (value.cursor === null || /^[0-9]{1,9}$/.test(value.cursor)) &&
+    integer(value.limit, 1, 100)
+  );
+}
+function prefill(value: unknown): value is Draft["client_prefill_source"] {
+  return (
+    value === null ||
+    (record(value) &&
+      exact(value, ["client_id", "source_ref", "observed_at"]) &&
+      uuid(value.client_id) &&
+      typeof value.source_ref === "string" &&
+      Array.from(value.source_ref).length >= 1 &&
+      Array.from(value.source_ref).length <= 500 &&
+      date(value.observed_at))
+  );
+}
+function search(value: unknown): value is Search {
+  return (
+    record(value) &&
+    exact(value, [
+      "id",
+      "deal_id",
+      "version",
+      "name",
+      "status",
+      "state",
+      "criteria",
+      "requirements",
+      "client_prefill_source",
+      "last_run_at",
+      "run_criteria",
+      "result_property_ids",
+      "has_more",
+      "next_cursor",
+      "updated_at",
+    ]) &&
+    uuid(value.id) &&
+    uuid(value.deal_id) &&
+    integer(value.version, 1, Infinity) &&
+    typeof value.name === "string" &&
+    (value.status === "draft" || value.status === "saved" || value.status === "archived") &&
+    (value.state === "draft" || value.state === "saved" || value.state === "stale" || value.state === "archived") &&
+    criteria(value.criteria) &&
+    typeof value.requirements === "string" &&
+    prefill(value.client_prefill_source) &&
+    (value.last_run_at === null || date(value.last_run_at)) &&
+    (value.run_criteria === null || criteria(value.run_criteria)) &&
+    strings(value.result_property_ids, 100, uuid) &&
+    typeof value.has_more === "boolean" &&
+    nullableString(value.next_cursor) &&
+    date(value.updated_at)
+  );
+}
 export function parseSearchResponse(value: unknown, dealId: string, multiple = false): Search[] {
+  if (!record(value) || value.ok !== true || value.schema_version !== "deal-space-searches.v1")
+    throw Error("Invalid saved search response");
   let rows: Search[];
   if (multiple) {
-    if (!list(value)) throw Error("Invalid saved search response");
+    if (
+      !exact(value, ["ok", "schema_version", "searches", "truncated"]) ||
+      typeof value.truncated !== "boolean" ||
+      !Array.isArray(value.searches) ||
+      value.searches.length > 100 ||
+      !Array.from(value.searches).every(search)
+    )
+      throw Error("Invalid saved search response");
     rows = value.searches;
   } else {
-    if (!one(value)) throw Error("Invalid saved search response");
+    if (
+      !exact(value, ["ok", "schema_version", "search"], ["replayed"]) ||
+      (Object.hasOwn(value, "replayed") && typeof value.replayed !== "boolean") ||
+      !search(value.search)
+    )
+      throw Error("Invalid saved search response");
     rows = [value.search];
   }
   if (rows.some((row) => row.deal_id !== dealId)) throw Error("Saved search deal mismatch");
@@ -197,6 +307,13 @@ export class SavedSearches {
   }
   stale() {
     return this.current ? this.resultPhase(this.current) === "results-stale" || this.dirty : false;
+  }
+  age() {
+    if (!this.alive || this.busy || !this.stale()) return;
+    if (["results-current", "handed-to-cart", "restored", "run-failed", "saved"].includes(this.phase)) {
+      this.phase = "results-stale";
+      this.publish();
+    }
   }
   async write(action: "save" | "run" | "archive" | "restore") {
     if (!this.alive || this.busy || !this.draft || (action !== "save" && !this.current)) return;

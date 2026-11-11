@@ -180,3 +180,48 @@ test("rejects malformed responses and searches from another deal", () => {
     ),
   );
 });
+
+test("boundary parser agrees with the pinned producer schema on malformed responses", async () => {
+  const { Ajv } = await import("ajv");
+  const schema = JSON.parse(
+    await readFile(new URL("./fixtures/deal-space-searches/response-contract.json", import.meta.url), "utf8"),
+  );
+  const ajv = new Ajv({
+    strict: false,
+    formats: {
+      uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      "date-time": (value: string) => Number.isFinite(Date.parse(value)),
+    },
+  });
+  for (const multiple of [false, true]) {
+    const validate = ajv.compile(multiple ? schema.list : schema.one);
+    const original = multiple ? fixture.reopened : fixture.positive;
+    function compare(value: unknown) {
+      const expected = validate(value);
+      let actual = true;
+      try {
+        parseSearchResponse(value, deal, multiple);
+      } catch {
+        actual = false;
+      }
+      assert.equal(actual, expected, JSON.stringify(value));
+    }
+    function mutations(value: unknown, path: string[] = []) {
+      if (!value || typeof value !== "object") return;
+      for (const key of Object.keys(value)) {
+        const child = Reflect.get(value, key);
+        for (const replacement of [undefined, null, {}, [], true, -1, "invalid"]) {
+          const changed = structuredClone(original);
+          let parent = changed;
+          for (const part of path) parent = parent[part];
+          if (replacement === undefined) delete parent[key];
+          else parent[key] = replacement;
+          compare(changed);
+        }
+        mutations(child, [...path, key]);
+      }
+    }
+    compare(original);
+    mutations(original);
+  }
+});

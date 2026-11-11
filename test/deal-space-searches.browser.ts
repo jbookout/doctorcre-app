@@ -110,9 +110,14 @@ test("saved search panel save, reopen, rerun, rollback, conflict, archive, resto
         await panel.getByRole("button", { name: "Rerun saved search", exact: true }).click();
         await panel.getByRole("checkbox").check();
         await page.clock.fastForward(86400001);
-        await panel.getByRole("heading", { name: "Stale results · rerun before using", exact: true }).waitFor({ timeout: 1000 });
+        await panel
+          .getByRole("heading", { name: "Stale results · rerun before using", exact: true })
+          .waitFor({ timeout: 1000 });
         assert.equal(await panel.getByRole("checkbox").isDisabled(), true);
-        assert.equal(await panel.getByRole("button", { name: "Add chosen results to Tour cart", exact: true }).isDisabled(), true);
+        assert.equal(
+          await panel.getByRole("button", { name: "Add chosen results to Tour cart", exact: true }).isDisabled(),
+          true,
+        );
         await panel.getByRole("button", { name: "Rerun saved search", exact: true }).click();
         await panel.getByRole("checkbox").check();
         await page.screenshot({ path: `/tmp/WR591.S18.J6-shots/${width}-${theme}.png`, fullPage: true });

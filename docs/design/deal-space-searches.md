@@ -18,9 +18,11 @@ No queues, background jobs, new database access, provider calls, map renderer or
 
 ## Producer binding
 
-The schema in `src/ui/deal-space-search-contract.ts` and recorded responses in `test/fixtures/deal-space-searches/responses.json` come from DoctorCRE/carr-system commit `0d31536220b19be5c6a6fd2b63a8d60a35ab6fd1`, PR 3187. Source paths are `mcp-server/contracts/deal-space-searches.v1.json` and `mcp-server/test/fixtures/deal-space-searches.json`. The schema is exported as TypeScript data so the existing source-only UI bundler can read it without opening another artifact import path. Production and fixtures cross the same Ajv validator and deal-identity parser.
+The schema in `test/fixtures/deal-space-searches/response-contract.json` and recorded responses in `test/fixtures/deal-space-searches/responses.json` come from DoctorCRE/carr-system commit `0d31536220b19be5c6a6fd2b63a8d60a35ab6fd1`, PR 3187. Source paths are `mcp-server/contracts/deal-space-searches.v1.json` and `mcp-server/test/fixtures/deal-space-searches.json`. The schema stays test-only. Production and fixtures cross the same typed boundary parser, following document text and share intake. A mutation test compares that parser with the pinned schema. The browser imports no schema compiler and works under the Worker CSP without unsafe-eval.
 
 This consumer must remain draft until that producer is merged and deployed. This build does not establish production persistence or independent taste approval.
+
+The panel schedules one expiry through the existing local ticker at the result's 24-hour deadline, with one tick and no network activity. Search replacement, cancel, retirement and disposal clear the clock. Returning from a hidden tab repaints immediately. Aging preserves an edited draft or a pending request, and disables result selection and cart handoff.
 
 ## Statechart and verification
 
@@ -28,7 +30,7 @@ This consumer must remain draft until that producer is merged and deployed. This
 
 Regenerate by copying the Mermaid input into a scratch directory, then running the statechart skill's `from-chart` command with `JAVA` and `TLA2TOOLS` pointing to an installed Java runtime and tla2tools.jar. This avoids generating build helpers into the application source tree.
 
-Transition coverage lives in `test/deal-space-searches.test.ts` and `test/deal-space-searches.browser.ts`. The model tests cover editing/saving/saved, reopen, archive/restore, running/failure/retry, conflict/retry, stale detection, current results/cart and session retirement. Browser acceptance repeats the visible lifecycle at 1440 and 390 widths in light and dark. It also checks horizontal overflow and records screenshots outside the checkout.
+Transition coverage lives in `test/deal-space-searches.test.ts` and `test/deal-space-searches.browser.ts`. The model tests cover editing/saving/saved, reopen, archive/restore, running/failure/retry, conflict/retry, stale detection, current results/cart and session retirement. Browser acceptance repeats the visible lifecycle at 1440 and 390 widths in light and dark. The clock-advance regression checks the current-to-stale heading and disabled controls without user interaction. The separate real-Worker CSP browser test boots the editor at all four widths/themes. It also checks horizontal overflow and records screenshots outside the checkout.
 
 ## Production proof
 
