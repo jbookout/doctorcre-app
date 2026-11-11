@@ -1,0 +1,8 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "commit": "1809cc7e3c52eb649707e6ac664dfb33dc5a60e1",
+  "files": {
+    "portal-proposals.v1.json": "8420de94768ca8070d45a552eb917411b79745e41868f561841931fed2df55a2",
+    "fixtures/portal-proposals.v1.json": "1fdc5e24c49eb3c5525354dd1a9ab272cbfe4d2f17a5d5653cdb327715fe2e20"
+  }
+}
