@@ -184,3 +184,33 @@ test("retirement clears every visible phase and prevents later reads and writes"
     assert.equal(s.review, null);
   }
 });
+
+for (const [name, initialTime, incomingTime, accepted] of [
+  ["older microseconds", "2026-11-11T07:26:13.026900-06:00", "2026-11-11T07:26:13.026100-06:00", false],
+  ["newer microseconds", "2026-11-11T07:26:13.026100-06:00", "2026-11-11T07:26:13.026900-06:00", true],
+  ["equal offset instant", "2026-11-11T07:26:13.026900-06:00", "2026-11-11T13:26:13.0269Z", false],
+  ["short fraction newer", "2026-11-11T13:26:13.0269Z", "2026-11-11T14:26:13.027+01:00", true],
+  ["beyond microseconds older", "2026-11-11T13:26:13.0269002Z", "2026-11-11T13:26:13.0269001Z", false],
+  ["invalid instant", "2026-11-11T13:26:13.0269Z", "unknown", false],
+] as const) {
+  test(`refresh admits only strictly newer full-precision instants: ${name}`, async () => {
+    const initial = fixture();
+    initial.as_of = initialTime;
+    const incoming = { ...initial, as_of: incomingTime, property_name: "Incoming evidence" };
+    const session = coordinateReviewSession({ ...binding, property: initial.property_id }, initial, {
+      read: async () => incoming,
+      write: async () => "confirmed",
+      changed() {},
+    });
+    await session.refresh();
+    assert.equal(session.review, accepted ? incoming : null);
+    assert.equal(session.phase, accepted ? "comparing" : "unavailable");
+  });
+}
+
+test("unparseable producer timestamps are unknown at the boundary", () => {
+  for (const as_of of ["unknown", "2026-02-30T13:26:13Z", "2026-11-11", "2026-11-11T25:00:00Z"]) {
+    const initial = { ...fixture(), as_of };
+    assert.equal(parseCoordinateReview(initial, initial.property_id), null);
+  }
+});

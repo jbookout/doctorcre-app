@@ -195,7 +195,7 @@ for (const newlyApproved of [false, true]) {
       second = detail.stops[1];
     assert.ok(first && second);
     const initial = second.coordinate_review;
-    initial.as_of = "2026-11-10T12:00:00Z";
+    initial.as_of = "2026-11-11T07:26:13.026100-06:00";
     const approved = structuredClone(initial);
     if (newlyApproved) {
       for (const candidate of initial.candidates) {
@@ -204,7 +204,7 @@ for (const newlyApproved of [false, true]) {
       }
     }
     const updated = structuredClone(approved);
-    updated.as_of = "2026-11-10T13:00:00Z";
+    updated.as_of = "2026-11-11T07:26:13.026900-06:00";
     updated.property_name = "Corrected Specialty Center";
     if (!newlyApproved) {
       for (const candidate of updated.candidates) {
