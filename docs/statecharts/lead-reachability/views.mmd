@@ -13,7 +13,9 @@ stateDiagram-v2
   All --> Stale: refresh fails
   Reachable --> Stale: refresh fails
   Research --> Stale: refresh fails
-  Stale --> All: retry succeeds
+  Stale --> All: retry succeeds with All selected
+  Stale --> Reachable: retry succeeds with Reachable selected
+  Stale --> Research: retry succeeds with Research selected
   All --> Refused: session refused
   Reachable --> Refused: session refused
   Research --> Refused: session refused
