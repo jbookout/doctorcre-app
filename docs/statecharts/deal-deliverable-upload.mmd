@@ -1,0 +1,44 @@
+stateDiagram-v2
+  state Delivery {
+    [*] --> Choosing
+    Choosing --> Pending: choose or drop one file [SignedIn]
+    %% when SignedIn
+    Pending --> Uploading: confirm exact deal [SignedIn]
+    %% when SignedIn
+    Uploading --> Confirmed: canonical list confirms receipt
+    Uploading --> Unknown: response lost or verification fails
+    Unknown --> Uploading: reconcile original reservation [SignedIn]
+    %% when SignedIn
+    Pending --> Retired: discard
+    Unknown --> Retired: abandon confirmed
+    Choosing --> Failed: invalid file
+    Failed --> Pending: choose valid file [SignedIn]
+    %% when SignedIn
+    Confirmed --> Pending: choose next file [SignedIn]
+    %% when SignedIn
+    Uploading --> Retired: session ends
+    Pending --> Retired: session ends
+    Unknown --> Retired: session ends
+  --
+    [*] --> Private
+    Private --> Saving: choose shared [SignedIn]
+    %% when SignedIn
+    Shared --> Saving: choose private [SignedIn]
+    %% when SignedIn
+    Saving --> Shared: canonical shared version confirmed
+    Saving --> Private: canonical private version confirmed
+    Saving --> Unconfirmed: response lost, version conflict or canonical readback fails
+    Unconfirmed --> Unconfirmed: refresh unavailable; writes stay disabled
+    Unconfirmed --> Private: refresh canonical private
+    Unconfirmed --> Shared: refresh canonical shared
+    Private --> Stopped: session ends
+    Shared --> Stopped: session ends
+    Saving --> Stopped: session ends
+    Unconfirmed --> Stopped: session ends
+  --
+    [*] --> SignedIn
+    SignedIn --> Ended: session ends
+  }
+%% never NoUploadAfterSession: Ended & Uploading -- A session change cannot continue an upload.
+%% never NoPendingAfterSession: Ended & Pending -- A session change retires selected bytes.
+%% never NoVisibilityAfterSession: Ended & Saving -- A session change cannot continue a designation write.
