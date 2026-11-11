@@ -83,12 +83,12 @@ async function setup(t: { after(fn: () => unknown): void }, corrupt = false) {
   const fixture = timingFixture();
   const assets = await appAssetSnapshot();
   if (corrupt) {
-    const asset = assets.get("/js/ui-lead-opportunity-timing.js");
+    const asset = assets.get("/js/ui-lead-opportunity-timing.generated.js");
     assert.ok(asset);
     const original = String(asset.body);
     const changed = original.replace("`Added ", "`Added 1");
     assert.notEqual(changed, original, "near-miss injection changed the compiled label");
-    assets.set("/js/ui-lead-opportunity-timing.js", { ...asset, body: Buffer.from(changed) });
+    assets.set("/js/ui-lead-opportunity-timing.generated.js", { ...asset, body: Buffer.from(changed) });
   }
   const server = await startWorkerFixture({
     assets,
