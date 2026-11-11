@@ -38,6 +38,52 @@
         "view_packet"
       ],
       "items": []
+    },
+    "feedback": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [
+        "view_packet",
+        "shortlist",
+        "comment"
+      ],
+      "items": []
+    },
+    "feedbackDownload": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [
+        "view_packet",
+        "shortlist",
+        "comment",
+        "download"
+      ],
+      "items": []
+    },
+    "feedbackReadOnly": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [
+        "view_packet"
+      ],
+      "items": []
+    },
+    "missingScope": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [],
+      "items": []
+    },
+    "expired": null,
+    "revoked": null,
+    "feedbackSaved": {
+      "projection_ref": "projection:public:synthetic_projection",
+      "permission_scopes": [
+        "view_packet",
+        "shortlist",
+        "comment"
+      ],
+      "items": [
+        {
+          "property_ref": "property:public:synthetic_property_01"
+        }
+      ]
     }
   },
   "responses": {
@@ -83,6 +129,86 @@
     },
     "exchangeRefused": {
       "error": "forbidden"
+    },
+    "feedback": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [
+            "shortlist",
+            "comment"
+          ],
+          "can_download": false,
+          "items": []
+        }
+      }
+    },
+    "feedbackDownload": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [
+            "shortlist",
+            "comment"
+          ],
+          "can_download": true,
+          "items": []
+        }
+      }
+    },
+    "feedbackReadOnly": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [],
+          "can_download": false,
+          "items": []
+        }
+      }
+    },
+    "missingScope": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [],
+          "can_download": false,
+          "items": []
+        }
+      }
+    },
+    "expired": {
+      "status": 503,
+      "body": {
+        "error": "share_unavailable"
+      }
+    },
+    "revoked": {
+      "status": 503,
+      "body": {
+        "error": "share_unavailable"
+      }
+    },
+    "feedbackSaved": {
+      "status": 200,
+      "body": {
+        "data": {
+          "projection_ref": "projection:public:synthetic_projection",
+          "permission_scopes": [
+            "shortlist",
+            "comment"
+          ],
+          "can_download": false,
+          "items": [
+            {
+              "property_ref": "property:public:synthetic_property_01"
+            }
+          ]
+        }
+      }
     }
   }
 }

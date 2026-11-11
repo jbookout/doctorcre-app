@@ -35,6 +35,38 @@ test("client-link response recordings match the exact CARR production projectors
     assert.deepEqual(producer.projectTourClientFeedback(recorded.inputs[name]), recorded.responses[name]);
   const { createReportsWebHandler } = await import(pathToFileURL(root + "/mcp-server/src/reports-web.ts").href);
   const access = producer.tourSharingBrowserAccess({ ToolError: Error });
+  for (const name of [
+    "feedback",
+    "feedbackDownload",
+    "feedbackReadOnly",
+    "feedbackSaved",
+    "missingScope",
+    "expired",
+    "revoked",
+  ]) {
+    const feedbackHandler = createReportsWebHandler({
+      readFeedbackFn: async ({ sessionDigest }: { sessionDigest: string }) => {
+        const result = await access.readFeedback(
+          { query: async () => ({ rows: [{ feedback: recorded.inputs[name] }] }) },
+          { session_digest: sessionDigest },
+        );
+        return { ok: true, data: result.feedback };
+      },
+    });
+    const response = await feedbackHandler.fetch(
+      new Request("https://reports.doctorcre.com/api/share/feedback", {
+        headers: { cookie: "__Host-tour_share_session=" + "a".repeat(43) },
+      }),
+    );
+    const actual = { status: response.status, body: await response.json() };
+    if (process.env.RECORD_CLIENT_LINKS_CONTRACT === "1") recorded.responses[name] = actual;
+    assert.deepEqual(actual, recorded.responses[name]);
+  }
+  if (process.env.RECORD_CLIENT_LINKS_CONTRACT === "1")
+    await writeFile(
+      new URL("./fixtures/client-links/producer.json", import.meta.url),
+      `${JSON.stringify(recorded, null, 2)}\n`,
+    );
   const handler = createReportsWebHandler({
     exchangeShareTokenFn: (input: unknown) => {
       assert.ok(
@@ -85,4 +117,35 @@ test("client-link response recordings match the exact CARR production projectors
   );
   assert.equal(missingMap.status, 404);
   assert.deepEqual(await missingMap.json(), recorded.responses.mapUnavailable);
+});
+
+test("test fixtures never hand-set the producer download capability", async () => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { parse } = await import("@babel/parser");
+  const violations: string[] = [];
+  for (const name of await readdir(new URL("./", import.meta.url), { recursive: true })) {
+    if (!/\.(?:mjs|[cm]?tsx?)$/.test(name)) continue;
+    const source = parse(await readFile(new URL(name, import.meta.url), "utf8"), {
+      sourceType: "module",
+      plugins: ["typescript", "jsx"],
+    });
+    function visit(node: unknown) {
+      if (!node || typeof node !== "object") return;
+      if ("type" in node && node.type === "ObjectProperty" && "key" in node) {
+        const key = node.key;
+        if (
+          key &&
+          typeof key === "object" &&
+          (("name" in key && key.name === "can_download") || ("value" in key && key.value === "can_download"))
+        )
+          violations.push(name);
+      }
+      for (const value of Object.values(node)) {
+        if (Array.isArray(value)) value.forEach(visit);
+        else if (value && typeof value === "object") visit(value);
+      }
+    }
+    visit(source);
+  }
+  assert.deepEqual(violations, [], "Replay recorded producer responses instead of choosing can_download in a fixture");
 });
