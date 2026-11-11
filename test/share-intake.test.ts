@@ -394,7 +394,7 @@ for (const mode of ["lost-reserve", "lost-finalize"])
     await x.reload();
     x.model.choose(crypto.randomUUID());
     await x.model.file();
-    assert.equal(x.states.at(-1)?.kind, "filed");
+    assert.equal(x.states.at(-1)?.kind, "delivered");
     const starts = x.writes.filter((w) => w.body.target_collection);
     assert.equal(new Set(starts.map((w) => w.body.idempotency_key)).size, 1);
     assert.equal(x.writes.filter((w) => w.path.endsWith("/finalize")).length, 1);

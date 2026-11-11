@@ -95,7 +95,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
       changed(next) {
         setUpload(next);
         if (next.kind === "choosing") model.current?.choose(dealId);
-        if (next.kind === "filed") void refresh();
+        if (next.kind === "delivered") void refresh();
       },
     });
     setUpload({ kind: "receiving" });
@@ -226,8 +226,8 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
             </button>
           </>
         )}
-        {upload?.kind === "filed" && (
-          <p>Confirmed. {upload.attachment.filename} is saved in this deal’s Deliverables.</p>
+        {upload?.kind === "delivered" && (
+          <p>Confirmed. {upload.deliverable.filename} is saved in this deal’s Deliverables.</p>
         )}
         {(upload?.kind === "retired" || upload?.kind === "refused") && (
           <p>

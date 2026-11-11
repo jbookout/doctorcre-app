@@ -19,6 +19,7 @@ export type IntakeState =
   | { kind: "filing"; filename: string; deal: Deal }
   | { kind: "uncertain"; filename: string; deal: Deal; message: string }
   | { kind: "filed"; attachment: Attachment }
+  | { kind: "delivered"; deliverable: ReturnType<typeof parseDeliverable> }
   | { kind: "refused" | "retired"; message: string };
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -364,7 +365,7 @@ export function createShareIntake({
       await clear();
       share = null;
       clearTimeout(expiry);
-      set({ kind: "filed", attachment: { ...expected, attachment_id: row.id } });
+      set({ kind: "delivered", deliverable: row });
       return;
     }
     const attachment = parseAttachment(value, expected);
