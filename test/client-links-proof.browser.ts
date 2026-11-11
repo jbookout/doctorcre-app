@@ -151,7 +151,12 @@ test("client download controls follow projected capability before open and after
 });
 
 test("client proof rejects the near-miss displayed 16 Medical Drive for expected 6 Medical Drive", async (t) => {
-  await assert.rejects(prove(await fixture(t, true)), assert.AssertionError);
+  await assert.rejects(prove(await fixture(t, true)), (error: unknown) => {
+    assert.ok(error instanceof assert.AssertionError);
+    assert.deepEqual(error.actual, [{ ...row, detail: "16 Medical Drive" }]);
+    assert.deepEqual(error.expected, [row]);
+    return true;
+  });
 });
 
 test("client proof classifies unavailable browser as insufficient evidence", async (t) => {
