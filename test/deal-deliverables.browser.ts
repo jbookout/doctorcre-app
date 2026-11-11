@@ -127,14 +127,14 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         });
         const requests: string[] = [];
         page.on("request", (request) => requests.push(request.url()));
-        const beforeCancel = await panel.innerHTML();
+        const beforeCancel = await panel.textContent();
         const keyboardChooser = page.waitForEvent("filechooser");
         await page.keyboard.press("Enter");
         await (await keyboardChooser).setFiles([]);
         assert.equal(await keyboardButton.getAttribute("data-trusted-click"), "true");
         await page.evaluate(() => new Promise(requestAnimationFrame));
-        assert.equal(await panel.getByRole("status").innerText(), "", "cancel must not show a status message");
-        assert.equal(await panel.innerHTML(), beforeCancel, "cancel must leave the panel unchanged");
+        assert.equal(await panel.getByRole("status").textContent(), "", "cancel must not show a status message");
+        assert.equal(await panel.textContent(), beforeCancel, "cancel must leave the panel unchanged");
         assert.deepEqual(requests, [], "cancel must not send requests");
         await keyboardButton.evaluate((element) => {
           const transfer = new DataTransfer();
@@ -144,12 +144,12 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         });
         await panel.getByText("Failed. Choose one file at a time.", { exact: true }).waitFor();
         assert.deepEqual(requests, [], "multiple files must not send requests");
-        const beforeCancelAfterFailure = await panel.innerHTML();
+        const beforeCancelAfterFailure = await panel.textContent();
         const failedChooser = page.waitForEvent("filechooser");
         await keyboardButton.click();
         await (await failedChooser).setFiles([]);
         await page.evaluate(() => new Promise(requestAnimationFrame));
-        assert.equal(await panel.innerHTML(), beforeCancelAfterFailure, "cancel must preserve an existing error");
+        assert.equal(await panel.textContent(), beforeCancelAfterFailure, "cancel must preserve an existing error");
         assert.deepEqual(requests, [], "cancel after failure must not send requests");
         await keyboardButton.focus();
         const spaceChooser = page.waitForEvent("filechooser");
@@ -177,6 +177,15 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await panel.getByText("Confirmed.", { exact: false }).waitFor();
         assert.equal(writes.filter((w) => w.body.target_collection).length, 1);
         assert.equal(writes.filter((w) => w.path.endsWith("/finalize")).length, 1);
+        await panel.getByRole("button", { name: "Mark Photo.jpg shared" }).waitFor();
+        const beforeCancelAfterUpload = await panel.textContent();
+        requests.length = 0;
+        const confirmedChooser = page.waitForEvent("filechooser");
+        await keyboardButton.click();
+        await (await confirmedChooser).setFiles([]);
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        assert.equal(await panel.textContent(), beforeCancelAfterUpload, "cancel must preserve a confirmed upload");
+        assert.deepEqual(requests, [], "cancel after upload must not send requests");
         failReadback = true;
         const expectedVersion = row.version + 1;
         await panel.getByRole("button", { name: "Mark Photo.jpg shared" }).click();
