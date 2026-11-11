@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { startFixtureServer } from '../../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from '../../test/fixture-probe.ts';
 import { directoryFixture } from '../../test/fixtures/vendor-directory.synthetic.mjs';
 
 test.use({

@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { startFixtureServer } from "../scripts/fixture-server.mjs";
 
-const capability = Symbol("fixture probe owner");
+const capability = {};
 export class FixtureOwnershipError extends Error {
   readonly code = "FIXTURE_OWNER_REQUIRED";
   constructor() {
@@ -82,7 +82,9 @@ export function fixtureProbe(options: Options = {}) {
   const child = spawn(
     process.execPath,
     [
-      new URL(import.meta.url).pathname,
+      "--input-type=module",
+      "-e",
+      childSource(),
       JSON.stringify({
         server: options.server,
         root: options.root,
@@ -254,7 +256,7 @@ export async function ownedServer(options: Parameters<typeof startFixtureServer>
 
 async function runFixtureChild() {
   if (!process.connected || !process.send) throw new FixtureOwnershipError();
-  const input: unknown = JSON.parse(process.argv[2] ?? "{}");
+  const input: unknown = JSON.parse(process.argv[1] ?? "{}");
   assert.ok(typeof input === "object" && input !== null);
   const options = {
     root: "root" in input && typeof input.root === "string" ? input.root : undefined,
@@ -340,4 +342,18 @@ async function runFixtureChild() {
     }
   });
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await runFixtureChild();
+function childSource(): string {
+  return `
+import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
+const root = ${JSON.stringify(new URL("../", import.meta.url).pathname)};
+const capability = {};
+${FixtureOwnershipError.toString()}
+${requireFixtureCapability.toString()}
+${startFixtureServer.toString()}
+${runFixtureChild.toString()}
+await runFixtureChild();
+`;
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) throw new FixtureOwnershipError();

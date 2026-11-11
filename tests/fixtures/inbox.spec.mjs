@@ -1,7 +1,7 @@
 import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
-import { startFixtureServer } from '../../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from '../../test/fixture-probe.ts';
 import { temporaryDirectory } from '../../scripts/temp-directory.mjs';
 import { buildArtifact } from '../../scripts/artifact.mjs';
 

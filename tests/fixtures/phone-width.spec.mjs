@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { navigationItems } from '../../js/routes.js';
-import { startFixtureServer } from '../../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from '../../test/fixture-probe.ts';
 
 test.use({ viewport: { width: 390, height: 844 } });
 
