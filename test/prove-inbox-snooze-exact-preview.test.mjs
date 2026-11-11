@@ -42,21 +42,50 @@ test('CLI broken deployed fixture cannot pass', async t => {
   assert.equal(result.receipt.ok, false);
   assert.equal(result.code, 1);
 });
-test('late launch closes its acquired browser after deadline with no survivor', async t => {
+for (const delayedRelease of [false, true]) test(delayedRelease ? 'release deadline before acquisition launches no browser' : 'late launch closes its acquired browser after deadline with no survivor', { timeout: 20000 }, async t => {
+  const deadline = new AbortController();
+  if (delayedRelease) {
+    const fetch = globalThis.fetch;
+    t.mock.method(globalThis, 'fetch', async (...args) => {
+      if (new URL(String(args[0])).pathname === '/app-release') await new Promise(resolve => setTimeout(resolve, 60));
+      return fetch(...args);
+    });
+  } else {
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    let calls = 0;
+    t.mock.method(AbortSignal, 'timeout', ms => calls++ === 0 ? deadline.signal : timeout(ms));
+  }
   const origin = await server(t);
-  let browser;
-  let disposed;
+  let browser, pending, launches = 0;
+  let disposed, deliver;
   const closed = new Promise(resolve => { disposed = resolve; });
-  const engine = { async launch(options) {
-    browser = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])], timeout: 15000 });
-    await new Promise(resolve => setTimeout(resolve, 100));
-    return new Proxy(browser, { get(target, key) {
-      if (key === 'close') return async () => { await target.close(); disposed(); };
-      const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
-    } });
+  const delivery = new Promise(resolve => { deliver = resolve; });
+  const engine = { launch(options) {
+    launches++;
+    pending = (async () => {
+      browser = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])], timeout: 15000 });
+      deadline.abort(new DOMException('Controlled browser deadline', 'TimeoutError'));
+      await delivery;
+      return new Proxy(browser, { get(target, key) {
+        if (key === 'close') return async () => { await target.close(); disposed(); };
+        const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+      } });
+    })();
+    return pending;
   } };
-  t.after(async () => { await browser?.close(); });
-  await assert.rejects(prove({ origin, timeoutMs: 30, engine }), error => error.name === 'TimeoutError' || error.exitCode === 78);
+  t.after(async () => { deliver(); await pending?.catch(() => {}); await browser?.close(); });
+  await assert.rejects(prove({ origin, timeoutMs: delayedRelease ? 30 : 15000, engine }), error => error.name === 'TimeoutError' || error.exitCode === 78);
+  if (!pending) {
+    assert.equal(delayedRelease, true, 'late-launch probe must reach acquisition');
+    assert.equal(launches, 0);
+    assert.equal(browser, undefined);
+    return;
+  }
+  assert.equal(delayedRelease, false, 'release deadline must prevent acquisition');
+  assert.equal(launches, 1);
+  assert.equal(browser.isConnected(), true, 'browser delivery is still pending after deadline');
+  deliver();
+  await pending;
   await closed;
   assert.equal(browser.isConnected(), false);
 });
