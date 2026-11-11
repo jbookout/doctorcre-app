@@ -20,9 +20,6 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
-    await page.addInitScript(() =>
-      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }),
-    );
     const violations: string[] = [];
     await page.exposeFunction("recordPacketCsp", (directive: string) => violations.push(directive));
     await page.addInitScript(() =>
