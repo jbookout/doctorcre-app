@@ -16,6 +16,8 @@ export const UI_ENTRIES = {
   "ui-packet-facts": "packet-facts",
   "ui-packet-preview": "packet-preview",
   'ui-tour-stop-drag': 'tour-stop-drag',
+  'ui-tour-client-download': 'tour-client-download',
+  'ui-tour-client-grants': 'tour-client-grants',
   'ui-broker-cheat-sheet': 'broker-cheat-sheet',
   'ui-phone-push': 'phone-push',
   'ui-action-session-return': 'action-session-return',
