@@ -46,3 +46,35 @@ for (const fixture of ["pass", "fail"])
       });
     }
   });
+
+test("Browser audit enforces new, smaller and fixed baseline targets", async (t) => {
+  const { phoneBaselineRows, comparePhoneBaseline } = await import("../scripts/phone-target-baseline.ts");
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await page.setContent('<button id="fixture" style="width:20px;height:20px;padding:0;border:0">Open</button>');
+  const observe = async () =>
+    phoneBaselineRows([{ ...(await inspectPhoneAccessibility(page)), name: "Fixture", width: 390, theme: "light" }]);
+  const baseline = await observe();
+  assert.equal(baseline[0]?.width, 20);
+  assert.deepEqual(comparePhoneBaseline(baseline, baseline), []);
+  await page.evaluate(() => {
+    const button = document.createElement("button");
+    button.id = "new";
+    button.style.cssText = "width:20px;height:20px;padding:0;border:0";
+    button.textContent = "New";
+    document.body.append(button);
+  });
+  assert.match(comparePhoneBaseline(await observe(), baseline).join("\n"), /New undersized target/);
+  await page.locator("#new").evaluate((node) => node.remove());
+  await page.locator("#fixture").evaluate((node) => {
+    node.style.height = "19px";
+  });
+  assert.match(comparePhoneBaseline(await observe(), baseline).join("\n"), /got smaller/);
+  await page.locator("#fixture").evaluate((node) => {
+    node.style.width = "44px";
+    node.style.height = "44px";
+  });
+  assert.match(comparePhoneBaseline(await observe(), baseline).join("\n"), /Remove fixed/);
+  assert.deepEqual(comparePhoneBaseline(await observe(), []), []);
+});

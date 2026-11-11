@@ -70,7 +70,7 @@
 .relationship-graph-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .relationship-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); color: var(--fg-muted); font-size: var(--font-size-1); }
 .relationship-legend [data-kind="vendor"] { color: var(--data-1); }
-.relationship-legend [data-kind="deal"] { color: var(--accent-ink); }
+.relationship-legend [data-kind="deal"] { color: var(--data-2); }
 .relationship-graph-tools { display: flex; gap: var(--space-2); }
 
 .relationship-canvas {

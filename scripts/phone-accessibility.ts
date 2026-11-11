@@ -112,7 +112,19 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
           )),
     );
     const undersized = (candidate: TapCandidate) => candidate.box.width < 44 || candidate.box.height < 44;
+    const selector = (node: Element): string => {
+      if (node.id) return `#${CSS.escape(node.id)}`;
+      const parent = node.parentElement;
+      const position = parent
+        ? [...parent.children].filter((child) => child.tagName === node.tagName).indexOf(node) + 1
+        : 1;
+      const part = `${node.tagName.toLowerCase()}:nth-of-type(${position})`;
+      if (parent) return `${selector(parent)} > ${part}`;
+      const root = node.getRootNode();
+      return root instanceof ShadowRoot ? `${selector(root.host)} >>> ${part}` : part;
+    };
     const describeTarget = (node: Element) => ({
+      selector: selector(node),
       tag: node.tagName,
       width: node.getBoundingClientRect().width,
       height: node.getBoundingClientRect().height,

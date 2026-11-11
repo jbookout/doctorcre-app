@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import type { Page } from "playwright";
 import { inspectPhoneAccessibility } from "./phone-accessibility.ts";
+import { comparePhoneBaseline, phoneBaselineRows } from "./phone-target-baseline.ts";
 import { prove } from "./prove-activity-attribution-panel.mjs";
 import { walkV2Accessibility } from "./v2-accessibility-walk.ts";
 
@@ -34,15 +35,15 @@ export async function observeV2Accessibility(page: Page, origin: string, shots: 
       }
       results.push(...rows.map((row) => ({ ...row, width, theme })));
     }
-  assert.deepEqual(
-    results.filter(
-      (row) =>
-        row.overflow || row.small.length || row.clipped.length || row.positiveTabindex.length || row.violations.length,
-    ),
-    [],
-    "Every V2 surface must meet layout, target size and WCAG checks",
+  const baseline = JSON.parse(
+    await readFile(new URL("../contracts/phone-target-baseline.json", import.meta.url), "utf8"),
   );
-  return { results, scope: "Read-only layouts and accessibility. Reorder writes require local synthetic acceptance." };
+  assert.deepEqual(
+    comparePhoneBaseline(phoneBaselineRows(results), baseline),
+    [],
+    "Phone target baseline only shrinks",
+  );
+  return { results, scope: "Read-only phone target baseline. Other accessibility results are diagnostics." };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

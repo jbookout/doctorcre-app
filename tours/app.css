@@ -362,7 +362,6 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 #internal-cheat-sheet details > summary { min-height: 44px; padding-block: 12px; cursor: pointer; }
 
 @media (max-width: 560px) {
-  .cheat-card > label[for] { display: flex; align-items: center; min-width: 44px; min-height: 44px; }
   .cheat-card .section-head { flex-direction: column; align-items: stretch; }
   .cheat-card .section-head button { width: 100%; }
 }

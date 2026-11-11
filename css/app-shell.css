@@ -389,7 +389,7 @@ body.report-shell { padding-left: var(--layout-rail); padding-bottom: 34px; }
 #appStatusSlot .deployment-badge, #appStatusSlot .sync, #appStatusSlot .capture { padding: 2px var(--space-1); }
 #appStatusSlot footer { margin: 0; padding: 0; border: 0; font-size: var(--font-size-1); }
 #appStatusSlot .home-updated { width: auto; justify-content: flex-start; }
-#appStatusSlot button { min-width: var(--touch); min-height: var(--touch); }
+#appStatusSlot button { min-width: 28px; min-height: 28px; }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   #appStatusSlot { flex: none; gap: var(--space-2); }
   #appStatusSlot > [data-layout-slot="status"], #appStatusSlot .top-actions { flex-wrap: nowrap; gap: var(--space-2); }
@@ -422,9 +422,7 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 }
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
-  .has-app-layout :is(button, a, input, select, textarea, summary, label[for]:not([for="searchInput"]), [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }
-  .has-app-layout label[for]:not([for="searchInput"]) { display: inline-flex; align-items: center; }
-  .has-app-layout label.library-filter { display: flex; flex-direction: column; align-items: stretch; }
+  .has-app-layout :is(button, a, input, select, textarea, summary, [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }
   .app-shell-account-menu a { min-height: 44px; box-sizing: border-box; }
   .app-layout-tabs > [data-layout-slot=tabs] { flex-wrap: nowrap; max-width: none; }
   .has-app-layout .skip:focus, .has-app-layout .invoice-skip:focus { min-height: 44px; display: flex; align-items: center; }

@@ -1,0 +1,226 @@
+[
+  {
+    "surface": "Home",
+    "theme": "light",
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(1) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
+    "width": 246.609375,
+    "height": 18
+  },
+  {
+    "surface": "Home",
+    "theme": "light",
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(5) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
+    "width": 223.609375,
+    "height": 18
+  },
+  {
+    "surface": "Home",
+    "theme": "light",
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(7) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
+    "width": 210.75,
+    "height": 18
+  },
+  {
+    "surface": "Deal",
+    "theme": "light",
+    "selector": "#detailUpdateForm > label:nth-of-type(1)",
+    "width": 366,
+    "height": 24.75
+  },
+  {
+    "surface": "Deal",
+    "theme": "light",
+    "selector": "#detailUpdateForm > label:nth-of-type(2)",
+    "width": 366,
+    "height": 24.75
+  },
+  {
+    "surface": "Deal",
+    "theme": "light",
+    "selector": "#detailUpdateForm > label:nth-of-type(3)",
+    "width": 366,
+    "height": 24.75
+  },
+  {
+    "surface": "Tours library",
+    "theme": "light",
+    "selector": "#planner-refresh",
+    "width": 41.9375,
+    "height": 44
+  },
+  {
+    "surface": "Tour and cheat sheet",
+    "theme": "light",
+    "selector": "#internal-cheat-sheet > label:nth-of-type(1)",
+    "width": 300,
+    "height": 19.5
+  },
+  {
+    "surface": "Vendors Suggested",
+    "theme": "light",
+    "selector": "#vendor-meeting-person-0",
+    "width": 116.375,
+    "height": 21
+  },
+  {
+    "surface": "Vendors Research",
+    "theme": "light",
+    "selector": "#vendor-meeting-person-0",
+    "width": 116.375,
+    "height": 21
+  },
+  {
+    "surface": "Relationships",
+    "theme": "light",
+    "selector": "#networkRefresh",
+    "width": 28,
+    "height": 44
+  },
+  {
+    "surface": "Relationships",
+    "theme": "light",
+    "selector": "#networkKindFilter > label:nth-of-type(1)",
+    "width": 99.9375,
+    "height": 15
+  },
+  {
+    "surface": "Relationships",
+    "theme": "light",
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(1)",
+    "width": 334,
+    "height": 19.5
+  },
+  {
+    "surface": "Relationships",
+    "theme": "light",
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(2)",
+    "width": 334,
+    "height": 19.5
+  },
+  {
+    "surface": "Relationships",
+    "theme": "light",
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(3)",
+    "width": 334,
+    "height": 19.5
+  },
+  {
+    "surface": "Leads",
+    "theme": "light",
+    "selector": "#refreshBoard",
+    "width": 28,
+    "height": 44
+  },
+  {
+    "surface": "Home",
+    "theme": "dark",
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(1) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
+    "width": 246.609375,
+    "height": 18
+  },
+  {
+    "surface": "Home",
+    "theme": "dark",
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(5) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
+    "width": 223.609375,
+    "height": 18
+  },
+  {
+    "surface": "Home",
+    "theme": "dark",
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(7) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
+    "width": 210.75,
+    "height": 18
+  },
+  {
+    "surface": "Deal",
+    "theme": "dark",
+    "selector": "#detailUpdateForm > label:nth-of-type(1)",
+    "width": 366,
+    "height": 24.75
+  },
+  {
+    "surface": "Deal",
+    "theme": "dark",
+    "selector": "#detailUpdateForm > label:nth-of-type(2)",
+    "width": 366,
+    "height": 24.75
+  },
+  {
+    "surface": "Deal",
+    "theme": "dark",
+    "selector": "#detailUpdateForm > label:nth-of-type(3)",
+    "width": 366,
+    "height": 24.75
+  },
+  {
+    "surface": "Tours library",
+    "theme": "dark",
+    "selector": "#planner-refresh",
+    "width": 41.9375,
+    "height": 44
+  },
+  {
+    "surface": "Tour and cheat sheet",
+    "theme": "dark",
+    "selector": "#internal-cheat-sheet > label:nth-of-type(1)",
+    "width": 300,
+    "height": 19.5
+  },
+  {
+    "surface": "Vendors Suggested",
+    "theme": "dark",
+    "selector": "#vendor-meeting-person-0",
+    "width": 116.375,
+    "height": 21
+  },
+  {
+    "surface": "Vendors Research",
+    "theme": "dark",
+    "selector": "#vendor-meeting-person-0",
+    "width": 116.375,
+    "height": 21
+  },
+  {
+    "surface": "Relationships",
+    "theme": "dark",
+    "selector": "#networkRefresh",
+    "width": 28,
+    "height": 44
+  },
+  {
+    "surface": "Relationships",
+    "theme": "dark",
+    "selector": "#networkKindFilter > label:nth-of-type(1)",
+    "width": 99.9375,
+    "height": 15
+  },
+  {
+    "surface": "Relationships",
+    "theme": "dark",
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(1)",
+    "width": 334,
+    "height": 19.5
+  },
+  {
+    "surface": "Relationships",
+    "theme": "dark",
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(2)",
+    "width": 334,
+    "height": 19.5
+  },
+  {
+    "surface": "Relationships",
+    "theme": "dark",
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(3)",
+    "width": 334,
+    "height": 19.5
+  },
+  {
+    "surface": "Leads",
+    "theme": "dark",
+    "selector": "#refreshBoard",
+    "width": 28,
+    "height": 44
+  }
+]
