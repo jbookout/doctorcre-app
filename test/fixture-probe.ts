@@ -248,7 +248,7 @@ export async function ownedFixtureServer(options: Options = {}) {
   }
 }
 export async function ownedServer(options: Parameters<typeof startFixtureServer>[0] = {}) {
-  const server = await ownedFixtureServer({ server: options, ...(options.env ? { env: options.env } : {}) });
+  const server = await ownedFixtureServer({ server: options });
   return { url: server.origin, stop: server.close };
 }
 
@@ -297,7 +297,7 @@ async function runFixtureChild() {
     }
     const config = "server" in input && typeof input.server === "object" && input.server !== null ? input.server : {};
     const fixture = await startFixtureServer(
-      { ...config, env: options.root ? { DOCTORCRE_FIXTURE_ROOT: options.root } : {} },
+      { ...config, ...(options.root ? { env: { DOCTORCRE_FIXTURE_ROOT: options.root } } : {}) },
       capability,
     );
     server = { origin: fixture.url, close: fixture.stop };

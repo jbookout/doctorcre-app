@@ -63,8 +63,8 @@ test("direct owner execution without its IPC lifecycle is refused", () => {
 test("owned starter forwards its configured environment and awaits shutdown", async () => {
   const { ownedServer } = await import("./fixture-probe.ts");
   const server = await ownedServer({
-    env: { FIXTURE_PORT: "19876" },
-    args: ["-e", 'console.log("http://127.0.0.1:" + process.env.FIXTURE_PORT); setInterval(() => {}, 1000)'],
+    env: { PORT: "19876" },
+    args: ["-e", 'console.log("http://127.0.0.1:" + process.env.PORT); setInterval(() => {}, 1000)'],
   });
   try {
     assert.equal(server.url, "http://127.0.0.1:19876");
