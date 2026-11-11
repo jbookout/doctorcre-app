@@ -1,4 +1,4 @@
-import { mountRelationshipKindFilter, relationshipKind } from "./ui-relationship-kind-filter.js";
+import { mountIntroductionRequest, mountRelationshipKindFilter, relationshipKind } from "./ui-relationship-kind-filter.js";
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { dealName } from "./pipeline-model.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
@@ -18,7 +18,6 @@ import {
   escapeHtml as E,
 } from "./relationship-network-model.js";
 import { mountRelationshipDialog } from "./relationship-dialog.js";
-import { mountIntroductionRequest } from './ui-introduction-request.js';
 
 export function mountRelationshipNetwork({
   document,
