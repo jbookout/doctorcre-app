@@ -197,3 +197,25 @@ test("A replacement at the same selector with a different action refuses identit
   await assert.rejects(inspectPhoneAccessibility(page), /unstable-identity after 3 attempts/);
   assert.equal(await page.locator("#row").getAttribute("href"), "#different-action");
 });
+
+test("Scroll-driven repaint settles without replaying the scroll on each geometry attempt", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await page.setContent(
+    '<a id="row" href="#record" style="position:absolute;top:2200px;width:100px;height:60px">Open record</a>',
+  );
+  await page.evaluate(() => {
+    window.addEventListener("scroll", () => {
+      const row = document.getElementById("row");
+      if (!row) throw Error("Missing row");
+      requestAnimationFrame(() => {
+        row.replaceWith(row.cloneNode(true));
+        Reflect.set(window, "repaints", Number(Reflect.get(window, "repaints") || 0) + 1);
+      });
+    });
+  });
+  const audit = await inspectPhoneAccessibility(page);
+  assert.deepEqual(audit.covered, []);
+  assert.ok(await page.evaluate(() => Number(Reflect.get(window, "repaints")) > 0));
+});
