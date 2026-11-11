@@ -123,7 +123,7 @@ test('typed surfaces check the merge group against its base and reject new JavaS
 
 test('signed-in Calendar CI installs the producer PostgreSQL binaries before its real journey', () => {
   assert.match(ci, /uses: \.\/\.github\/workflows\/checks\.yml/);
-  assert.match(checks, /run: bash \.\.\/carr-producer\/ops\/ci-postgres\.sh/);
+  assert.match(checks, /run: python3 \/opt\/ci\/capabilities\.py verify app/);
   const journey = checks.split('name: Verify signed-in Calendar')[1];
   assert.match(journey, /CARR_LOCAL_PG_BIN_DIR: \/usr\/lib\/postgresql\/17\/bin/);
 });
@@ -183,7 +183,6 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
   const result = execFileSync(process.execPath, ["scripts/check-repository.mjs"], { cwd: app, encoding: "utf8" });
   assert.match(result, /repository check passed/);
   assert.equal(checks.match(/working-directory: (\S+)/)?.[1], appCheckout.match(/path: (\S+)/)?.[1]);
-  assert.match(checks, new RegExp(`cache-dependency-path: ${appCheckout.match(/path: (\S+)/)?.[1]}/package-lock\\.json`));
   await writeFile(join(app, "app-owned.yml"), externalSource);
   assert.throws(() => execFileSync(process.execPath, ["scripts/check-repository.mjs"], { cwd: app, stdio: "pipe" }),
     /app-owned\.yml contains a database connection string/, "app-owned content must remain guarded");
@@ -236,31 +235,10 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.match(ci, /browser-results.py out\/browser-results\/junit.xml/);
   assert.match(ci, /needs: \[checks, shards, performance, live\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
-  const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
+  const browser = steps.findIndex(step => /^run: node --test test\/\*\.browser\.ts$/m.test(step));
   assert.ok(privacy >= 0 && privacy < browser);
 });
 
-test('browser dependencies use official Ubuntu mirrors after privacy checks', async t => {
-  const steps = checks.split(/^      - /m).slice(1);
-  const mirror = steps.findIndex(step => /^name: Prefer Ubuntu archives for browser dependencies$/m.test(step));
-  const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
-  const browser = steps.findIndex(step => /^run: npx playwright install --with-deps chromium webkit$/m.test(step));
-  assert.ok(privacy >= 0 && privacy < mirror && mirror < browser,
-    'configure apt mirrors after privacy checks and before installing browser dependencies');
-  const shell = steps[mirror].match(/        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, '');
-  const directory = await temporaryDirectory('doctorcre-apt-mirrors-');
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const path = join(directory, 'apt-mirrors.txt');
-  await writeFile(path, 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n');
-  const fixtureShell = shell.replaceAll('/etc/apt/apt-mirrors.txt', path).replace(/\bsudo /g, '');
-  assert.doesNotMatch(fixtureShell, /\/etc\//);
-  const expected = 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n';
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', fixtureShell], { encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(await readFile(path, 'utf8'), expected);
-  }
-});
 
 test("release build is read-only and publisher receives only this run's digest-bound artifact", () => {
   assert.match(release, /permissions:\n  contents: read/);
@@ -615,7 +593,7 @@ test('reply proof browser journeys run after browser installation and remain typ
   assert.ok(config.files.includes('test/prove-reply-action-link.browser.ts'));
   assert.ok(!config.files.includes('test/prove-reply-action-link.test.ts'));
   const steps = workflowDocument(checks).jobs.checks.steps;
-  const install = steps.findIndex(step => step.run === 'npx playwright install --with-deps chromium webkit');
+  const install = steps.findIndex(step => step.run === 'python3 /opt/ci/capabilities.py verify app');
   const journeys = steps.findIndex(step => step.run === 'node --test test/*.browser.ts');
   assert.ok(install >= 0 && install < journeys);
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));

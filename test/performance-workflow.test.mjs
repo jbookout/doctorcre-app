@@ -11,7 +11,7 @@ const performanceJob = ci.split(/^  performance:\n/m)[1].split(/^  \w+:/m)[0];
 test('main and PR run the same performance build, measurement and evidence steps', () => {
   assert.doesNotMatch(performanceJob, /github\.event_name/);
   assert.match(performanceJob, /ref: \$\{\{ github.sha \}\}/);
-  assert.match(performanceJob, /node-version: 26\.12\.1/);
+  assert.match(performanceJob, /run: node scripts\/verify-ci-image\.ts/);
   assert.match(performanceJob, /run: npm run build[\s\S]*run: npm run performance:check/);
   assert.match(performanceJob, /if: \$\{\{ !cancelled\(\) \}\}[\s\S]*uses: actions\/upload-artifact@/);
   assert.match(performanceJob, /name: Publish performance summary\n\s+if: \$\{\{ !cancelled\(\) \}\}/);

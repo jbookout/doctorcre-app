@@ -1,0 +1,35 @@
+name: Select app CI image
+on:
+  workflow_call:
+    inputs:
+      revision:
+        type: string
+        required: false
+        default: ''
+    outputs:
+      image:
+        value: ${{ jobs.select.outputs.image }}
+permissions:
+  contents: read
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      image: ${{ steps.pin.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - id: pin
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          image = json.loads(Path('.github/action-pins.json').read_text())['ci_app_image']['image']
+          if not isinstance(image, str) or not re.fullmatch(r'ghcr.io/jbookout/software-factory/ci-app@sha256:[0-9a-f]{64}', image) or image.endswith('0' * 64):
+              raise SystemExit('App CI image requires its first qualified published digest before merge')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('image=' + image + '\n')
+          PY

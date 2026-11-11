@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import subprocess
 from datetime import datetime, timezone
+from urllib.request import Request, urlopen
 
 
 def candidate():
@@ -42,9 +43,14 @@ def candidate():
 
     if not trusted(run):
         raise ValueError('Completion is not successful trusted main-push CI')
-    latest = json.loads(subprocess.check_output([
-        'gh', 'api', f'repos/{repository}/actions/runs/{run["id"]}',
-    ], text=True, timeout=45))
+    request = Request(f'https://api.github.com/repos/{repository}/actions/runs/{run["id"]}', headers={
+        'Accept': 'application/vnd.github+json',
+        'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'doctorcre-production-candidate',
+    })
+    with urlopen(request, timeout=45) as response:
+        latest = json.load(response)
     if not trusted(latest):
         raise ValueError('Latest CI attempt no longer matches successful completion')
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, timeout=30).strip()

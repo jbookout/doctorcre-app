@@ -59,7 +59,7 @@ test('production waits for successful CI on that source and uses the existing pu
 test('exact successful completion selects its SHA and stale completions emit superseded receipts', () => {
   const script = new URL('../scripts/production-candidate.py', import.meta.url).pathname;
   const harness = `
-import importlib.util, json, os, tempfile
+import importlib.util, json, os, tempfile, io
 from pathlib import Path
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('candidate', ${JSON.stringify(script)})
@@ -72,14 +72,16 @@ def execute(event=None, current=sha, latest=None, broken=None):
   Path(tmp,'event').write_text(json.dumps(event)); Path(tmp,'output').write_text('')
   def call(args, **kwargs):
    if broken and args[0]==broken: raise RuntimeError('fixture unavailable')
-   if args[:2]==['gh','api']:
-    assert args[2]=='repos/'+event['repository']['full_name']+'/actions/runs/'+str(event['workflow_run']['id'])
-    return json.dumps(latest or run)
    if args[:2]==['git','fetch']: return ''
    if args==['git','rev-parse','HEAD']: return event['workflow_run']['head_sha']
    if args==['git','rev-parse','origin/main']: return current
    raise AssertionError(args)
-  with patch.dict(os.environ, dict(GITHUB_EVENT_PATH=tmp+'/event', GITHUB_OUTPUT=tmp+'/output', GITHUB_REPOSITORY=event['repository']['full_name'], RUNNER_TEMP=tmp)), patch.object(module.subprocess,'check_output',side_effect=call):
+  def fetch(request, timeout):
+   assert request.full_url=='https://api.github.com/repos/'+event['repository']['full_name']+'/actions/runs/'+str(event['workflow_run']['id'])
+   assert request.get_header('Authorization')=='Bearer synthetic' and timeout==45
+   if broken=='http': raise RuntimeError('fixture unavailable')
+   return io.StringIO(json.dumps(latest or run))
+  with patch.object(module, 'urlopen', side_effect=fetch), patch.dict(os.environ, dict(GH_TOKEN='synthetic', GITHUB_EVENT_PATH=tmp+'/event', GITHUB_OUTPUT=tmp+'/output', GITHUB_REPOSITORY=event['repository']['full_name'], RUNNER_TEMP=tmp)), patch.object(module.subprocess,'check_output',side_effect=call):
    try: module.candidate(); code=0
    except (Exception,SystemExit): code=1
   return code, Path(tmp,'output').read_text(), json.loads(Path(tmp,'production-candidate.json').read_text()) if Path(tmp,'production-candidate.json').exists() else None
@@ -96,7 +98,7 @@ for field,value in [('event','pull_request'),('event','merge_group'),('head_bran
  assert execute(dict(action='completed',repository=dict(full_name='synthetic/app'),workflow_run=altered))[0]!=0, (field,value)
 for altered in [dict(run,run_attempt=2,status='in_progress',conclusion=None),dict(run,run_attempt=2,conclusion='failure'),dict(run,head_sha='a'*40),dict(run,path='.github/workflows/other.yml')]:
  assert execute(latest=altered)[0]!=0
-for broken in ['gh','git']: assert execute(broken=broken)[0]!=0
+for broken in ['http','git']: assert execute(broken=broken)[0]!=0
 for order in [('a','b'),('b','a')]:
  published=[]
  for candidate in order:

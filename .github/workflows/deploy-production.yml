@@ -11,7 +11,18 @@ permissions:
   actions: read
 
 jobs:
+  ci-image:
+    uses: ./.github/workflows/ci-image.yml
+    with:
+      revision: ${{ github.event.workflow_run.head_sha }}
+
   production:
+    needs: ci-image
+    container:
+      image: ${{ needs.ci-image.outputs.image }}
+      options: --init --user 1001:1001
+    env:
+      HOME: /home/ci
     if: >-
       github.event.workflow_run.status == 'completed' &&
       github.event.workflow_run.conclusion == 'success' &&
@@ -25,26 +36,26 @@ jobs:
       group: doctorcre-app-production
       cancel-in-progress: false
       queue: max
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify prebuilt app capabilities without repair
+        run: python3 /opt/ci/capabilities.py verify app
       - name: Validate successful CI completion
         id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/production-candidate.py
       - if: steps.candidate.outputs.ready == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26.12.1
-          cache: npm
-      - if: steps.candidate.outputs.ready == 'true'
         run: npm ci
       - if: steps.candidate.outputs.ready == 'true'
-        run: npx playwright install --with-deps chromium
+        run: node scripts/verify-ci-image.ts
       - if: steps.candidate.outputs.ready == 'true'
         run: npm run build
         env:

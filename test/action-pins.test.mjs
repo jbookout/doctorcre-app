@@ -51,9 +51,10 @@ test('the current provenance policy rejects altered release and runtime evidence
     await assert.rejects(checkActionPins(root), assert.AssertionError);
   }
 });
-test('the CLI runs without npm dependencies and returns a failure for pin drift', async t => {
+test('the CLI uses the installed YAML parser and returns a failure for pin drift', async t => {
   const root = await fixture(t);
   await mkdir(join(root, 'scripts'));
+  await symlink(new URL('../node_modules', import.meta.url).pathname, join(root, 'node_modules'), 'dir');
   const script = join(root, 'scripts/check-action-pins.mjs');
   await copyFile(new URL('../scripts/check-action-pins.mjs', import.meta.url), script);
   const run = () => spawnSync(process.execPath, [script], { cwd: temporaryDirectory('doctorcre-action-cwd-', t), encoding: 'utf8' });
@@ -82,9 +83,8 @@ test('CI checks pins before dependency and browser setup while retaining the ful
   const ci = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const checks = await readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
   assert.ok(checks.includes('run: npm run ci:fast'));
-  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('- uses: actions/setup-node'));
-  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npm ci'));
-  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npx playwright install'));
+  assert.ok(checks.indexOf('run: npm ci') < checks.indexOf('run: npm run ci:fast'));
+  assert.doesNotMatch(checks, /playwright install|ci-postgres\.sh/);
   const shards = ci.split(/^  shards:\n/m)[1].split(/^  \w+:/m)[0];
   assert.match(shards, /shard: \[1, 2, 3, 4\]/);
   assert.match(shards, /node --test --test-shard=\$\{\{ matrix.shard \}\}\/4 --test-concurrency=2 --test-timeout=180000/);

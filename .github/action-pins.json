@@ -57,5 +57,10 @@
       "release_url": "https://github.com/mikepenz/action-junit-report/releases/tag/v6.7.0",
       "tag_url": "https://api.github.com/repos/mikepenz/action-junit-report/git/refs/tags/v6.7.0"
     }
+  },
+  "ci_app_image": {
+    "image": null,
+    "recipe_commit": "309ab6a8922afee5ec059dca5e995d3d1bdf5457",
+    "status": "awaiting-first-published-digest"
   }
 }

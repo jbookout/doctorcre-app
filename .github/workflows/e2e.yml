@@ -21,22 +21,31 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  ci-image:
+    uses: ./.github/workflows/ci-image.yml
+
   journeys:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    needs: ci-image
+    container:
+      image: ${{ needs.ci-image.outputs.image }}
+      options: --init --user 1001:1001
     env:
+      HOME: /home/ci
       E2E_TELEMETRY_DISABLED: "1"
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26.12.1
-          cache: npm
+      - name: Verify prebuilt app capabilities without repair
+        run: python3 /opt/ci/capabilities.py verify app
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: node scripts/verify-ci-image.ts
       - run: npm run build
       - run: npx playwright test --project=fixtures
       - run: npx e2e run

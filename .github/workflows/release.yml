@@ -8,7 +8,16 @@ permissions:
   contents: read
 
 jobs:
+  ci-image:
+    uses: ./.github/workflows/ci-image.yml
+
   build:
+    needs: ci-image
+    container:
+      image: ${{ needs.ci-image.outputs.image }}
+      options: --init --user 1001:1001
+    env:
+      HOME: /home/ci
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -17,17 +26,19 @@ jobs:
       manifest_sha: ${{ steps.digests.outputs.manifest_sha }}
       sidecar_sha: ${{ steps.digests.outputs.sidecar_sha }}
       manifest_repository: ${{ steps.digests.outputs.manifest_repository }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Verify prebuilt app capabilities without repair
+        run: python3 /opt/ci/capabilities.py verify app
       - run: node scripts/check-release-source.mjs
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26.12.1
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
+      - run: node scripts/verify-ci-image.ts
       - run: npm run check
       - run: npm test
       - run: npm run build
