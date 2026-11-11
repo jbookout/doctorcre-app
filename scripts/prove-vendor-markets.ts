@@ -130,8 +130,17 @@ export async function prove({
         const snapshot = parseVendorMarkets(JSON.parse(content.text));
         const section = activePage.getByRole("region", { name: "Vendor directory view" });
         await section.locator('[aria-busy="false"]').waitFor({ timeout: remaining() });
-        if (snapshot.state === "empty")
-          throw insufficient("No reviewed markets yet; reviewed multi-market and Regional data required");
+        assertionsStarted = true;
+        if (snapshot.state === "empty") {
+          assert.equal(
+            await section.getByRole("status").textContent(),
+            "No reviewed markets yet. A reviewed registry is needed before market browsing is available.",
+          );
+          if (screenshotDir) await section.screenshot({ path: `${screenshotDir}/empty-${width}-${theme}.png` });
+          throw insufficient(
+            "No reviewed markets yet; empty behavior observed, positive comparison proof insufficient",
+          );
+        }
         if (
           !snapshot.vendors.some((v) => v.market_slugs.length > 1) ||
           !snapshot.markets.some(
@@ -143,7 +152,49 @@ export async function prove({
           )
         )
           throw insufficient("Multi-market and Regional reviewed data required");
-        assertionsStarted = true;
+        const comparison = section.getByRole("region", { name: "All-market comparison" });
+        await comparison.waitFor({ timeout: remaining() });
+        assert.deepEqual(
+          (
+            await comparison
+              .locator("[data-comparison-market]")
+              .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-comparison-market")))
+          ).sort(),
+          snapshot.markets.map((market) => market.slug).sort(),
+        );
+        for (const market of snapshot.markets) {
+          const card = comparison.locator(`[data-comparison-market="${market.slug}"]`);
+          assert.equal(await card.locator("[data-comparison-count]").textContent(), String(market.vendor_count));
+          assert.equal(
+            await card.locator("[data-comparison-offices]").textContent(),
+            String(market.memberships.filter((member) => member.office_presence).length),
+          );
+          assert.deepEqual(
+            (
+              await card
+                .locator("[data-comparison-vendor]")
+                .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-comparison-vendor")))
+            ).sort(),
+            market.memberships.map((member) => member.vendor_id).sort(),
+          );
+          for (const member of market.memberships) {
+            const vendor = snapshot.vendors.find((vendor) => vendor.id === member.vendor_id);
+            assert.ok(vendor);
+            const row = card.locator(`[data-comparison-vendor="${member.vendor_id}"]`);
+            assert.equal(await row.getByRole("link").textContent(), vendor.name || "Vendor name not recorded");
+            assert.equal(await row.locator("[data-vendor-ref]").textContent(), vendor.ref);
+            assert.equal(
+              await row.locator("[data-service-coverage]").textContent(),
+              `Service coverage: ${member.service_coverage || "Not recorded"}`,
+            );
+            assert.equal(
+              await row.locator("p").nth(1).textContent(),
+              `Office presence declared: ${member.office_presence ? "Yes" : "No"}`,
+            );
+          }
+        }
+        assert.equal(await activePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        if (screenshotDir) await section.screenshot({ path: `${screenshotDir}/comparison-${width}-${theme}.png` });
         for (const market of snapshot.markets) {
           remaining();
           await section
