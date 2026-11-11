@@ -121,6 +121,12 @@ test("empty, failure and retry remain distinct", async (t) => {
   setMode("ready");
   await section.getByRole("button", { name: "Retry people" }).click();
   await section.getByText("Ada Synthetic", { exact: true }).waitFor();
+  setMode("fail");
+  await section.getByRole("searchbox").fill("another failure");
+  await section.getByRole("alert").waitFor();
+  setMode("ready");
+  await section.getByRole("searchbox").fill("recovered query");
+  await section.getByText("Ada Synthetic", { exact: true }).waitFor();
 });
 test("pagination is query-bound and keyboard tabs retire late responses", async (t) => {
   const { page, section, requests, setMode, release } = await setup(t);
@@ -222,9 +228,11 @@ test("query changes retire successful and failed late reads even when the adapte
     search("fourth");
     await tick();
     if (pending.length !== 4) throw Error("Expected all four reads to start");
-    pending[3]?.resolve(recording.suggested);
-    await tick();
     pending[2]?.resolve(recording.research);
+    await tick();
+    if (host.querySelector('[role="tabpanel"]')?.getAttribute("aria-busy") !== "true")
+      throw Error("Late response replaced current pending read");
+    pending[3]?.resolve(recording.suggested);
     await tick();
     if (host.querySelector("[data-meeting-office]")?.textContent !== "1 Synthetic Plaza, Demo City, FL")
       throw Error("Late success replaced current result");
