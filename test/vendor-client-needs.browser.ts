@@ -3,7 +3,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
-import { chromium } from "./browser-harness.mjs";
+import { chromium, pausedClock } from "./browser-harness.mjs";
 import { directoryFixture } from "./fixtures/vendor-directory.synthetic.mjs";
 
 const recorded = JSON.parse(await readFile(new URL("./fixtures/client-needs/recorded.json", import.meta.url), "utf8"));
@@ -141,4 +141,101 @@ test("selected vendor reads exact needs, refreshes, pages and retires in both th
         await page.close();
       }
     }
+});
+
+test("approved needs expire at the earliest deadline and on panel resume without refresh", async (t) => {
+  const server = await startWorkerFixture({
+    assets: await appAssetSnapshot(),
+    env: { APP_ENV: "production", CARR: { fetch: async () => new Response("synthetic") } },
+  });
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const width of [390, 1440])
+    for (const theme of ["light", "dark"])
+      for (const resume of [false, true]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        try {
+          const now = Date.parse(recorded.as_of);
+          await pausedClock(page, now);
+          const response = structuredClone(recorded);
+          response.rows[0].fresh_until = new Date(now + 60_000).toISOString();
+          response.rows.push({
+            ...response.rows[0],
+            id: "00000000-0000-4000-8000-000000000099",
+            fresh_until: new Date(now + 120_000).toISOString(),
+          });
+          let reads = 0;
+          const errors: string[] = [];
+          page.on("pageerror", (error) => errors.push(error.message));
+          await page.route("https://**", (route) => route.abort());
+          await page.route("**/api/v1/business/**", (route) => {
+            const body = directoryFixture(
+              route.request().url().replace(recorded.subject_id, "00000000-0000-4000-8000-000000000001"),
+              { now },
+            );
+            body.source.valid_until = new Date(now + 600_000).toISOString();
+            if (body.record) Reflect.set(body.record, "id", recorded.subject_id);
+            return route.fulfill({ json: body });
+          });
+          await page.route("**/mcp", (route) => {
+            const req = route.request().postDataJSON();
+            const needs = req.params.name === "read-vendor-client-needs-v1";
+            if (needs) reads++;
+            return route.fulfill({
+              json: {
+                jsonrpc: "2.0",
+                id: req.id,
+                result: { content: [{ type: "text", text: JSON.stringify(needs ? response : {}) }] },
+              },
+            });
+          });
+          const navigation = await page.goto(`${server.origin}/vendors?record=${recorded.subject_id}`);
+          assert.match(navigation?.headers()["content-security-policy"] || "", /script-src 'self'/);
+          await page.evaluate((theme) => document.documentElement.setAttribute("data-theme", theme), theme);
+          const section = page.getByRole("region", { name: "Approved client needs", exact: true });
+          const rows = section.locator("[data-need-id]");
+          await rows.nth(1).waitFor();
+          await page.waitForLoadState("networkidle");
+          if (resume) {
+            await page.evaluate(() => {
+              Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+              document.dispatchEvent(new Event("visibilitychange"));
+            });
+            await page.clock.fastForward(30_000);
+            await page.evaluate(() => {
+              Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+              document.dispatchEvent(new Event("visibilitychange"));
+            });
+          }
+          await page.waitForLoadState("networkidle");
+          await page.clock.fastForward(resume ? 29_999 : 59_999);
+          assert.equal(await rows.count(), 2, "both rows remain fresh before the first deadline");
+          await page.clock.fastForward(1);
+          await section
+            .locator(`[data-need-id="${response.rows[0].id}"]`)
+            .waitFor({ state: "detached", timeout: 2000 });
+          assert.equal(await rows.first().getAttribute("data-need-id"), response.rows[1].id);
+          if (resume) {
+            await page.evaluate(() => {
+              Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+              document.dispatchEvent(new Event("visibilitychange"));
+            });
+            await page.clock.fastForward(120_000);
+            await page.evaluate(() => {
+              Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+              document.dispatchEvent(new Event("visibilitychange"));
+            });
+          } else await page.clock.fastForward(60_000);
+          await section.getByText("No approved client needs match this vendor.", { exact: true }).waitFor();
+          assert.equal(await rows.count(), 0);
+          assert.equal(reads, 1, "local expiry performs no network revalidation");
+          assert.deepEqual(errors, []);
+          await section.getByRole("button", { name: "Refresh client needs", exact: true }).click();
+          await section.getByRole("alert").waitFor();
+          assert.equal(await rows.count(), 0, "revalidating an expired producer response cannot restore rows");
+        } finally {
+          await page.close();
+        }
+      }
 });
