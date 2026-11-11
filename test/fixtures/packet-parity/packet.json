@@ -21,6 +21,26 @@
       },
       "availability": "Available",
       "parking": "4.5/1,000 SF"
+    },
+    {
+      "property_ref": "property:public:BetaMedicalPlaza0002",
+      "route_sequence": 2,
+      "route_label": "B",
+      "name": "Beta Medical Plaza",
+      "address": "200 Beta Lane, Pensacola, FL",
+      "suite": "Suite 220",
+      "property_type": "Ｍｅｄｉｃａｌ　ｏｆｆｉｃｅ",
+      "size": {
+        "value": 2600,
+        "unit": "SF"
+      },
+      "asking_economics": {
+        "value": "24.00",
+        "currency": "USD",
+        "period": "NNN"
+      },
+      "availability": "Available",
+      "parking": "5 spaces"
     }
   ]
 }

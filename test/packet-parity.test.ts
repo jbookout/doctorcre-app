@@ -27,6 +27,9 @@ test("canonical CARR PDF bytes agree exactly with the current client fact format
   changed[0].facts[1] = "11600 SF";
   assert.throws(() => comparePacketStops(pdf, pdf, changed));
   assert.throws(() => comparePacketStops(pdf, pdf, []));
+  assert.throws(() => comparePacketStops(pdf, pdf, [...expected].reverse()));
+  assert.throws(() => comparePacketStops(pdf, pdf, expected.slice(1)));
+  assert.throws(() => comparePacketStops(pdf, pdf, [...expected, ...expected]));
 });
 for (const [fixture, code] of [
   ["pass", 0],

@@ -11,6 +11,9 @@ const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const scalar = (value: unknown): value is string | number =>
   typeof value === "string" || (typeof value === "number" && Number.isFinite(value));
+export function packetText(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value.normalize("NFKC").trim().replace(/\s+/g, " ") || fallback : fallback;
+}
 function packetMetric(value: unknown): string {
   if (!record(value)) return "Not provided";
   for (const [key, entry] of Object.entries(value)) {
@@ -32,7 +35,7 @@ function packetMetric(value: unknown): string {
   const amount = metric.currency ? `${metric.currency} ${range}` : range;
   const unit = metric.unit ? `${amount} ${metric.unit}` : amount;
   const period = metric.period ? `${unit} / ${metric.period}` : unit;
-  return metric.label ? `${metric.label}: ${period}` : period;
+  return packetText(metric.label ? `${metric.label}: ${period}` : period);
 }
 export function packetFacts(value: unknown): [string, string][] {
   const facts = record(value) ? value : {};
@@ -44,11 +47,7 @@ export function packetFacts(value: unknown): [string, string][] {
     ["Parking", "parking"],
   ].map(([label = "", key = ""]) => [
     label,
-    ["size", "asking_economics"].includes(key)
-      ? packetMetric(facts[key])
-      : typeof facts[key] === "string" && facts[key]
-        ? facts[key]
-        : "Not provided",
+    ["size", "asking_economics"].includes(key) ? packetMetric(facts[key]) : packetText(facts[key], "Not provided"),
   ]);
 }
 export function appendPacketFacts(root: HTMLElement, value: unknown): void {

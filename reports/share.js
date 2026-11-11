@@ -1,4 +1,4 @@
-import { appendPacketFacts } from "../js/ui-packet-facts.js";
+import { appendPacketFacts, packetText } from "../js/ui-packet-facts.js";
 import { mountNavigation } from "../js/navigation.js";
 
 mountNavigation(document, location.pathname, { report: true });
@@ -107,7 +107,7 @@ mountNavigation(document, location.pathname, { report: true });
 
   function propertyAddress(item, fallback) {
     const parts = [item?.address, item?.suite].filter(value => typeof value === "string" && value.trim());
-    return parts.length ? parts.join(" · ") : fallback;
+    return parts.length ? parts.map(part => packetText(part)).join(" - ") : fallback;
   }
 
   function feedbackFor(propertyRef) {
@@ -220,9 +220,9 @@ mountNavigation(document, location.pathname, { report: true });
       route.className = "route-label";
       route.textContent = text(item.route_label, `Stop ${routeOrder(item, index)}`);
       const heading = document.createElement("h3");
-      heading.textContent = text(item.name, text(item.title, "Tour property"));
+      heading.textContent = packetText(item.name, packetText(item.title, "Tour property"));
       const detail = document.createElement("p");
-      detail.textContent = text(item.address, "Address unavailable") + (typeof item.suite === "string" && item.suite ? ` - ${item.suite}` : "");
+      detail.textContent = propertyAddress(item, "Address unavailable");
       row.append(route, heading, detail);
       appendPacketFacts(row, item);
       renderFeedbackControls(row, item);

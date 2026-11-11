@@ -1,3 +1,4 @@
+import packet from "./fixtures/packet-parity/packet.json" with { type: "json" };
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
@@ -41,20 +42,28 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
         await page.evaluate((theme) => {
           document.documentElement.dataset.theme = theme;
         }, theme);
-        await page.locator('canvas[data-rendered="true"]').waitFor();
+        await page.waitForFunction(
+          (count) => document.querySelectorAll('canvas[data-rendered="true"]').length === count,
+          packet.properties.length,
+        );
         assert.equal(
           await page.locator("#packet-preview a").getAttribute("href"),
           `/api/tours/pdf/download?render_job_id=${job}`,
         );
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-        assert.ok(await page.locator("canvas").evaluate((node) => node instanceof HTMLCanvasElement && node.width > 0));
-        await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+        assert.ok(
+          await page
+            .locator("canvas")
+            .first()
+            .evaluate((node) => node instanceof HTMLCanvasElement && node.width > 0),
+        );
+        await page.getByRole("button", { name: "Zoom in", exact: true }).first().click();
         assert.equal(
-          await page.getByRole("button", { name: "Fit page", exact: true }).getAttribute("aria-pressed"),
+          await page.getByRole("button", { name: "Fit page", exact: true }).first().getAttribute("aria-pressed"),
           "true",
         );
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-        await page.getByRole("button", { name: "Fit page", exact: true }).click();
+        await page.getByRole("button", { name: "Fit page", exact: true }).first().click();
         if (process.env.PACKET_PARITY_SHOTS) {
           await mkdir(process.env.PACKET_PARITY_SHOTS, { recursive: true });
           await page.screenshot({
@@ -92,10 +101,6 @@ test("a refused artifact shows unavailable without embedding a document", async 
 test("the public packet renders the same synthetic stop facts at both widths", async () => {
   const { appAssetSnapshot } = await import("../scripts/fixture-app-assets.mjs");
   const { observePdf, comparePacketStops } = await import("../scripts/packet-pdf-observation.ts");
-  const packet: unknown = JSON.parse(
-    await readFile(new URL("./fixtures/packet-parity/packet.json", import.meta.url), "utf8"),
-  );
-  assert.ok(packet && typeof packet === "object" && "properties" in packet);
   const assets = await appAssetSnapshot();
   const browser = await chromium.launch();
   try {
@@ -111,7 +116,7 @@ test("the public packet renders the same synthetic stop facts at both widths", a
       const url = new URL(route.request().url());
       const payload =
         url.pathname === "/api/share/report"
-          ? { stops: packet.properties }
+          ? { as_of: packet.as_of, caveat: packet.caveat, stops: packet.properties }
           : url.pathname === "/api/share/map"
             ? { points: [] }
             : url.pathname === "/api/share/feedback"
@@ -172,7 +177,10 @@ test("leaving a rendered preview closes its worker and clears packet content", a
       return route.fulfill({ contentType: "text/html", body: html });
     });
     await page.goto(`https://app.test/tours/packet-preview.html?render_job_id=${job}`);
-    await page.locator('canvas[data-rendered="true"]').waitFor();
+    await page.waitForFunction(
+      (count) => document.querySelectorAll('canvas[data-rendered="true"]').length === count,
+      packet.properties.length,
+    );
     const worker = page.workers()[0];
     assert.ok(worker);
     const closed = worker.waitForEvent("close");
