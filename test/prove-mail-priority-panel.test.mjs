@@ -170,7 +170,11 @@ test('actual CLI compares every displayed evidence field exactly', async t => {
     try {
       const result = await cli(server.origin, contextFixture.endpoint);
       assert.equal(result.code, mode === 'correct' ? 0 : 1, `${mode} ${JSON.stringify(result)}`);
-      assert.equal(context.pages().length, 1, 'only the preexisting page survives');
+      const observer = await chromium.connectOverCDP(contextFixture.endpoint);
+      try {
+        assert.equal(observer.contexts()[0].pages().length, 1, 'only the preexisting page survives through a fresh observer');
+        assert.equal(await contextFixture.page.evaluate(() => 2 + 2), 4, 'the original tab remains usable');
+      } finally { await observer.close(); }
     } finally { await server.close(); }
   });
 });
