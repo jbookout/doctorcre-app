@@ -1,0 +1,184 @@
+{
+  "stops": [
+    {
+      "property_ref": "property:public:synthetic_stop_0003",
+      "route_sequence": 3,
+      "route_label": "3",
+      "name": "Example 3",
+      "address": "3 Example Street",
+      "asking_economics": {
+        "min": 20,
+        "max": 25,
+        "currency": "USD",
+        "unit": "SF",
+        "period": "year"
+      }
+    },
+    {
+      "property_ref": "property:public:synthetic_stop_0001",
+      "route_sequence": 1,
+      "route_label": "1",
+      "name": "Example 1",
+      "address": "1 Example Street",
+      "asking_economics": {
+        "min": 20,
+        "max": 25,
+        "currency": "USD",
+        "unit": "SF",
+        "period": "year"
+      }
+    },
+    {
+      "property_ref": "property:public:synthetic_stop_0002",
+      "route_sequence": 2,
+      "route_label": "2",
+      "name": "Example 2",
+      "address": "2 Example Street",
+      "asking_economics": {
+        "min": 20,
+        "max": 25,
+        "currency": "USD",
+        "unit": "SF",
+        "period": "year"
+      }
+    }
+  ],
+  "presentation": {
+    "version": "2.0.0",
+    "brand": "CARR Healthcare Real Estate",
+    "map": "Tour map",
+    "title": "Your property tour",
+    "overview": "Tour day at a glance",
+    "properties": "Properties",
+    "notes": "My Notes",
+    "unknown": "Unknown",
+    "fields": [
+      [
+        "suite",
+        "Suite"
+      ],
+      [
+        "property_type",
+        "Property type"
+      ],
+      [
+        "size",
+        "Size"
+      ],
+      [
+        "asking_economics",
+        "Asking economics"
+      ],
+      [
+        "availability",
+        "Availability"
+      ],
+      [
+        "parking",
+        "Parking"
+      ]
+    ],
+    "summary": "3 properties in tour order.",
+    "stops": [
+      {
+        "property_ref": "property:public:synthetic_stop_0001",
+        "route_sequence": 1,
+        "route_label": "1",
+        "name": "Example 1",
+        "address": "1 Example Street",
+        "facts": [
+          {
+            "label": "Suite",
+            "value": "Unknown"
+          },
+          {
+            "label": "Property type",
+            "value": "Unknown"
+          },
+          {
+            "label": "Size",
+            "value": "Unknown"
+          },
+          {
+            "label": "Asking economics",
+            "value": "USD 20 to 25 SF per year"
+          },
+          {
+            "label": "Availability",
+            "value": "Unknown"
+          },
+          {
+            "label": "Parking",
+            "value": "Unknown"
+          }
+        ]
+      },
+      {
+        "property_ref": "property:public:synthetic_stop_0002",
+        "route_sequence": 2,
+        "route_label": "2",
+        "name": "Example 2",
+        "address": "2 Example Street",
+        "facts": [
+          {
+            "label": "Suite",
+            "value": "Unknown"
+          },
+          {
+            "label": "Property type",
+            "value": "Unknown"
+          },
+          {
+            "label": "Size",
+            "value": "Unknown"
+          },
+          {
+            "label": "Asking economics",
+            "value": "USD 20 to 25 SF per year"
+          },
+          {
+            "label": "Availability",
+            "value": "Unknown"
+          },
+          {
+            "label": "Parking",
+            "value": "Unknown"
+          }
+        ]
+      },
+      {
+        "property_ref": "property:public:synthetic_stop_0003",
+        "route_sequence": 3,
+        "route_label": "3",
+        "name": "Example 3",
+        "address": "3 Example Street",
+        "facts": [
+          {
+            "label": "Suite",
+            "value": "Unknown"
+          },
+          {
+            "label": "Property type",
+            "value": "Unknown"
+          },
+          {
+            "label": "Size",
+            "value": "Unknown"
+          },
+          {
+            "label": "Asking economics",
+            "value": "USD 20 to 25 SF per year"
+          },
+          {
+            "label": "Availability",
+            "value": "Unknown"
+          },
+          {
+            "label": "Parking",
+            "value": "Unknown"
+          }
+        ]
+      }
+    ]
+  }
+}

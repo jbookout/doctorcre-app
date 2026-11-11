@@ -18,6 +18,8 @@ regeneration output are under `/tmp/WR12.S1.J2-statechart/` in the builder sessi
 Unavailable access with an empty document is an intentional terminal state.
 `CHECK_DEADLOCK FALSE` permits that terminal state and does not disable invariants.
 
-The model assumes that access invalidation clears the packet atomically. The
-browser privacy tests exercise that clearing. Native print-dialog dismissal is
-an environmental assumption, not an automated browser test.
+The model assumes that access invalidation clears the packet atomically.
+`test/public-tour-packet.browser.ts` now executes all six document transitions,
+including Print, `afterprint`, and access invalidation before and during print.
+The test stubs `window.print`; native operating-system dialog behavior remains
+an environmental assumption.

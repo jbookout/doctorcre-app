@@ -11,7 +11,6 @@ const stops = [3, 1, 2].map((n) => ({
   address: `${n} Example Street`,
   size: { value: 1200, unit: "SF", secret: "PRIVATE" },
   broker_notes: "PRIVATE",
-  parking: null,
 }));
 const points = stops.map((stop) => ({ ...stop, latitude: 30, longitude: -87 }));
 test("three properties have one canonical order for web, map and print", () => {
@@ -44,8 +43,9 @@ test("unregistered fallback shapes never become public packet content", () => {
 test("web refuses absent or incompatible presentation contracts and different property membership", () => {
   assert.throws(() => parsePublicTourPacket({ stops }));
   const wrongVersion = presentedPacket(stops);
-  wrongVersion.presentation.version = "3.0.0";
-  assert.throws(() => parsePublicTourPacket(wrongVersion));
+  assert.throws(() =>
+    parsePublicTourPacket({ ...wrongVersion, presentation: { ...wrongVersion.presentation, version: "3.0.0" } }),
+  );
   const omitted = presentedPacket(stops);
   omitted.presentation.stops.pop();
   assert.throws(() => parsePublicTourPacket(omitted));
@@ -57,5 +57,8 @@ test("web preserves the producer's exact formatted values without a second forma
   assert.ok(first);
   first.value = "USD 20 to 25 SF per year";
   const packet = parsePublicTourPacket(wire);
-  assert.equal(packet.find((stop) => stop.route_sequence === 3)?.facts[2]?.value, first.value);
+  assert.equal(
+    packet.find((stop) => stop.route_sequence === wire.presentation.stops[0]?.route_sequence)?.facts[2]?.value,
+    first.value,
+  );
 });

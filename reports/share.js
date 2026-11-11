@@ -262,7 +262,7 @@ mountNavigation(document, location.pathname, { report: true });
         .setPopup(new Popup({ offset: 18 }).setDOMContent(popupBody)).addTo(mapInstance);
     }
     mapInstance.on("load", () => {
-      if (points.length > 1) mapInstance.fitBounds(bounds, { padding: 56, maxZoom: 14, duration: 0 });
+      if (points.length > 1) mapInstance.fitBounds(bounds, { padding: { top: 56, right: 100, bottom: 56, left: 56 }, maxZoom: 14, duration: 0 });
     });
   }
 
