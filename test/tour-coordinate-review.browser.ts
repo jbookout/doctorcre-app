@@ -184,3 +184,97 @@ test("coordinate production proof passes exact candidate fields and fails a near
     }
   }
 });
+
+for (const newlyApproved of [false, true]) {
+  test(`coordinate refresh ${newlyApproved ? "approval" : "rights revocation"} survives property selection and older reads`, async (t) => {
+    const detail = coordinateDetailFixture();
+    const first = detail.stops[0],
+      second = detail.stops[1];
+    assert.ok(first && second);
+    const initial = second.coordinate_review;
+    initial.as_of = "2026-11-10T12:00:00Z";
+    const approved = structuredClone(initial);
+    if (newlyApproved) {
+      for (const candidate of initial.candidates) {
+        if (candidate.approval.status === "verified_entrance")
+          candidate.approval = { status: "unverified", receipt: null };
+      }
+    }
+    const updated = structuredClone(approved);
+    updated.as_of = "2026-11-10T13:00:00Z";
+    updated.property_name = "Corrected Specialty Center";
+    if (!newlyApproved) {
+      for (const candidate of updated.candidates) {
+        candidate.rights.status = "unavailable";
+        candidate.position = null;
+        candidate.access_notes = null;
+        candidate.source.stable_locator = null;
+        candidate.approval = { status: "rights_unavailable", receipt: null };
+      }
+    }
+    let reply = detail;
+    const server = await startWorkerFixture({
+      assets: await appAssetSnapshot(),
+      env: {
+        CARR: {
+          fetch: async (request) =>
+            Response.json({
+              csrf_token: "synthetic",
+              actor: { slug: "synthetic-user" },
+              data:
+                new URL(request.url).pathname === "/api/tours/detail"
+                  ? reply
+                  : new URL(request.url).pathname === "/api/tours/library"
+                    ? { tours: [{ id: detail.id, name: detail.name }] }
+                    : {},
+            }),
+        },
+      },
+    });
+    t.after(() => server.close());
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    t.after(() => page.close());
+    await page.goto(server.origin + "/tours/route-editor.html?tour=" + detail.id);
+    const root = page.locator("#coordinate-review");
+    await root.locator("h3").waitFor();
+    const select = root.locator("select[data-coordinate-property]");
+    await select.selectOption(second.property_id);
+    reply = structuredClone(detail);
+    const refreshed = reply.stops[1];
+    assert.ok(refreshed);
+    refreshed.coordinate_review = updated;
+    await root.getByRole("button", { name: "Refresh coordinate evidence" }).click();
+    await root.locator("h3").filter({ hasText: updated.property_name }).waitFor();
+    const assertFresh = async () => {
+      assert.equal(await root.locator("h3").textContent(), updated.property_name);
+      assert.equal(await select.locator("option:checked").textContent(), updated.property_name);
+      assert.equal(await root.locator("small").textContent(), `Evidence as of ${updated.as_of}`);
+      assert.equal(
+        await root
+          .getByText("Human entrance approved. Route promotion is checked separately.", { exact: true })
+          .count(),
+        newlyApproved ? 1 : 0,
+      );
+      if (!newlyApproved) assert.equal(await root.locator('[data-coordinate-field="position.latitude"]').count(), 0);
+    };
+    await assertFresh();
+    await select.selectOption(first.property_id);
+    await select.selectOption(second.property_id);
+    await assertFresh();
+    reply = detail;
+    await root.getByRole("button", { name: "Refresh coordinate evidence" }).click();
+    await root.getByRole("status").filter({ hasText: "Coordinate evidence is unavailable." }).waitFor();
+    await select.selectOption(first.property_id);
+    await select.selectOption(second.property_id);
+    await assertFresh();
+    reply = structuredClone(detail);
+    await page.route("**/api/tours/detail?**", (route) => route.abort());
+    await root.getByRole("button", { name: "Refresh coordinate evidence" }).click();
+    await root.getByRole("status").filter({ hasText: "Coordinate evidence is unavailable." }).waitFor();
+    await select.selectOption(first.property_id);
+    await select.selectOption(second.property_id);
+    await assertFresh();
+  });
+}
