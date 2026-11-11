@@ -144,13 +144,16 @@ test("Geometry-time row replacement never reports the row covered by its own chi
           const row = document.getElementById("row");
           if (!row) throw Error("Missing fixture row");
           const replacement = row.cloneNode(true);
+          if (!(replacement instanceof Element)) throw Error("Fixture replacement is not an element");
           row.replaceWith(replacement);
           count++;
           Reflect.set(window, "rowReplacements", count);
           observer.unobserve(row);
-          observer.observe(replacement as Element);
+          observer.observe(replacement);
         });
-        observer.observe(document.getElementById("row") as Element);
+        const row = document.getElementById("row");
+        if (!row) throw Error("Missing fixture row");
+        observer.observe(row);
       }, replacements);
       for (const reverse of [false, false, true]) {
         const result = await inspectPhoneAccessibility(page, page.mainFrame(), reverse).then(
@@ -165,9 +168,33 @@ test("Geometry-time row replacement never reports the row covered by its own chi
           assert.deepEqual(result.audit?.covered, [], "Current row owns its center after geometry-time replacement");
         }
       }
-      assert.ok(await page.evaluate(() => Number(Reflect.get(window, "rowReplacements"))) > 0);
+      assert.ok((await page.evaluate(() => Number(Reflect.get(window, "rowReplacements")))) > 0);
     } finally {
       await page.close();
     }
   }
+});
+
+test("A replacement at the same selector with a different action refuses identity", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await page.setContent(
+    '<a id="row" href="#original" style="position:absolute;top:2200px;width:100px;height:60px">Open</a>',
+  );
+  await page.evaluate(() => {
+    const row = document.getElementById("row");
+    if (!row) throw Error("Missing fixture row");
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      const replacement = row.cloneNode(true);
+      if (!(replacement instanceof Element)) throw Error("Fixture replacement is not an element");
+      replacement.setAttribute("href", "#different-action");
+      row.replaceWith(replacement);
+      observer.disconnect();
+    });
+    observer.observe(row);
+  });
+  await assert.rejects(inspectPhoneAccessibility(page), /unstable-identity after 3 attempts/);
+  assert.equal(await page.locator("#row").getAttribute("href"), "#different-action");
 });

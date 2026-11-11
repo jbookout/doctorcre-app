@@ -19,6 +19,7 @@ const tour =
 
 for (const scenario of [
   "standalone",
+  "unstable identity",
   "embedded",
   "pagination",
   "incomplete pagination",
@@ -37,6 +38,19 @@ for (const scenario of [
     await page.route("http://walk.test/**", (route) => {
       const url = new URL(route.request().url());
       let body = '<button class="inbox-row">Inbox</button>';
+      if (scenario === "unstable identity")
+        body += `<a href="#" id="row" style="position:absolute;top:2200px;width:100px;height:60px"><span>Row</span></a><script>
+          const observer = new IntersectionObserver(entries => {
+            if (!entries.some(entry => entry.isIntersecting)) return;
+            const row = document.getElementById('row');
+            const replacement = row.cloneNode(true);
+            replacement.setAttribute('href', '#different-action');
+            row.replaceWith(replacement);
+            observer.unobserve(row);
+            observer.observe(replacement);
+          });
+          observer.observe(document.getElementById('row'));
+        </script>`;
       if (scenario === "unavailable surface") body = "Unavailable";
       else if (url.pathname === "/deals" && url.search)
         body = '<iframe title="Tour shortlist, route and packet" src="/frame"></iframe>';
@@ -90,7 +104,10 @@ for (const scenario of [
           assert.equal(await frame.locator("#cheat-content").isVisible(), true);
         }
       });
-    if (scenario === "unavailable frame") {
+    if (scenario === "unstable identity") {
+      await assert.rejects(walk, /unstable-identity/);
+      assert.deepEqual(captures, []);
+    } else if (scenario === "unavailable frame") {
       await assert.rejects(walk, /Tour editor frame unavailable/);
       assert.deepEqual(captures, names.slice(0, 4));
     } else if (scenario === "incomplete pagination") {

@@ -15,6 +15,7 @@ current application source at 390 and 1440 in both themes.
 | --- | --- |
 | Initial state to ready | Walk transition coverage: standalone |
 | Ready to Home | Walk transition coverage: standalone |
+| Ready to refusal during Home inspection after three unstable identity attempts | Walk transition coverage: unstable identity |
 | Home to Deals board | Walk transition coverage: standalone |
 | Deals board to Deal | Walk transition coverage: standalone |
 | Deal to Tours library | Walk transition coverage: standalone |
@@ -71,3 +72,13 @@ The real chart passes. Adding `Ready --> Complete: finish without observing any 
 breaks `CompletionRequiresNine` in one step. Adding `Incomplete --> Complete: finish after refusal`
 breaks `IncompleteDiscoveryRefusesCompletion`. These mutation edges describe forbidden
 model behavior, not observed shortcuts in the runtime walk.
+
+Geometry evidence belongs to one connected activation node and its logical target.
+The inspector re-resolves both after observation and checks their identity and
+bounding rectangle before hit testing. It retries at most three times, then
+refuses with `unstable-identity`. Identity includes the selector, tag, label text
+and action attributes. A same-ID replacement with a different action refuses.
+The browser regressions replace a row from a real IntersectionObserver callback.
+They exercise one replacement, finite churn and continuous churn without mocking
+the inspector or browser geometry. The chart's unstable-identity edge represents
+refusal before recording Home. It abstracts the three internal attempts.

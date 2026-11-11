@@ -140,18 +140,28 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       class: node.getAttribute("class") || "",
       text: (node.getAttribute("aria-label") || node.textContent || "").trim().slice(0, 80),
     });
+    const identity = (node: Element) =>
+      JSON.stringify([
+        node.tagName,
+        ...["id", "href", "role", "type", "for", "name", "onclick", "data-action", "aria-label"].map((name) =>
+          node.getAttribute(name),
+        ),
+        node.textContent,
+      ]);
     const measured = (reverse ? [...targets].reverse() : targets).map(({ element, box }) => ({
       description: { ...describeTarget(element), ...box },
+      targetIdentity: identity(element),
       areaSelector: selector(activationAreas.get(element) || element),
+      areaIdentity: identity(activationAreas.get(element) || element),
     }));
-    const findArea = (path: string): Element => {
+    const findArea = (path: string): Element | null => {
       let root: Document | ShadowRoot = document;
       const parts = path.split(" >>> ");
       for (const [index, part] of parts.entries()) {
         const node: Element | null = root.querySelector(part);
-        if (!node) throw Error(`Phone target changed during inspection: ${path}`);
+        if (!node) return null;
         if (index === parts.length - 1) return node;
-        if (!node.shadowRoot) throw Error(`Phone target shadow root changed: ${path}`);
+        if (!node.shadowRoot) return null;
         root = node.shadowRoot;
       }
       throw Error(`Empty phone target selector: ${path}`);
@@ -171,39 +181,60 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       visibleBox: { x: number; y: number; width: number; height: number };
     })[] = [];
     try {
-      for (const { description, areaSelector } of measured) {
-        await restoreScroll();
-        findArea(areaSelector).scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        const area = findArea(areaSelector);
-        const [size, rect] = await Promise.all(
-          [{ root: document, rootMargin: `${margin}px` }, {}].map(
-            (options) =>
-              new Promise<DOMRectReadOnly>((resolve) => {
-                const observer = new IntersectionObserver(([entry]) => {
-                  if (!entry) return;
-                  observer.disconnect();
-                  resolve(entry.intersectionRect);
-                }, options);
-                observer.observe(area);
-              }),
-          ),
-        );
-        if (!size || !rect) throw Error("Phone target geometry unavailable");
-        description.width = size.width;
-        description.height = size.height;
-        let hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-        while (hit?.shadowRoot) {
-          const inner = hit.shadowRoot.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-          if (!inner || inner === hit) break;
-          hit = inner;
+      for (const { description, targetIdentity, areaSelector, areaIdentity } of measured) {
+        let stable = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await restoreScroll();
+          findArea(areaSelector)?.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          const area = findArea(areaSelector);
+          const target = findArea(description.selector);
+          if (!area?.isConnected || !target?.isConnected) continue;
+          if (identity(area) !== areaIdentity || identity(target) !== targetIdentity) continue;
+          const before = area.getBoundingClientRect().toJSON();
+          const [size, rect] = await Promise.all(
+            [{ root: document, rootMargin: `${margin}px` }, {}].map(
+              (options) =>
+                new Promise<DOMRectReadOnly>((resolve) => {
+                  const observer = new IntersectionObserver(([entry]) => {
+                    if (!entry) return;
+                    observer.disconnect();
+                    resolve(entry.intersectionRect);
+                  }, options);
+                  observer.observe(area);
+                }),
+            ),
+          );
+          const currentArea = findArea(areaSelector);
+          const currentTarget = findArea(description.selector);
+          if (
+            currentArea !== area ||
+            currentTarget !== target ||
+            !area.isConnected ||
+            !target.isConnected ||
+            identity(area) !== areaIdentity ||
+            identity(target) !== targetIdentity ||
+            JSON.stringify(before) !== JSON.stringify(area.getBoundingClientRect().toJSON())
+          )
+            continue;
+          if (!size || !rect) throw Error("Phone target geometry unavailable");
+          Object.assign(description, describeTarget(target), { width: size.width, height: size.height });
+          let hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          while (hit?.shadowRoot) {
+            const inner = hit.shadowRoot.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+            if (!inner || inner === hit) break;
+            hit = inner;
+          }
+          if (!rect.width || !rect.height || !hit || (hit !== area && !contains(area, hit)))
+            covered.push({
+              ...description,
+              hit: hit ? selector(hit) : null,
+              visibleBox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            });
+          stable = true;
+          break;
         }
-        if (!rect.width || !rect.height || !hit || (hit !== area && !contains(area, hit)))
-          covered.push({
-            ...description,
-            hit: hit ? selector(hit) : null,
-            visibleBox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          });
+        if (!stable) throw Error(`Phone target unstable-identity after 3 attempts: ${areaSelector}`);
       }
     } finally {
       await restoreScroll();

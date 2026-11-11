@@ -3,6 +3,7 @@ stateDiagram-v2
     [*] --> Ready
     Ready --> Home: open Home
     Ready --> Incomplete: required surface unavailable
+    Ready --> Incomplete: target identity remains unstable
     Home --> Board: open Deals
     Board --> Deal: open first Deal
     Deal --> Tours: open Tours
@@ -73,6 +74,8 @@ stateDiagram-v2
   state "All nine observations recorded" as Observed9
   --
   [*] --> Discovering
+  Discovering --> DiscoveryIncomplete: target identity remains unstable [while Ready]
+  %% when Ready
   Discovering --> DiscoveryIncomplete: required surface unavailable [while Ready]
   %% when Ready
   Discovering --> DiscoveryIncomplete: frame unavailable [while Embedded]
