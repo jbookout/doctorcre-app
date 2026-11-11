@@ -3,9 +3,10 @@ import { execFile } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { promisify } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
-import { chromium } from "./browser-harness.mjs";
+import { chromium, webkit } from "./browser-harness.mjs";
 import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 
 test("Home brief stays inline with inbox and restores priority focus in both themes and widths", async (t) => {
@@ -149,3 +150,41 @@ test("inline brief proof CLI returns 0 and 1 with no borrowed-tab leak", async (
   });
   assert.equal(fixture.context.pages().length, before);
 });
+
+for (const [engineName, engine] of [
+  ["chromium", chromium],
+  ["webkit", webkit],
+] as const)
+  test(`Home lays out the inbox before accepting clicks with a delayed brief stylesheet ${engineName}`, {
+    skip: engineName === "webkit" && webkit.skip,
+  }, async (t) => {
+    const server = await startWorkerFixture({
+      assets: await appAssetSnapshot(),
+      qaSeed: JSON.parse(await readFile(new URL("../data/board-seed.json", import.meta.url), "utf8")),
+    });
+    t.after(() => server.close());
+    const browser = await engine.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width: 390, height: 667 }, colorScheme: "dark" });
+    await page.request.post(`${server.origin}/api/test/seed`, {
+      data: { namespace: `brief-style-${engineName}`, reset: true },
+    });
+    await page.route("**/css/morning-brief.css", async (route) => {
+      await delay(1500);
+      await route.continue();
+    });
+    await page.goto(`${server.origin}/`, { waitUntil: "commit" });
+    const checkbox = page.locator('.inbox-row input[type="checkbox"]').first();
+    await checkbox.waitFor();
+    const initial = await checkbox.boundingBox();
+    await page.waitForFunction(() => {
+      const inbox = document.querySelector(".home-inbox");
+      return inbox && getComputedStyle(inbox).display === "grid";
+    });
+    assert.deepEqual(
+      await checkbox.boundingBox(),
+      initial,
+      "The brief stylesheet must not move an already interactive inbox control",
+    );
+    assert.equal(await page.locator(".home-brief-toggle").isVisible(), true);
+  });
