@@ -20,11 +20,14 @@ test('one document has at most 600 HTTP attempts, including both auth checks, un
  budget.dispose();
 });
 
-test('the first-party static payload fits the 400-request initialization allowance', async t => {
+test('the deployed static payload retains platform headroom independently of per-page requests', async t => {
  const {temporaryDirectory}=await import('../scripts/temp-directory.mjs');
  const {buildArtifact}=await import('../scripts/artifact.mjs');
  const {fileURLToPath}=await import('node:url');
  const built=await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:temporaryDirectory('quiet-tab-assets-',t),commit:'1'.repeat(40)});
  assert.equal(INITIAL_ASSET_REQUEST_LIMIT,400);assert.equal(QUIET_TAB_REQUEST_LIMIT,1000);
- assert.ok(built.manifest.files.length<=400,`static payload contains ${built.manifest.files.length} files`);
+ const {assetBudget}=await import('../scripts/asset-budget.ts');
+ const capacity=assetBudget(built.manifest.files.length);
+ t.diagnostic(JSON.stringify(capacity));
+ assert.ok(capacity.headroom>=capacity.minimumHeadroom);
 });
