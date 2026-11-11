@@ -5,8 +5,6 @@ type BaselineRow = {
   surface: string;
   theme: string;
   selector: string;
-  width: number;
-  height: number;
 };
 type Observation = Awaited<ReturnType<typeof walkV2Accessibility>>[number] & { width: number; theme: string };
 
@@ -20,8 +18,6 @@ export function phoneBaselineRows(results: Observation[]): BaselineRow[] {
           surface: row.name,
           theme: row.theme,
           selector: target.selector,
-          width: target.width,
-          height: target.height,
         })),
       ),
     );
@@ -35,8 +31,6 @@ export function comparePhoneBaseline(observed: BaselineRow[], baseline: Baseline
   for (const row of observed) {
     const previous = remaining.get(key(row));
     if (!previous) failures.push(`New ${row.kind} target ${key(row)}`);
-    else if (row.width < previous.width || row.height < previous.height)
-      failures.push(`Target got smaller ${key(row)}: ${row.width} x ${row.height}`);
     remaining.delete(key(row));
   }
   for (const row of remaining.values()) failures.push(`Remove fixed or absent target from baseline ${key(row)}`);

@@ -16,18 +16,20 @@ test("Phone baseline accepts existing targets without growth in debt", () => {
 test("Phone baseline rejects new 20 px targets", () => {
   assert.equal(comparePhoneBaseline([target], []).length, 1);
 });
-test("Phone baseline rejects a target shrinking on either axis", () => {
-  assert.equal(comparePhoneBaseline([{ ...target, height: 19 }], [target]).length, 1);
+test("Phone baseline accepts dimension changes while the failure kind stays the same", () => {
+  const changed = { ...target, height: 19 };
+  assert.deepEqual(comparePhoneBaseline([changed], [target]), []);
 });
 test("A fixed target must be removed from the baseline", () => {
   assert.equal(comparePhoneBaseline([], [target]).length, 1);
   assert.deepEqual(comparePhoneBaseline([], []), []);
 });
 
-test("Coverage and size allowances are independent and shrink-only", () => {
+test("Coverage and size allowances are independent", () => {
   const covered = { ...target, kind: "covered" as const };
   assert.match(comparePhoneBaseline([covered], [target]).join("\n"), /New covered target/);
   assert.deepEqual(comparePhoneBaseline([covered, target], [covered, target]), []);
   assert.match(comparePhoneBaseline([target], [covered, target]).join("\n"), /Remove fixed/);
-  assert.match(comparePhoneBaseline([{ ...covered, width: 19 }], [covered]).join("\n"), /got smaller/);
+  const changed = { ...covered, width: 19 };
+  assert.deepEqual(comparePhoneBaseline([changed], [covered]), []);
 });

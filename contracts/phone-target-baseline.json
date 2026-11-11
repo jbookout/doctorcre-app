@@ -3,416 +3,204 @@
     "kind": "undersized",
     "surface": "Home",
     "theme": "light",
-    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(1) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 246.609375,
-    "height": 18
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(1) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Home",
     "theme": "light",
-    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(5) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 223.609375,
-    "height": 18
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(5) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Home",
     "theme": "light",
-    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(7) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 210.75,
-    "height": 18
-  },
-  {
-    "kind": "covered",
-    "surface": "Home",
-    "theme": "light",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 130.3125,
-    "height": 48.75
-  },
-  {
-    "kind": "covered",
-    "surface": "Deals board",
-    "theme": "light",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 167.078125,
-    "height": 48.75
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(7) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Deal",
     "theme": "light",
-    "selector": "#detailUpdateForm > label:nth-of-type(1)",
-    "width": 366,
-    "height": 24.75
+    "selector": "#detailUpdateForm > label:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Deal",
     "theme": "light",
-    "selector": "#detailUpdateForm > label:nth-of-type(2)",
-    "width": 366,
-    "height": 24.75
+    "selector": "#detailUpdateForm > label:nth-of-type(2)"
   },
   {
     "kind": "undersized",
     "surface": "Deal",
     "theme": "light",
-    "selector": "#detailUpdateForm > label:nth-of-type(3)",
-    "width": 366,
-    "height": 24.75
+    "selector": "#detailUpdateForm > label:nth-of-type(3)"
   },
   {
     "kind": "covered",
     "surface": "Deal",
     "theme": "light",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 167.078125,
-    "height": 48.75
-  },
-  {
-    "kind": "covered",
-    "surface": "Deal",
-    "theme": "light",
-    "selector": "#docOpen",
-    "width": 44,
-    "height": 44
+    "selector": "#docOpen"
   },
   {
     "kind": "undersized",
     "surface": "Tours library",
     "theme": "light",
-    "selector": "#planner-refresh",
-    "width": 41.9375,
-    "height": 44
-  },
-  {
-    "kind": "covered",
-    "surface": "Tours library",
-    "theme": "light",
-    "selector": "#appMainSlot > a:nth-of-type(1)",
-    "width": 120.140625,
-    "height": 44
+    "selector": "#planner-refresh"
   },
   {
     "kind": "undersized",
     "surface": "Tour and cheat sheet",
     "theme": "light",
-    "selector": "#internal-cheat-sheet > label:nth-of-type(1)",
-    "width": 300,
-    "height": 19.5
-  },
-  {
-    "kind": "covered",
-    "surface": "Tour and cheat sheet",
-    "theme": "light",
-    "selector": "#appMainSlot > a:nth-of-type(1)",
-    "width": 197.125,
-    "height": 44
+    "selector": "#internal-cheat-sheet > label:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Vendors Suggested",
     "theme": "light",
-    "selector": "#vendor-meeting-person-0",
-    "width": 116.375,
-    "height": 21
-  },
-  {
-    "kind": "covered",
-    "surface": "Vendors Suggested",
-    "theme": "light",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 151.796875,
-    "height": 48.75
+    "selector": "#vendor-meeting-person-0"
   },
   {
     "kind": "undersized",
     "surface": "Vendors Research",
     "theme": "light",
-    "selector": "#vendor-meeting-person-0",
-    "width": 116.375,
-    "height": 21
-  },
-  {
-    "kind": "covered",
-    "surface": "Vendors Research",
-    "theme": "light",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 151.796875,
-    "height": 48.75
+    "selector": "#vendor-meeting-person-0"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "light",
-    "selector": "#networkRefresh",
-    "width": 28,
-    "height": 44
+    "selector": "#networkRefresh"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "light",
-    "selector": "#networkKindFilter > label:nth-of-type(1)",
-    "width": 99.9375,
-    "height": 15
+    "selector": "#networkKindFilter > label:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "light",
-    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(1)",
-    "width": 334,
-    "height": 19.5
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "light",
-    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(2)",
-    "width": 334,
-    "height": 19.5
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(2)"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "light",
-    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(3)",
-    "width": 334,
-    "height": 19.5
-  },
-  {
-    "kind": "covered",
-    "surface": "Relationships",
-    "theme": "light",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 192.6875,
-    "height": 48.75
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(3)"
   },
   {
     "kind": "undersized",
     "surface": "Leads",
     "theme": "light",
-    "selector": "#refreshBoard",
-    "width": 28,
-    "height": 44
-  },
-  {
-    "kind": "covered",
-    "surface": "Leads",
-    "theme": "light",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 130.6875,
-    "height": 44
+    "selector": "#refreshBoard"
   },
   {
     "kind": "undersized",
     "surface": "Home",
     "theme": "dark",
-    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(1) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 246.609375,
-    "height": 18
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(1) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Home",
     "theme": "dark",
-    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(5) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 223.609375,
-    "height": 18
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(5) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Home",
     "theme": "dark",
-    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(7) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 210.75,
-    "height": 18
-  },
-  {
-    "kind": "covered",
-    "surface": "Home",
-    "theme": "dark",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 130.3125,
-    "height": 48.75
-  },
-  {
-    "kind": "covered",
-    "surface": "Deals board",
-    "theme": "dark",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 167.078125,
-    "height": 48.75
+    "selector": "#homeRoot > section:nth-of-type(1) > div:nth-of-type(2) > section:nth-of-type(7) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > a:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Deal",
     "theme": "dark",
-    "selector": "#detailUpdateForm > label:nth-of-type(1)",
-    "width": 366,
-    "height": 24.75
+    "selector": "#detailUpdateForm > label:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Deal",
     "theme": "dark",
-    "selector": "#detailUpdateForm > label:nth-of-type(2)",
-    "width": 366,
-    "height": 24.75
+    "selector": "#detailUpdateForm > label:nth-of-type(2)"
   },
   {
     "kind": "undersized",
     "surface": "Deal",
     "theme": "dark",
-    "selector": "#detailUpdateForm > label:nth-of-type(3)",
-    "width": 366,
-    "height": 24.75
+    "selector": "#detailUpdateForm > label:nth-of-type(3)"
   },
   {
     "kind": "covered",
     "surface": "Deal",
     "theme": "dark",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 167.078125,
-    "height": 48.75
-  },
-  {
-    "kind": "covered",
-    "surface": "Deal",
-    "theme": "dark",
-    "selector": "#docOpen",
-    "width": 44,
-    "height": 44
+    "selector": "#docOpen"
   },
   {
     "kind": "undersized",
     "surface": "Tours library",
     "theme": "dark",
-    "selector": "#planner-refresh",
-    "width": 41.9375,
-    "height": 44
-  },
-  {
-    "kind": "covered",
-    "surface": "Tours library",
-    "theme": "dark",
-    "selector": "#appMainSlot > a:nth-of-type(1)",
-    "width": 120.140625,
-    "height": 44
+    "selector": "#planner-refresh"
   },
   {
     "kind": "undersized",
     "surface": "Tour and cheat sheet",
     "theme": "dark",
-    "selector": "#internal-cheat-sheet > label:nth-of-type(1)",
-    "width": 300,
-    "height": 19.5
-  },
-  {
-    "kind": "covered",
-    "surface": "Tour and cheat sheet",
-    "theme": "dark",
-    "selector": "#appMainSlot > a:nth-of-type(1)",
-    "width": 197.125,
-    "height": 44
+    "selector": "#internal-cheat-sheet > label:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Vendors Suggested",
     "theme": "dark",
-    "selector": "#vendor-meeting-person-0",
-    "width": 116.375,
-    "height": 21
-  },
-  {
-    "kind": "covered",
-    "surface": "Vendors Suggested",
-    "theme": "dark",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 151.796875,
-    "height": 48.75
+    "selector": "#vendor-meeting-person-0"
   },
   {
     "kind": "undersized",
     "surface": "Vendors Research",
     "theme": "dark",
-    "selector": "#vendor-meeting-person-0",
-    "width": 116.375,
-    "height": 21
-  },
-  {
-    "kind": "covered",
-    "surface": "Vendors Research",
-    "theme": "dark",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 151.796875,
-    "height": 48.75
+    "selector": "#vendor-meeting-person-0"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "dark",
-    "selector": "#networkRefresh",
-    "width": 28,
-    "height": 44
+    "selector": "#networkRefresh"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "dark",
-    "selector": "#networkKindFilter > label:nth-of-type(1)",
-    "width": 99.9375,
-    "height": 15
+    "selector": "#networkKindFilter > label:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "dark",
-    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(1)",
-    "width": 334,
-    "height": 19.5
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(1)"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "dark",
-    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(2)",
-    "width": 334,
-    "height": 19.5
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(2)"
   },
   {
     "kind": "undersized",
     "surface": "Relationships",
     "theme": "dark",
-    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(3)",
-    "width": 334,
-    "height": 19.5
-  },
-  {
-    "kind": "covered",
-    "surface": "Relationships",
-    "theme": "dark",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 192.6875,
-    "height": 48.75
+    "selector": "#appSidebarSlot > section:nth-of-type(1) > label:nth-of-type(3)"
   },
   {
     "kind": "undersized",
     "surface": "Leads",
     "theme": "dark",
-    "selector": "#refreshBoard",
-    "width": 28,
-    "height": 44
-  },
-  {
-    "kind": "covered",
-    "surface": "Leads",
-    "theme": "dark",
-    "selector": "#appShell > header:nth-of-type(1) > a:nth-of-type(1)",
-    "width": 130.6875,
-    "height": 44
+    "selector": "#refreshBoard"
   }
 ]

@@ -20,3 +20,25 @@ for (const top of [-100, 100])
       await t.test(id, () => assert.ok(!audit.small.some((x) => x.id === id), `${id} must be excluded`));
     assert.ok(audit.small.some((x) => x.id === "visible"));
   });
+
+test("Keyboard-only skip navigation is excluded without excluding touch links", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await page.setContent(`<style>
+    .skip { position: fixed; top: -100px; }
+    .skip:focus { top: 0; }
+    a { display: inline-block; width: 20px; height: 20px; }
+  </style>
+  <a id="keyboard" class="skip" href="#main">Skip to content</a>
+  <a id="touch" href="#main">Content</a>
+  <a id="offscreen" style="position:absolute;top:1200px" href="#main">More</a>
+  <main id="main" tabindex="-1">Content</main>`);
+  await page.locator("#keyboard").focus();
+  assert.equal(await page.locator("#keyboard").evaluate((node) => node.getBoundingClientRect().top), 0);
+  await page.locator("#keyboard").evaluate((node) => node.blur());
+  const audit = await inspectPhoneAccessibility(page);
+  assert.ok(!audit.small.some((row) => row.id === "keyboard"));
+  assert.ok(!audit.covered.some((row) => row.id === "keyboard"));
+  for (const id of ["touch", "offscreen"]) assert.ok(audit.small.some((row) => row.id === id));
+});

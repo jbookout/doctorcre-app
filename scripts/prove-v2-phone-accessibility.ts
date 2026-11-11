@@ -41,7 +41,7 @@ export async function observeV2Accessibility(page: Page, origin: string, shots: 
   assert.deepEqual(
     comparePhoneBaseline(phoneBaselineRows(results), baseline),
     [],
-    "Phone target baseline only shrinks",
+    "Phone target failures match the baseline",
   );
   return { results, scope: "Read-only phone target baseline. Other accessibility results are diagnostics." };
 }

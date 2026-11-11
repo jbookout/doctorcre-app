@@ -34,7 +34,11 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       for (let current = parent(child); current; current = parent(current)) if (current === ancestor) return true;
       return false;
     };
-    const candidates = [...this.values()];
+    const isKeyboardSkipNavigation = (node: Element) =>
+      node.matches('a.skip[href^="#"], a.skip-link[href^="#"]') &&
+      /^skip\b/i.test((node.getAttribute("aria-label") || node.textContent || "").trim()) &&
+      !!document.getElementById((node.getAttribute("href") || "").slice(1));
+    const candidates = [...this.values()].filter(({ element }) => !isKeyboardSkipNavigation(element));
     const elements = new Set(candidates.map(({ element }) => element));
     for (const { element } of candidates)
       if (element instanceof HTMLInputElement) for (const label of element.labels || []) elements.add(label);

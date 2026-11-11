@@ -10,7 +10,7 @@ import { walkV2Accessibility } from "../scripts/v2-accessibility-walk.ts";
 import { chromium } from "./browser-harness.mjs";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 
-test("V2 phone targets match the shrink-only baseline in both themes", async (t) => {
+test("V2 phone targets match the identity and failure-kind baseline in both themes", async (t) => {
   const root = await temporaryDirectory("v2-phone-a11y-", t);
   await buildArtifact({ root: process.cwd(), outDir: root, commit: "1".repeat(40) });
   const server = await (await createQaServer({ buildRoot: `${root}/site` })).start();
@@ -158,8 +158,8 @@ test("V2 phone targets match the shrink-only baseline in both themes", async (t)
   await writeFile(`${shots}/results.json`, JSON.stringify(results, null, 2));
   const observed = phoneBaselineRows(results);
   await writeFile(`${shots}/phone-target-baseline.json`, `${JSON.stringify(observed, null, 2)}\n`);
-  const baseline = JSON.parse(
-    await readFile(new URL("../contracts/phone-target-baseline.json", import.meta.url), "utf8"),
-  );
-  assert.deepEqual(comparePhoneBaseline(observed, baseline), [], "Phone target baseline only shrinks");
+  const baselineText = await readFile(new URL("../contracts/phone-target-baseline.json", import.meta.url), "utf8");
+  const baseline = JSON.parse(baselineText);
+  assert.deepEqual(comparePhoneBaseline(observed, baseline), [], "Phone target failures match the baseline");
+  assert.equal(`${JSON.stringify(observed, null, 2)}\n`, baselineText, "Generated baseline is byte-identical");
 });
