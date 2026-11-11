@@ -20,7 +20,7 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   if (basemap) {
     const source = await loadFixtureAssets({root:fileURLToPath(root),manifest:new Map([['/tours/day.js','tours/day.js']])});
     const day = source.get('/tours/day.js');
-    assets.set('/tours/day.js', { ...day, body:day.body.toString().replace('mountTourDay({ document, window });',
+    assets.set('/tours/day.js', { ...day, body:day.body.toString().replace('mountTourDay({ document, window, navigationFromEvidence });',
       'mountTourDay({ document, window, mapFactory: (root, options) => mountAcceptedItinerary(root, { ...options, basemapStyle: { version: 8, sources: {}, layers: [] } }) });') });
   }
   const server = await startWorkerFixture({ assets, env: { CARR: { fetch: async request => {

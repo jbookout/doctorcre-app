@@ -20,7 +20,7 @@ export function ownedBrowserProcesses(root, ownerPid) {
   return [...owned];
 }
 
-export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeoutMs = 5000, acquisitionDelayMs = 0 }) {
+export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeoutMs = 5000, acquisitionDelayMs = 0, evaluationTarget = 'page' }) {
   assert.ok(['late launch', 'stalled evaluation'].includes(mode));
   const proofTimeoutMs = mode === 'stalled evaluation' ? 30000 : timeoutMs;
   const root = temporaryDirectory('proof-browser-fault-', t);
@@ -60,13 +60,17 @@ export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeout
         browser.newPage = async (...args) => {
           const page = await newPage(...args);
           await new Promise(resolve => setTimeout(resolve, ${acquisitionDelayMs}));
-          page.evaluate = () => {
+          const stall = () => {
             state.evaluating = true;
             if (!deadline) throw Error('Proof deadline timer was not captured');
             deadline();
             save();
             return new Promise(() => {});
           };
+          if (${JSON.stringify(evaluationTarget)} === 'locator') {
+            const locator = page.locator('html');
+            Object.getPrototypeOf(locator).evaluate = stall;
+          } else page.evaluate = stall;
           return page;
         };
       }

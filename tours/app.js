@@ -1,3 +1,4 @@
+import { navigationFromEvidence } from "../js/ui-tour-navigation.js";
 import { mountStopDrag, reorderFlexibleStops } from "/js/ui-tour-stop-drag.js";
 import { prepareClientGrant, grantReceipt, renderClientGrants } from '../js/ui-tour-client-grants.js';
 import { generatedSheet, sheetHistory, appendSheetSections } from "../js/ui-broker-cheat-sheet.js";
@@ -537,7 +538,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   let composer = null, itineraryView = null, stopDrag = null;
   function renderAcceptedItinerary() {
     const root = $("#accepted-itinerary");
-    const route = acceptedRouteFromDetail(state.tour);
+    const route = acceptedRouteFromDetail(state.tour, navigationFromEvidence);
     const options = { route, scope: sessionBinding, user_ref: state.userRef, promotion_receipt: route?.navigation?.promotion_receipt ?? null };
     $("#tour-day-link").hidden = !route;
     $("#tour-day-link").href = `/tours/day.html?tour=${encodeURIComponent(state.tour.id)}`;

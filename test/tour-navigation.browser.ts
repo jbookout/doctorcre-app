@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import test from "node:test";
 import { promisify } from "node:util";
@@ -7,7 +7,9 @@ import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium } from "../scripts/proof-browser.mjs";
+import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { detailFixture } from "./fixtures/tour-navigation/detail.ts";
+import { assertProofDeadlineCleanup } from "./proof-browser-harness.mjs";
 
 test("proof CLI passes approved evidence and fails a near-miss generated coordinate", async () => {
   const commit = "1".repeat(40),
@@ -169,3 +171,109 @@ test("itinerary Navigate exact coordinates hidden evidence and return at phone a
     await server.close();
   }
 });
+
+async function proofFixture(t: test.TestContext, commit: string) {
+  const detail = detailFixture();
+  const server = await startWorkerFixture({
+    assets: await appAssetSnapshot(),
+    env: {
+      APP_ENV: "production",
+      GIT_SHA: commit,
+      CARR: {
+        fetch: async (request) => {
+          const path = new URL(request.url).pathname;
+          return Response.json({
+            csrf_token: "synthetic-session",
+            actor: { slug: "synthetic-user" },
+            data:
+              path === "/api/tours/detail"
+                ? detail
+                : path === "/api/tours/library"
+                  ? { tours: [{ id: detail.id, name: detail.name }] }
+                  : {},
+          });
+        },
+      },
+    },
+  });
+  t.after(() => server.close());
+  return { args: ["--fixture", "--origin", server.origin, "--commit", commit, "--tour", detail.id] };
+}
+
+test("proof CLI accepts equal and descendant releases and refuses older unrelated and unknown releases", async (t) => {
+  const cwd = temporaryDirectory("tour-proof-git-", t);
+  const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  git("init", "-q");
+  git("-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.test", "commit", "--allow-empty", "-qm", "root");
+  const older = git("rev-parse", "HEAD");
+  git(
+    "-c",
+    "user.name=Synthetic",
+    "-c",
+    "user.email=synthetic@example.test",
+    "commit",
+    "--allow-empty",
+    "-qm",
+    "expected",
+  );
+  const expected = git("rev-parse", "HEAD");
+  git(
+    "-c",
+    "user.name=Synthetic",
+    "-c",
+    "user.email=synthetic@example.test",
+    "commit",
+    "--allow-empty",
+    "-qm",
+    "descendant",
+  );
+  const descendant = git("rev-parse", "HEAD");
+  git("checkout", "--orphan", "unrelated");
+  git(
+    "-c",
+    "user.name=Synthetic",
+    "-c",
+    "user.email=synthetic@example.test",
+    "commit",
+    "--allow-empty",
+    "-qm",
+    "unrelated",
+  );
+  const unrelated = git("rev-parse", "HEAD");
+  for (const [kind, observed] of Object.entries({
+    equal: expected,
+    descendant,
+    older,
+    unrelated,
+    unknown: "f".repeat(40),
+  })) {
+    const { args } = await proofFixture(t, observed);
+    args[args.indexOf("--commit") + 1] = expected;
+    const execution = promisify(execFile)(
+      process.execPath,
+      [new URL("../scripts/prove-tour-navigation.ts", import.meta.url).pathname, ...args],
+      { cwd, timeout: 60000 },
+    );
+    if (kind === "equal" || kind === "descendant") assert.equal(JSON.parse((await execution).stdout).status, "passed");
+    else
+      await assert.rejects(execution, (error: unknown) => {
+        assert.ok(error && typeof error === "object" && "code" in error && "stdout" in error);
+        assert.equal(error.code, 78, kind);
+        assert.equal(JSON.parse(String(error.stdout)).status, "insufficient_evidence", kind);
+        return true;
+      });
+  }
+});
+
+for (const mode of ["late launch", "stalled evaluation"] as const) {
+  test(`Tour proof CLI deadline cleans ${mode}`, async (t) => {
+    const { args } = await proofFixture(t, "1".repeat(40));
+    await assertProofDeadlineCleanup(t, {
+      entry: "scripts/prove-tour-navigation.ts",
+      args,
+      mode,
+      timeoutMs: 1500,
+      evaluationTarget: "locator",
+    });
+  });
+}

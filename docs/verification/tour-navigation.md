@@ -4,7 +4,7 @@ The itinerary and Tour day use `src/ui/tour-navigation.ts` to adapt the authenti
 
 ## System design
 
-The existing immutable map module owns coordinates, outbound links and return markers. One typed adapter validates the new evidence shape for both callers. A second design, extending the vendored map module to read the response directly, would duplicate the producer seam and invalidate its byte pin. The adapter keeps that pin intact.
+The existing immutable map module owns coordinates, outbound links and return markers. One typed adapter validates the new evidence shape for both callers. A second design, extending the vendored map module to read the response directly, would duplicate the producer seam and invalidate its byte pin. The adapter keeps that pin intact. Browser entry points supply the validator to the itinerary adapter; plain Node consumers can load the ordered itinerary without generated UI bundles. Tour day loads the validator only at browser bootstrap.
 
 The existing detail read supplies every stop without additional stop requests. The itinerary adds one authenticated session read when its library refreshes. Existing request deadlines and refresh visibility limits apply. There are no new retries, queues, writes, provider calls or network polling loops. The adapter runs linearly in the small itinerary; matching stops currently uses a bounded array lookup per stop. At ten times the load, the producer detail read remains the first capacity limit.
 
@@ -17,12 +17,21 @@ The chart is `tour-navigation.mmd`. These transitions map to the named tests.
 | Transition | Test |
 | --- | --- |
 | Unknown to eligible | `matching reviewed detail exposes exact entrance coordinates` |
-| Unknown to absent; eligible to stale | `absent unknown stale route projection receipt and component evidence hide navigation` |
+| Unknown to absent | `absent unknown stale route projection receipt and component evidence hide navigation` |
+| Eligible to stale; evidence refreshed; view destroyed | `mounted navigation evidence lease expiry`, `replacement`, and `destruction` |
 | Select stop; outbound; return to same stop | `itinerary Navigate exact coordinates hidden evidence and return at phone and desktop in both themes` |
 | Route replaced; user changed; session retired; session reopened | Same browser test, after the return assertion |
 | Fresh matching evidence after absence | Same browser test, when the fixture is refreshed after session retirement |
 
-The chart generated a TLA+ skeleton. Model checking was not executed because this MacBook has neither Java nor TLC. The generated skeleton needs a guard on `TapNavigate` requiring eligible evidence before TLC can check the intended rule. Browser and adapter assertions exercise the implemented guards; the chart alone is not a formal correctness claim.
+`TourNavigation.tla` is the executable source of truth. `TapNavigate` requires eligible evidence, matching the mounted itinerary's promotion guard. The Mermaid chart is a presentation projection; regenerating an unguarded skeleton does not replace the model.
+
+Run from this directory with a locally installed TLA+ tools jar:
+
+```sh
+/opt/homebrew/opt/openjdk@21/bin/java -cp "$TLA2TOOLS" tlc2.TLC -cleanup -config TourNavigation.cfg TourNavigation.tla
+```
+
+The configuration checks TypeOK and all four navigation invariants. This model abstracts stop identity and treats expiry as an event. It does not prove wall-clock timing, receipt authenticity or user/session isolation. `mounted navigation evidence lease expiry`, `replacement`, and `destruction` exercise real mounted callbacks with fake timers. The proof CLI suite exercises equal/descendant acceptance, older/unrelated/unknown refusal, late launch and stalled evaluation with zero surviving owned browser processes.
 
 ## Production proof
 

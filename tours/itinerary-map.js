@@ -1,11 +1,10 @@
-import { navigationFromEvidence } from "../js/ui-tour-navigation.js";
 import { mountVisibilityPoll } from '../js/visibility-poll.mjs';
 import { mountMarketMap } from "../js/market-map-shell.js";
 import { buildRouteVersionState, projectRoute, reduceMapEvent, buildNativeNavLink, buildReturnState, resolveReturn } from "./vendor/tour-map-route-state.js";
 
 // Presentation adapter only: the accepted record owns order and identity.
 // access_coordinate_status alone never supplies coordinates or human approval.
-export function acceptedRouteFromDetail(detail) {
+export function acceptedRouteFromDetail(detail, navigationFromEvidence = () => null) {
   const accepted = detail?.routes?.find(route => route.accepted === true);
   if (!accepted) return null;
   let navigation = navigationFromEvidence(detail.id, accepted, accepted.navigation);
