@@ -33,7 +33,11 @@ test("one bounded PDF or photo only", () => {
 });
 
 const { createShareIntake } = await import("../src/ui/share-intake-model.ts");
-function intake(t: { after(fn: () => void): void }, mode = "") {
+function intake(
+  t: { after(fn: () => void): void },
+  mode = "",
+  destination: "documents" | "deliverables" = "documents",
+) {
   let server = "started",
     lost = false,
     token = "test-session-a";
@@ -59,8 +63,19 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
     finalize: "22222222-2222-4222-8222-222222222222",
     abandon: "33333333-3333-4333-8333-333333333333",
   };
-  const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
+  const json = (value: unknown, status = 200) => {
+    if (
+      destination === "deliverables" &&
+      value &&
+      typeof value === "object" &&
+      "schema_version" in value &&
+      value.schema_version === "deal-document-intake.v1"
+    )
+      value = { ...value, schema_version: "deal-deliverables.v1" };
+    return new Response(JSON.stringify(value), { status });
+  };
   const options = {
+    destination,
     changed(state: { kind: string }) {
       states.push(state);
     },
@@ -93,6 +108,8 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
             : fixture.list;
         return json({ result: { content: [{ type: "text", text: JSON.stringify(result) }] } });
       }
+      if (destination === "deliverables" && init?.method === "GET" && !path.endsWith("/receipt"))
+        return json({ ok: true, schema_version: "deal-deliverables.v1", deliverables: [fixture.finalize.deliverable] });
       if (init?.method !== "GET") writes.push({ path, body });
       if (path.endsWith("/receipt") && mode === "wrong-receipt")
         return json({ ...recordings.read_started, schema_version: "deal-deliverables.v1" });
@@ -131,7 +148,7 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
         }
         return json(fixture.finalize);
       }
-      assert.equal(body.target_collection, "documents");
+      assert.equal(body.target_collection, destination);
       if (["lost-reserve", "wrong-abandon"].includes(mode) && !lost) {
         lost = true;
         throw Error("lost reserve");
@@ -366,3 +383,19 @@ for (const elapsed of [false, true]) {
     assert.equal(x.writes.filter((w) => w.path.endsWith("/abandon")).length, 1);
   });
 }
+
+for (const mode of ["lost-reserve", "lost-finalize"])
+  test(`deliverables ${mode} reload reconciles one exact-deal file`, async (t) => {
+    const x = intake(t, mode, "deliverables");
+    await x.model.start();
+    x.model.choose(expected.deal_id);
+    await x.model.file();
+    assert.equal(x.states.at(-1)?.kind, "uncertain");
+    await x.reload();
+    x.model.choose(crypto.randomUUID());
+    await x.model.file();
+    assert.equal(x.states.at(-1)?.kind, "filed");
+    const starts = x.writes.filter((w) => w.body.target_collection);
+    assert.equal(new Set(starts.map((w) => w.body.idempotency_key)).size, 1);
+    assert.equal(x.writes.filter((w) => w.path.endsWith("/finalize")).length, 1);
+  });
