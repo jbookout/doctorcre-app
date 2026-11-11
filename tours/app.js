@@ -590,9 +590,9 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
         return latest.stops?.find(stop => stop.property_id === propertyId)?.coordinate_review;
       },
       write: async args => {
-        if (binding !== sessionBinding || state.tour?.id !== tour.id || state.sessionInvalidated) return "refused";
+        if (binding !== sessionBinding || state.tour?.id !== tour.id || state.tour?.route_version_id !== routeId || state.sessionInvalidated) return "refused";
         const result = await savedSearchRequest("append-tour-entrance-verification-receipt", args, { timeoutMs: 15000, headers: { "x-carr-csrf": state.csrf } });
-        if (binding !== sessionBinding || state.tour?.id !== tour.id) return "unknown";
+        if (binding !== sessionBinding || state.tour?.id !== tour.id || state.tour?.route_version_id !== routeId) return "unknown";
         if (result.kind === "authorization") return "refused";
         if (result.kind !== "payload") return "unknown";
         return entranceReceiptResult(result.payload, result.isError);

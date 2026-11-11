@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import test from "node:test";
 import { promisify } from "node:util";
+import type { Route } from "playwright";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium } from "./browser-harness.mjs";
@@ -57,6 +58,21 @@ test("coordinate review selects exact property, compares, refuses authority and 
       assert.equal(await root.locator("h3").textContent(), "Synthetic Medical 2");
       await root.screenshot({ path: "/tmp/WR591.S17.J4-shots/" + width + "-" + theme + ".png" });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const first = detail.stops[0];
+      assert.ok(first);
+      let capture: (route: Route) => void = () => {};
+      const intercepted = new Promise<Route>((resolve) => {
+        capture = resolve;
+      });
+      await page.route("**/api/tours/detail?**", (route) => capture(route));
+      await root.getByRole("button", { name: "Refresh coordinate evidence" }).click();
+      const held = await intercepted;
+      await root.locator("select[data-coordinate-property]").selectOption(first.property_id);
+      await held.fulfill({ json: { data: detail } });
+      await page.unroute("**/api/tours/detail?**");
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+      assert.equal(await root.locator("h3").textContent(), "Synthetic Medical 1");
+      await root.locator("select[data-coordinate-property]").selectOption(second.property_id);
       await page.route("**/mcp", (route) =>
         route.fulfill({
           json: {
