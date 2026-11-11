@@ -106,6 +106,32 @@ view.trustOperation = null;
 let vendorMarkets = null;
 let vendorMarketsHost = null;
 let vendorMeetings = null;
+let vendorClientNeeds = null;
+let vendorClientNeedsHost = null;
+let vendorClientNeedsId = null;
+let vendorClientNeedsGeneration = 0;
+
+async function syncVendorClientNeeds(host, vendor) {
+  const generation = vendorClientNeedsGeneration;
+  try {
+    const { mountVendorClientNeeds } = await import('./ui-vendor-client-needs.generated.js');
+    if (generation !== vendorClientNeedsGeneration || !host.isConnected) return;
+    const { createMcpRequests } = await import('./mcp-requests.mjs');
+    if (generation !== vendorClientNeedsGeneration || !host.isConnected) return;
+    const request = createMcpRequests();
+    vendorClientNeeds = mountVendorClientNeeds(host, vendor, async (query, signal) => {
+      const result = await request('read-vendor-client-needs-v1', query, { signal, timeoutMs: 15000 });
+      if (result.kind === 'authorization' || (result.kind === 'payload' && result.isError &&
+        ['AUTHORIZATION_REFUSED', 'AUTHENTICATION_REQUIRED'].includes(result.payload?.error))) {
+        throw Object.assign(new Error('Permission refused'), { name: 'NeedsRefused' });
+      }
+      if (result.kind !== 'payload' || result.isError) throw new Error('Client needs unavailable');
+      return result.payload;
+    }, mountLocalTicker);
+  } catch {
+    if (host.isConnected) host.textContent = 'Client needs unavailable.';
+  }
+}
 let vendorMeetingsHost = null;
 let quietVendors = null;
 let quietVendorsHost = null;
@@ -746,6 +772,17 @@ function containPanelFocus(event) {
 }
 
 function renderRecordPanel() {
+  const keepNeeds = !view.signedOut && view.dataset === 'vendors' && view.recordId &&
+    view.record.status === 'ready' && vendorClientNeedsId === view.recordId;
+  if (keepNeeds) vendorClientNeedsHost?.remove();
+  else {
+    vendorClientNeedsGeneration++;
+    vendorClientNeeds?.dispose();
+    vendorClientNeeds = null;
+    vendorClientNeedsHost?.remove();
+    vendorClientNeedsHost = null;
+    vendorClientNeedsId = null;
+  }
   if (!dom.panel) return;
   const { record, dataset } = view;
   if (!view.signedOut) capturePanelState();
@@ -793,6 +830,14 @@ function renderRecordPanel() {
   if (dom.panelBody) {
     dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? vendorContactsHtml(payload.record) + relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${referenceDetails}${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(updatedLabel(payload.source?.observed_at))}</p>`;
     dom.panelBody.dataset.recordId = payload.record.id;
+    if (dataset === 'vendors') {
+      if (!vendorClientNeedsHost) {
+        vendorClientNeedsHost = document.createElement('div');
+        vendorClientNeedsId = payload.record.id;
+        dom.panelBody.prepend(vendorClientNeedsHost);
+        void syncVendorClientNeeds(vendorClientNeedsHost, payload.record.id);
+      } else dom.panelBody.prepend(vendorClientNeedsHost);
+    }
     restorePanelState();
 
     const evidence = document.createElement('div');

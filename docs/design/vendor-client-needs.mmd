@@ -1,0 +1,45 @@
+stateDiagram-v2
+  state Panel {
+    state Session {
+      [*] --> Active
+      Active --> Retired: Session ends
+    }
+    --
+    state Deadline {
+      [*] --> Before
+      Before --> Passed: Freshness deadline passes
+      Before --> Passed: Return after deadline
+      Passed --> Before: Approved response
+    }
+    --
+    state Results {
+      [*] --> Selected
+      Selected --> Reading: Open vendor
+      Reading --> Approved: Approved response
+      Reading --> Missing: Approval needed
+      Reading --> Empty: No matches
+      Reading --> Unavailable: Read fails
+      Reading --> Refused: Permission refused
+      Approved --> Reading: Refresh
+      Missing --> Reading: Refresh
+      Empty --> Reading: Refresh
+      Unavailable --> Reading: Retry
+      Refused --> Reading: Retry
+      Approved --> Reading: Next page
+      Approved --> Reading: Need withdrawn
+      Approved --> Expired: Freshness deadline passes
+      Approved --> Expired: Return after deadline
+      Approved --> Approved: Return before deadline
+      Expired --> Reading: Refresh expired needs
+      Expired --> Cleared: Session ends
+      Reading --> Cleared: Session ends
+      Approved --> Cleared: Session ends
+      Missing --> Cleared: Session ends
+      Empty --> Cleared: Session ends
+      Unavailable --> Cleared: Session ends
+      Refused --> Cleared: Session ends
+      Selected --> Cleared: Session ends
+    }
+  }
+  %% never ExpiredMatches: Passed & Approved -- Expired needs never appear in the approved list.
+  %% never RetiredMatches: Retired & Approved -- An ended session never shows client needs.

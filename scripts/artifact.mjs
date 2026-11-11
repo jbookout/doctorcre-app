@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
-const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json"];
+const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json", "contracts/client-needs.v1.json"];
 const GENERATED_PATH = "tours/day-shell.generated.js";
 const isGenerated = path => path === GENERATED_PATH || isUiAsset(path);
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours", "portal"];
