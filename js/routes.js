@@ -66,6 +66,10 @@ export const routeContract = {
 export const NAVIGATION_GROUPS = ["Workspace", "Updates", "Operations", "Reference"];
 export const navigationItems = [
   {
+    "label": "Local Deals",
+    "href": "/deals"
+  },
+  {
     "label": "Home",
     "href": "/"
   },
@@ -76,10 +80,6 @@ export const navigationItems = [
   {
     "label": "Tours",
     "href": "/tours"
-  },
-  {
-    "label": "Local Deals",
-    "href": "/deals"
   },
   {
     "label": "Vendors",
