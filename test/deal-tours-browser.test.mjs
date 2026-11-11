@@ -5,7 +5,7 @@ import { applyPhoneProfile, profile } from '../scripts/performance-scenarios.mjs
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { fileURLToPath } from 'node:url';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { chromium } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 

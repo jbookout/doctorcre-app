@@ -517,7 +517,7 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
     request:async()=>({id:"A",stops:[],projection_id:"projection-B",share_grant_id:currentGrant}),
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",tourDisplayName:(value,fallback="Untitled tour")=>value||fallback,renderFeedback:noop,renderShareGrants:noop,
-    cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,renderAcceptedItinerary:noop,
+    cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,renderAcceptedItinerary:noop,renderCoordinateReview:noop,
     renderCreate:noop,restoreOtherWrites:noop,renderSheetRecovery:noop,renderTourAction:noop,validateDetail:noop,routeSnapshot:()=>"",initComposer:noop,
     renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},
   },["loadTour"]);

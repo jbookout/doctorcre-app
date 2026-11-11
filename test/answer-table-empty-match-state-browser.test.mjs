@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { assertAnswerTables } from '../scripts/prove-answer-table-empty-match-state.mjs';
 import { transform } from 'esbuild';
 const recordings = JSON.parse(await readFile(new URL('./fixtures/answer-table-empty-match-state/recordings.json', import.meta.url)));

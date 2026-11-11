@@ -152,7 +152,7 @@ test('update form offers the current next action and date at phone width', async
 });
 
 for (const timezoneId of ['UTC','America/Chicago','America/Los_Angeles','Asia/Tokyo']) test(`Central deadline browser boundaries in ${timezoneId}`, async t => {
- const {fixtureServer}=await import('./browser-harness.mjs');
+ const { ownedFixtureServer: fixtureServer } = await import("./fixture-probe.ts");
  const {exercise}=await import('../scripts/prove-deal-deadline-central-day.mjs');
  const fixture=await fixtureServer();t.after(()=>fixture.close());
  const browser=await chromium.launch();t.after(()=>browser.close());

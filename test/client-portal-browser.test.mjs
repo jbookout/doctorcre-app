@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 
 async function open(t, width = 390) {
   const server = await startFixtureServer(); t.after(server.stop);

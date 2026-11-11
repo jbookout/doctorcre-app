@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
   test(`Deal Room forms preserve fields and recovery at ${width}px in ${theme}`, async t => {

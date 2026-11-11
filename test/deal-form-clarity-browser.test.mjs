@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer, animationsSettled } from './browser-harness.mjs';
+import { chromium, animationsSettled } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
   test(`creation choices and locked fields stay readable at ${width}px ${theme}`, async t => {

@@ -45,7 +45,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
       opening = true;
       const opener = root.activeElement instanceof HTMLElement && root.activeElement !== root.body ? root.activeElement : toggle;
       try {
-        const [{ openQuickSwitcher, readQuickSwitcherSources }, { navigationItems, routeEntries }, { createClient }] = await Promise.all([
+        const [{ openQuickSwitcher, readQuickSwitcherSources, switcherInboxReader }, { navigationItems, routeEntries }, { createClient }] = await Promise.all([
           import('./ui-quick-switcher.generated.js'), import('./routes.js'), import('./client.js'),
         ]);
         if (retired) return;
@@ -55,9 +55,9 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
           if (href.includes(':') || pages.some(page => page.href === href)) continue;
           pages.push({ href, label: href.slice(1).split(/[/-]/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') || 'Home' });
         }
-        openQuickSwitcher({ opener, pages, read: async () => {
+        openQuickSwitcher({ opener, pages, read: async (publish) => {
           const client = await createClient(boot.mode, boot.options);
-          return readQuickSwitcherSources(() => client.getBoard(), () => client.getRelationshipNetwork());
+          return readQuickSwitcherSources(() => client.getBoard(), () => client.getRelationshipNetwork(), switcherInboxReader(createMcpRequests(), boot.mode === "fixture"), publish);
         } });
       } catch {
         if (!retired) location.assign('/search');
