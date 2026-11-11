@@ -268,6 +268,7 @@ body.record-open { overflow: hidden; }
 .vendor-meetings-list p { margin-block: 8px; }
 .vendor-meetings-list > li > a { font-size: 1.1rem; font-weight: 650; }
 
+.vendor-meetings:not([open]) > section { display: none; }
 .vendor-meetings > summary { min-height: 44px; align-content: center; cursor: pointer; }
 .vendor-meetings > summary h2 { display: inline; margin: 0; font-size: 1.1rem; }
 @media (max-width: 767px) {
