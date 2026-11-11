@@ -281,11 +281,12 @@ test("packet proof waits for the final PDF page after every property stop is cou
     await page.addInitScript(() => {
       const postMessage = Worker.prototype.postMessage;
       Worker.prototype.postMessage = function (message, options) {
+        const transfer = Array.isArray(options) ? { transfer: options } : options;
         if (message?.action === "GetOperatorList" && message.data?.pageIndex === 2) {
-          Reflect.set(window, "releaseFinalPacketPage", () => postMessage.call(this, message, options));
+          Reflect.set(window, "releaseFinalPacketPage", () => postMessage.call(this, message, transfer));
           return;
         }
-        return postMessage.call(this, message, options);
+        return postMessage.call(this, message, transfer);
       };
     });
     await page.goto(`https://app.test/tours/packet-preview.html?render_job_id=${job}`);
