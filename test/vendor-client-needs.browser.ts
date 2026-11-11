@@ -249,6 +249,11 @@ test("approved needs expire at the earliest deadline and on panel resume without
           await section.getByRole("button", { name: "Refresh client needs", exact: true }).click();
           await section.getByRole("alert").waitFor();
           assert.equal(await rows.count(), 0, "revalidating an expired producer response cannot restore rows");
+          const renewedUntil = new Date((await page.evaluate(() => Date.now())) + 60_000).toISOString();
+          for (const row of response.rows) row.fresh_until = renewedUntil;
+          await section.getByRole("button", { name: "Retry client needs", exact: true }).click();
+          await rows.nth(1).waitFor();
+          assert.equal(await rows.count(), 2, "a freshly approved response can restore needs after revalidation");
         } finally {
           await page.close();
         }
