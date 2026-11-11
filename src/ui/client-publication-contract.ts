@@ -114,19 +114,18 @@ export function commandFor(row: Publication, deal_id: string, published: boolean
     : { ...common, kind: row.kind, content: row.content };
 }
 
+const refusalHints = new Map<string, string>([
+  ["publication_version_conflict", "This item changed. Refresh before trying again."],
+  ["publication_file_not_shared", "Choose a finalized shared file from this deal, then refresh its version."],
+  ["publication_content_invalid", "Choose valid client text or a finalized shared file."],
+  ["publication_denied", "This deal is unavailable to your account."],
+  ["publication_not_found", "This publication is unavailable in this deal."],
+  ["publication_portal_unavailable", "No active client portal. Refresh before publishing."],
+  ["publication_capacity", "The client view has reached its item limit."],
+  ["forbidden", "This deal is unavailable to your account."],
+  ["key_reuse", "This action could not be repeated. Refresh the saved view."],
+]);
 export function publicationFailure(value: unknown): string | null {
   if (!record(value) || typeof value.error !== "string") return null;
-  const hints: Record<string, string> = {
-    publication_version_conflict: "This item changed. Refresh before trying again.",
-    publication_file_not_shared: "Choose a finalized shared file from this deal, then refresh its version.",
-    publication_deliverable_version_conflict: "This file changed. Refresh and publish its current version.",
-    publication_content_invalid: "Choose valid client text or a finalized shared file.",
-    publication_denied: "This deal is unavailable to your account.",
-    publication_not_found: "This publication is unavailable in this deal.",
-    publication_portal_unavailable: "No active client portal. Refresh before publishing.",
-    publication_capacity: "The client view has reached its item limit.",
-    forbidden: "This deal is unavailable to your account.",
-    key_reuse: "This action could not be repeated. Refresh the saved view.",
-  };
-  return hints[value.error] ?? null;
+  return refusalHints.get(value.error) ?? null;
 }

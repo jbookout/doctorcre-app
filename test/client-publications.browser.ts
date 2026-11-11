@@ -30,12 +30,32 @@ test("Client view renders server-only content at 390 and 1440 in light and dark"
           const ui = await import("/js/ui-client-publications.js");
           const element = document.querySelector("#view");
           if (!element) throw Error("Missing host");
+          const fixture = ui.createPublicationFixture();
           Reflect.set(
             window,
             "clientView",
             ui.mountClientPublications(element, {
               dealId: "11111111-1111-4111-8111-111111111111",
-              request: ui.createPublicationFixture(),
+              request: async (name, args, options) =>
+                name === "list-deal-deliverables"
+                  ? {
+                      ok: true,
+                      schema_version: "deal-deliverables.v1",
+                      deliverables: [
+                        {
+                          id: "44444444-4444-4444-8444-444444444444",
+                          deal_id: "11111111-1111-4111-8111-111111111111",
+                          filename: "Final report " + "x".repeat(199) + "😀.pdf",
+                          mime: "application/pdf",
+                          bytes: 500,
+                          sha256: "a".repeat(64),
+                          state: "finalized",
+                          visibility: "shared",
+                          version: 7,
+                        },
+                      ],
+                    }
+                  : fixture(name, args, options),
             }),
           );
         }, theme);

@@ -38,7 +38,7 @@ Refresh ==
 
 \* Save hidden draft or publish exact file version
 SaveHiddenDraftOrPublishExactFileVersion ==
-    /\ region1 = "Ready" \* src/ui/client-publications.tsx:266 save accepts ready or uncertain.
+    /\ region1 = "Ready" \* src/ui/client-publications.tsx:285 save accepts ready or uncertain.
     /\ \/ (region1 = "Ready" /\ region1' = "Saving")
        \/ (region1 \notin {"Ready"} /\ UNCHANGED region1)
     /\ \/ (region2 = "Confirmed" /\ region2' = "Unconfirmed")
@@ -46,7 +46,7 @@ SaveHiddenDraftOrPublishExactFileVersion ==
 
 \* Receipt advances publication version
 ReceiptAdvancesPublicationVersion ==
-    /\ region1 = "Saving" \* src/ui/client-publications.tsx:272 receipt only after current save request.
+    /\ region1 = "Saving" \* src/ui/client-publications.tsx:291 receipt only after current save request.
     /\ \/ (region1 = "Saving" /\ region1' = "Loading")
        \/ (region1 \notin {"Saving"} /\ UNCHANGED region1)
     /\ \/ (region2 = "Unconfirmed" /\ region2' = "Confirmed")

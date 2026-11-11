@@ -21,6 +21,14 @@ type State =
   | { kind: "refused"; message: string }
   | { kind: "unavailable" }
   | { kind: "closed" };
+function titleForFile(filename: string) {
+  let title = "";
+  for (const character of filename.trim()) {
+    if (title.length + character.length > 200) break;
+    title += character;
+  }
+  return title;
+}
 export function mountClientPublications(element: Element, { dealId, request }: { dealId: string; request: Request }) {
   const root = createRoot(element);
   let state: State = { kind: "loading" },
@@ -130,7 +138,18 @@ export function mountClientPublications(element: Element, { dealId, request }: {
                       className="btn"
                       disabled={!canPublish}
                       {...(row.published ? { "data-unpublish": row.id } : { "data-publish": row.id })}
-                      onClick={() => void save(commandFor(row, dealId, !row.published))}
+                      onClick={() => {
+                        if (state.kind !== "ready") return;
+                        const current =
+                          row.kind === "deliverable" && !row.published
+                            ? state.data.files.find((file) => file.id === row.deliverable_id)
+                            : undefined;
+                        const publication =
+                          row.kind === "deliverable" && current
+                            ? { ...row, deliverable_version: current.version }
+                            : row;
+                        void save(commandFor(publication, dealId, !row.published));
+                      }}
                     >
                       {row.published ? "Unpublish" : "Publish"}
                     </button>
@@ -159,7 +178,7 @@ export function mountClientPublications(element: Element, { dealId, request }: {
                             deal_id: dealId,
                             publication_id: previous?.id ?? crypto.randomUUID(),
                             base_version: previous?.version ?? 0,
-                            title: file.filename,
+                            title: titleForFile(file.filename),
                             published: true,
                             kind: "deliverable",
                             deliverable_id: file.id,

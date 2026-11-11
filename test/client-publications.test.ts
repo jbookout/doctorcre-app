@@ -236,7 +236,7 @@ test("refreshed files publish their current exact version; withdrawal keeps the 
           {
             id: fileId,
             deal_id: dealId,
-            filename: "Final report.pdf",
+            filename: "x".repeat(199) + "😀.pdf",
             mime: "application/pdf",
             bytes: 500,
             sha256: "a".repeat(64),
@@ -273,16 +273,23 @@ test("refreshed files publish their current exact version; withdrawal keeps the 
   required(element, "[data-publish-file]").click();
   await settle();
   assert.equal(writes.at(0)?.deliverable_version, 7);
+  assert.equal(writes.at(0)?.title, "x".repeat(199));
   version = 8;
   await panel.refresh();
   required(element, "[data-unpublish]").click();
   await settle();
   assert.equal(writes.at(1)?.deliverable_version, 7);
   assert.equal(writes.at(1)?.base_version, 1);
-  required(element, "[data-publish-file]").click();
+  required(element, "[data-publish]").click();
   await settle();
   assert.equal(writes.at(2)?.deliverable_version, 8);
   assert.equal(writes.at(2)?.base_version, 2);
+  version = 9;
+  await panel.refresh();
+  required(element, "[data-publish-file]").click();
+  await settle();
+  assert.equal(writes.at(3)?.deliverable_version, 9);
+  assert.equal(writes.at(3)?.base_version, 3);
   panel.dispose();
 });
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { commandFor, parsePublications } from "../src/ui/client-publication-contract.ts";
+import { commandFor, parsePublications, publicationFailure } from "../src/ui/client-publication-contract.ts";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const file = {
@@ -28,4 +28,13 @@ test("file publish and withdrawal retain the exact pinned version", () => {
 test("missing, fractional, unsafe and nonpositive file versions fail closed", () => {
   for (const deliverable_version of [undefined, 0, -1, 1.5, "7", Number.MAX_SAFE_INTEGER + 1])
     assert.throws(() => parsePublications(list({ ...file, deliverable_version })));
+});
+
+test("only known backend refusals receive a publication hint", () => {
+  for (const error of ["toString", "constructor", "__proto__", "PRIVATE SQL"])
+    assert.equal(publicationFailure({ error }), null);
+  assert.equal(
+    publicationFailure({ error: "publication_file_not_shared", message: "PRIVATE SQL" }),
+    "Choose a finalized shared file from this deal, then refresh its version.",
+  );
 });
