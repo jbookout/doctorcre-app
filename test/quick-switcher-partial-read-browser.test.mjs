@@ -24,7 +24,9 @@ const server = await startFixtureServer();
 test.after(() => server.stop());
 const board = { deals: [{ id: 'd1', name: 'Valid Deal', open_actions: [{ id: 't1', item_id: 'next_action:33333333-3333-4333-8333-333333333333', description: 'Valid Task' }] }] };
 const network = { nodes: [{ id: 'party:c1', name: 'Valid Contact', kind: 'contact' }] };
+const emptyInbox = { ok: true, schema_version: 'home-inbox.v5', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true };
 async function open(page, payload, mode = 'resolved') {
+  payload = { inbox: emptyInbox, ...payload };
   await page.evaluate(async ({ payload, mode }) => {
     const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
     window.readCount = 0;
@@ -39,13 +41,13 @@ async function open(page, payload, mode = 'resolved') {
 }
 for (const [name, payload, message, labels] of [
   ['partial-board', { board, network: { nodes: null } }, 'Contacts unavailable. Deals, tasks and pages are still available.', ['Valid DealDeal', 'Valid Task · Valid DealTask']],
-  ['partial-contacts', { board: null, network }, 'Deals and tasks unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
+  ['partial-contacts', { board: null, network }, 'Deals unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
   ['pages-only', { board: null, network: null }, 'Deals and contacts unavailable. Pages are still available.', []],
   ['full', { board, network }, null, ['Valid DealDeal', 'Valid Task · Valid DealTask', 'Valid ContactContact']],
   ['malformed contact rejects whole section', { board, network: { nodes: [...network.nodes, { name: 'No identity', kind: 'contact' }] } }, 'Contacts unavailable. Deals, tasks and pages are still available.', ['Valid DealDeal', 'Valid Task · Valid DealTask']],
-  ['malformed board rejects whole section', { board: { deals: [...board.deals, { name: 'No identity' }] }, network }, 'Deals and tasks unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
-  ['task without producer item_id never guesses a card', { board: { deals: [{ ...board.deals[0], open_actions: [{ id: '33333333-3333-4333-8333-333333333333', description: 'No canonical identity' }] }] }, network }, 'Deals and tasks unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
-  ['malformed task rejects whole board', { board: { deals: [{ ...board.deals[0], open_actions: [{ description: 'No identity' }] }] }, network }, 'Deals and tasks unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
+  ['malformed board rejects whole section', { board: { deals: [...board.deals, { name: 'No identity' }] }, network }, 'Deals unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
+  ['task without producer item_id never guesses a card', { board: { deals: [{ ...board.deals[0], open_actions: [{ id: '33333333-3333-4333-8333-333333333333', description: 'No canonical identity' }] }] }, network }, 'Deals unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
+  ['malformed task rejects whole board', { board: { deals: [{ ...board.deals[0], open_actions: [{ description: 'No identity' }] }] }, network }, 'Deals unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
 ]) test(name, async () => {
   const browser = await chromium.launch();
   try {
@@ -79,7 +81,7 @@ for (const [name, payload] of [
     assert.equal(labels.includes('Valid DealDeal'), payload.board !== null);
     assert.equal(labels.includes('Valid ContactContact'), payload.network !== null);
     assert.equal(labels.some(label => label.includes('forbidden')), false);
-    await page.evaluate(payload => { window.nextPayload = payload; }, { board, network });
+    await page.evaluate(payload => { window.nextPayload = payload; }, { board, network, inbox: emptyInbox });
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
     assert.equal(await page.evaluate(() => window.readCount), 2);
     await page.getByRole('button', { name: 'Retry', exact: true }).waitFor({ state: 'detached' });
@@ -187,6 +189,7 @@ async function shell(page, modes = {}) {
   await page.route('**/api/v1/business/relationships?contract=relationship-network.v1', route => respond(route, 'contacts', modes.contacts === 'malformed' ? { nodes: null } : transportNetwork));
   await page.route('**/mcp', route => {
     const request = route.request().postDataJSON();
+    if (request.params?.name === 'read-home-inbox-v5') return route.fulfill({ json: { jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: JSON.stringify(emptyInbox) }] } } });
     if (request.params?.name !== 'deal-room-board') return route.fulfill({ status: 503, json: { error: 'synthetic_unavailable' } });
     const payload = modes.board === 'malformed' ? { deals: null } : modes.board === 'empty' ? { ...transportBoard, deals: [] } : transportBoard;
     return respond(route, 'board', { jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } });
@@ -201,7 +204,7 @@ async function shell(page, modes = {}) {
 }
 const messages = {
   board: 'Contacts unavailable. Deals, tasks and pages are still available.',
-  contacts: 'Deals and tasks unavailable. Contacts and pages are still available.',
+  contacts: 'Deals unavailable. Contacts and pages are still available.',
   none: 'Deals and contacts unavailable. Pages are still available.',
 };
 async function status(page, message) {

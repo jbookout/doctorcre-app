@@ -1,0 +1,34 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  state "Legend" as legend {
+    state "Works" as legendWorks
+  }
+  class legendWorks works
+  state "Retired | Closed" as s0
+  state "SignedIn | Closed" as s1
+  state "SignedIn | Loading" as s2
+  state "SignedIn | Ready" as s3
+  [*] --> s1
+  s1 --> s0 : session ends
+  s1 --> s2 : open
+  s2 --> s0 : session ends
+  s2 --> s3 : sources settle
+  s2 --> s1 : close
+  s3 --> s0 : session ends
+  s3 --> s2 : retry
+  s3 --> s1 : close
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works

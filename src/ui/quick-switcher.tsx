@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { fixtureInboxRpc } from "./home/fixture";
+import { createInboxClient, parseSnapshot } from "./home/inbox";
 import { recordRoutes } from "./home/routes";
 import { isTextEntry } from "./keyboard-input";
 import { clearRecents, recentIds, rememberDestination as remember } from "./switcher-history";
@@ -8,12 +10,12 @@ type Destination = { id: string; label: string; kind: "Deal" | "Contact" | "Task
 type Availability = "full" | "board" | "contacts" | "none";
 type ReadState =
   | { kind: "loading" }
-  | { kind: "ready"; items: Destination[]; availability: Availability }
+  | { kind: "ready"; items: Destination[]; availability: Availability; inboxNotice: string }
   | { kind: "error" };
 type Options = {
   opener: HTMLElement;
   pages: { label: string; href: string }[];
-  read: () => Promise<{ board: unknown; network: unknown }>;
+  read: () => Promise<{ board: unknown; network: unknown; inbox: unknown }>;
 };
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -87,12 +89,36 @@ function admittedSection(parse: () => Destination[]): Destination[] | null {
   }
 }
 
-function destinations({ board, network }: { board: unknown; network: unknown }): Extract<ReadState, { kind: "ready" }> {
+function destinations({
+  board,
+  network,
+  inbox,
+}: {
+  board: unknown;
+  network: unknown;
+  inbox: unknown;
+}): Extract<ReadState, { kind: "ready" }> {
   const deals = admittedSection(() => boardDestinations(board));
   const contacts = admittedSection(() => contactDestinations(network));
+  let inboxNotice = "";
+  const tasks = admittedSection(() => {
+    const snapshot = parseSnapshot(inbox);
+    if (snapshot.truncated) inboxNotice = "Home task snapshot is limited to 1,000 items. Some tasks may be absent.";
+    return snapshot.items
+      .filter((item) => item.source_type === "next_action" || item.source_type === "capture_post_call_action")
+      .map((item) => ({
+        id: `task:${item.item_id}`,
+        label: item.context_label ? `${item.title} · ${item.context_label}` : item.title,
+        kind: "Task" as const,
+        href: recordRoutes.card(item.item_id),
+      }));
+  });
+  if (tasks === null) inboxNotice = "Home tasks unavailable. Other accessible results are still available.";
+  const items = new Map([...(deals ?? []), ...(contacts ?? []), ...(tasks ?? [])].map((item) => [item.id, item]));
   return {
     kind: "ready",
-    items: [...(deals ?? []), ...(contacts ?? [])],
+    inboxNotice,
+    items: [...items.values()],
     availability: deals !== null ? (contacts !== null ? "full" : "board") : contacts !== null ? "contacts" : "none",
   };
 }
@@ -100,22 +126,45 @@ function destinations({ board, network }: { board: unknown; network: unknown }):
 const unavailableMessage = {
   full: "",
   board: "Contacts unavailable. Deals, tasks and pages are still available.",
-  contacts: "Deals and tasks unavailable. Contacts and pages are still available.",
+  contacts: "Deals unavailable. Contacts and pages are still available.",
   none: "Deals and contacts unavailable. Pages are still available.",
 };
 
 export async function readQuickSwitcherSources(
   readBoard: () => Promise<unknown>,
   readNetwork: () => Promise<unknown>,
-): Promise<{ board: unknown; network: unknown }> {
-  const [board, network] = await Promise.allSettled([
+  readInbox: () => Promise<unknown>,
+): Promise<{ board: unknown; network: unknown; inbox: unknown }> {
+  const [board, network, inbox] = await Promise.allSettled([
     Promise.resolve().then(readBoard),
     Promise.resolve().then(readNetwork),
+    Promise.resolve().then(readInbox),
   ]);
   return {
     board: board.status === "fulfilled" ? board.value : null,
     network: network.status === "fulfilled" ? network.value : null,
+    inbox: inbox.status === "fulfilled" ? inbox.value : null,
   };
+}
+
+export function switcherInboxReader(
+  request: (
+    name: string,
+    args: unknown,
+    options: { timeoutMs: number },
+  ) => Promise<{ kind: string; isError?: boolean; payload?: unknown }>,
+  fixture: boolean,
+) {
+  return createInboxClient(
+    fixture
+      ? fixtureInboxRpc()
+      : async (name, args) => {
+          const result = await request(name, args, { timeoutMs: 10000 });
+          if (result.kind !== "payload") throw Error("Inbox transport unavailable");
+          if (result.isError) throw Object.assign(Error("Inbox refused"), { payload: result.payload });
+          return result.payload;
+        },
+  ).read;
 }
 
 export function openQuickSwitcher({ opener, pages, read }: Options) {
@@ -192,6 +241,7 @@ function Switcher({ pages, read, close }: Omit<Options, "opener"> & { close: () 
       : state.kind === "ready"
         ? unavailableMessage[state.availability]
         : "";
+  const inboxNotice = state.kind === "ready" ? state.inboxNotice : "";
   useEffect(() => {
     input.current?.focus();
   }, []);
@@ -288,9 +338,11 @@ function Switcher({ pages, read, close }: Omit<Options, "opener"> & { close: () 
             ? unavailable
             : `${results.length} destinations`}
       </p>
+      {inboxNotice && <p role="status">{inboxNotice}</p>}
+      <p>Searches loaded deals, contacts and up to 1,000 Home items.</p>
       {unavailable && <p>{results.length} destinations</p>}
       {state.kind !== "loading" && results.length === 0 && <p>No matches. Try a deal, contact or page name.</p>}
-      {unavailable && (
+      {(unavailable || inboxNotice) && (
         <button type="button" onClick={() => setRequest({ read })}>
           Retry
         </button>
