@@ -13,6 +13,7 @@ const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
 export const UI_ENTRIES = {
   'ui-vendor-client-needs': 'vendor-client-needs',
+  'ui-deal-space-searches': 'deal-space-searches',
   'ui-tour-navigation': 'tour-navigation',
   'ui-tour-stop-drag': 'tour-stop-drag',
   'ui-tour-client-download': 'tour-client-download',
@@ -50,6 +51,7 @@ export const UI_ENTRIES = {
   'ui-quiet-leads': 'quiet-leads',
   'ui-quiet-vendors': 'quiet-vendors',
   'ui-vendor-meetings': 'vendor-meetings',
+  'ui-vendor-markets': 'vendor-markets',
   'ui-calendar-panels': 'calendar-panels',
   'ui-deal-documents': 'deal-documents',
   'ui-checklist': 'deal-checklist',
@@ -103,7 +105,7 @@ async function buildUi(readSource, options) {
         if (args.kind !== "entry-point" && args.namespace !== "ui-source") return undefined;
         const base = args.kind === "entry-point" ? posix.normalize(args.path)
           : posix.normalize(posix.join(posix.dirname(args.importer), args.path));
-        if (['js/read-budget.mjs', 'js/email-action-receipt.mjs', 'contracts/client-needs.v1.json'].includes(base)) {
+        if (['js/read-budget.mjs', 'js/email-action-receipt.mjs', 'js/visibility-poll.mjs', 'js/read-on-resume.mjs', 'contracts/client-needs.v1.json'].includes(base)) {
           const contents = await read(base);
           if (contents !== null) return { path: base, namespace: 'ui-source', pluginData: contents };
         }

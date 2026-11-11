@@ -1,3 +1,4 @@
+import { parseDeliverable, parseDeliverableList } from "./deal-deliverable-contract.ts";
 import type { Attachment, Material } from "./share-contract.ts";
 import { parseAttachment, parseReservation, validateSharedFile } from "./share-contract.ts";
 
@@ -18,6 +19,7 @@ export type IntakeState =
   | { kind: "filing"; filename: string; deal: Deal }
   | { kind: "uncertain"; filename: string; deal: Deal; message: string }
   | { kind: "filed"; attachment: Attachment }
+  | { kind: "delivered"; deliverable: ReturnType<typeof parseDeliverable> }
   | { kind: "refused" | "retired"; message: string };
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -25,8 +27,12 @@ export function createShareIntake({
   fetcher,
   handoff,
   changed,
+  destination = "documents",
+  journalKey = "doctorcre-share-recovery-v1",
   storage = typeof localStorage === "undefined" ? undefined : localStorage,
 }: {
+  destination?: "documents" | "deliverables";
+  journalKey?: string;
   storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   fetcher: typeof fetch;
   handoff(
@@ -43,7 +49,6 @@ export function createShareIntake({
     deals: Deal[] = [],
     selected: Deal | null = null;
   const lifetime = new AbortController();
-  const journalKey = "doctorcre-share-recovery-v1";
   let recoveryKey: CryptoKey | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const set = (next: IntakeState) => {
@@ -315,7 +320,7 @@ export function createShareIntake({
       `/api/v1/deal-deliverables/${deal.id}`,
       "POST",
       JSON.stringify({
-        target_collection: "documents",
+        target_collection: destination,
         filename: expected.filename,
         mime: expected.mime,
         bytes: expected.bytes,
@@ -323,12 +328,46 @@ export function createShareIntake({
         idempotency_key: active.keys.reserve,
       }),
     );
-    const result = parseReservation(value, deal.id);
+    const result = parseReservation(value, deal.id, destination);
     const operation = { deal: deal.id, reservation: result.id, uploadPath: result.uploadPath };
     await save(active, operation);
     return operation;
   }
   async function showReceipt(value: unknown, expected: Material) {
+    if (destination === "deliverables") {
+      if (!record(value) || value.ok !== true || value.schema_version !== "deal-deliverables.v1")
+        throw Error("Receipt unavailable");
+      const row = parseDeliverable(value.deliverable, expected.deal_id);
+      if (
+        row.filename !== expected.filename ||
+        row.sha256 !== expected.sha256 ||
+        row.bytes !== expected.bytes ||
+        row.mime !== expected.mime
+      )
+        throw Error("Receipt mismatch");
+      const listed = parseDeliverableList(
+        await request(`/api/v1/deal-deliverables/${expected.deal_id}`),
+        expected.deal_id,
+      );
+      if (
+        !listed.some(
+          (item) =>
+            item.id === row.id &&
+            item.sha256 === row.sha256 &&
+            item.bytes === row.bytes &&
+            item.mime === row.mime &&
+            item.filename === row.filename &&
+            item.version === row.version &&
+            item.visibility === row.visibility,
+        )
+      )
+        throw Error("Canonical list confirmation unavailable");
+      await clear();
+      share = null;
+      clearTimeout(expiry);
+      set({ kind: "delivered", deliverable: row });
+      return;
+    }
     const attachment = parseAttachment(value, expected);
     let cursor: string | undefined;
     const cursors = new Set<string>();
@@ -383,7 +422,7 @@ export function createShareIntake({
       if (
         !record(receipt) ||
         receipt.ok !== true ||
-        receipt.schema_version !== "deal-document-intake.v1" ||
+        receipt.schema_version !== (destination === "documents" ? "deal-document-intake.v1" : "deal-deliverables.v1") ||
         !record(receipt.deliverable) ||
         receipt.deliverable.deal_id !== deal.id ||
         receipt.deliverable.id !== operation.reservation
@@ -402,7 +441,8 @@ export function createShareIntake({
         if (
           !record(abandoned) ||
           abandoned.ok !== true ||
-          abandoned.schema_version !== "deal-document-intake.v1" ||
+          abandoned.schema_version !==
+            (destination === "documents" ? "deal-document-intake.v1" : "deal-deliverables.v1") ||
           !record(abandoned.deliverable) ||
           abandoned.deliverable.state !== "expired" ||
           abandoned.deliverable.deal_id !== deal.id ||

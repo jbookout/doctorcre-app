@@ -1,5 +1,6 @@
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { DealDeliverables } from "./deal-deliverables.tsx";
 import type { DocumentTextClient } from "./deal-document-text";
 import { DocumentTextViewer } from "./deal-document-text-viewer";
 
@@ -82,6 +83,10 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
   let state: State = { kind: "loading", page: { documents: [], next: null }, cursor: null },
     disposed = false,
     generation = 0;
+  let pendingUpload = false;
+  const uploadPending = (value: boolean) => {
+    pendingUpload = value;
+  };
   let opened: Document | null = null;
   let openedButton: HTMLButtonElement | null = null;
   let search = "",
@@ -96,6 +101,7 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
   const view = element.ownerDocument.defaultView;
   function expire() {
     opened = null;
+    pendingUpload = false;
     ++generation;
     controller.abort();
     clearSelection();
@@ -123,6 +129,7 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
     flushSync(() =>
       root.render(
         <section className="deal-documents" aria-label="Deal documents">
+          {state.kind !== "expired" && <DealDeliverables key={dealId} dealId={dealId} pending={uploadPending} />}
           <h2>Documents</h2>
           <p>Files filed for this deal. Open retained text to read extracted pages and lines.</p>
           {state.kind !== "expired" && (
@@ -339,6 +346,12 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
   void refresh();
   return {
     refresh,
+    hasUnsavedChanges: () => pendingUpload,
+    confirmLeave: () =>
+      !pendingUpload ||
+      view?.confirm(
+        "A file or designation is pending. Stay to finish it. Leaving keeps unresolved reservations bound to this deal; unuploaded bytes must be selected again. Leave this deal?",
+      ) === true,
     dispose() {
       opened = null;
       disposed = true;

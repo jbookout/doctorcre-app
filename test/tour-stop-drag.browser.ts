@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { build } from "esbuild";
-import { startFixture } from "../scripts/fixture-http.mjs";
+import { installDragReadGuard } from "../scripts/drag-read-guard.ts";
 import { chromium } from "./browser-harness.mjs";
-import { propA, propB, runTourDragProofFixture, tourDragRoutes } from "./tour-stop-drag-proof-fixture.ts";
+import {
+  propA,
+  propB,
+  runTourDragProofFixture,
+  startTourDragFixture,
+  tourDragRoutes,
+} from "./tour-stop-drag-proof-fixture.ts";
 
-for (const mode of ["pass", "cancelled", "near-miss"] as const) {
+for (const mode of ["pass", "cancelled", "near-miss", "write", "unknown-verb", "unknown-post"] as const) {
   test(`production drag proof CLI fixture ${mode}`, async (t) => {
     const run = runTourDragProofFixture(await tourDragRoutes(mode), t);
     if (mode === "pass") {
@@ -18,6 +24,8 @@ for (const mode of ["pass", "cancelled", "near-miss"] as const) {
         assert.ok(error instanceof Error && "code" in error && "stderr" in error);
         assert.equal(error.code, 1, String(error.stderr));
         if (mode === "near-miss") assert.match(String(error.stderr), /-near-miss/);
+        if (["write", "unknown-verb", "unknown-post"].includes(mode))
+          assert.match(String(error.stderr), /writes during drag/);
         return true;
       });
     }
@@ -98,11 +106,12 @@ for (const width of [390, 1440])
 for (const width of [390, 1440])
   for (const theme of ["light", "dark"] as const) {
     test(`mouse and touch drag preserve exact order and Undo at ${width}px ${theme}`, async (t) => {
-      const server = await startFixture({ routes: await tourDragRoutes() });
+      const server = await startTourDragFixture(await tourDragRoutes());
       t.after(() => server.close());
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: true, colorScheme: theme });
+        const guard = await installDragReadGuard(page.context(), server.origin);
         await page.goto(`${server.origin}/deals`);
         const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
         assert.ok(editor);
@@ -161,12 +170,89 @@ for (const width of [390, 1440])
               .evaluate((node) => getComputedStyle(node).touchAction),
             "none",
           );
-          assert.equal(server.requests.filter((request) => !["GET", "HEAD"].includes(request.method ?? "")).length, 0);
+          assert.equal(guard.writes, 0, "no writes during drag");
+          assert.ok(server.rpcReads > 0, "saved-search startup read reaches the contract fixture");
           assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         } finally {
           await touch.detach();
         }
       } finally {
+        await browser.close();
+      }
+    });
+  }
+
+for (const releaseDuring of ["scroll", "drag"])
+  for (const releaseAfter of [0, 1, 5, 10, 20, 40]) {
+    test(`late selection cart preserves the drag target during ${releaseDuring} after ${releaseAfter}ms`, async (t) => {
+      const server = await startTourDragFixture(await tourDragRoutes());
+      t.after(() => server.close());
+      const browser = await chromium.launch();
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let received = () => {};
+      const seen = new Promise<void>((resolve) => {
+        received = resolve;
+      });
+      try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+        await page.route("**/api/tours/selection-cart?*", async (route) => {
+          received();
+          await held;
+          await route.continue();
+        });
+        await page.goto(`${server.origin}/deals`);
+        await seen;
+        const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
+        assert.ok(editor);
+        await editor.locator("#route-editing").evaluate((node) => {
+          if (node instanceof HTMLDetailsElement) node.open = true;
+        });
+        const handle = editor.locator(`[data-property-id="${propA}"] [data-stop-drag]`);
+        const original = await handle.elementHandle();
+        assert.ok(original);
+        const response = page.waitForResponse((response) => response.url().includes("/api/tours/selection-cart?"));
+        const scrolling = handle.scrollIntoViewIfNeeded();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          if (releaseDuring === "scroll") timer = setTimeout(release, releaseAfter);
+          await scrolling;
+          assert.equal(await handle.isEnabled(), true, "route editing does not wait for the selection cart");
+          if (releaseDuring === "scroll") await (await response).finished();
+          assert.ok(
+            await original.evaluate((node) => node.isConnected),
+            "late cart read must keep the original handle attached",
+          );
+          assert.equal(await handle.isEnabled(), true, "route editing does not wait for the selection cart");
+          const box = await handle.boundingBox();
+          assert.ok(box);
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await page.mouse.down();
+          if (releaseDuring === "drag") {
+            timer = setTimeout(release, releaseAfter);
+            await (await response).finished();
+            assert.ok(await original.evaluate((node) => node.isConnected));
+          }
+          const destination = editor.locator(`[data-property-id="${propB}"] .stop-head`);
+          await destination.evaluate((node) => node.scrollIntoView({ block: "center" }));
+          const target = await destination.boundingBox();
+          assert.ok(target);
+          await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
+          await page.mouse.up();
+          const order = () =>
+            editor
+              .locator("#route-stops > li")
+              .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-property-id")));
+          assert.deepEqual(await order(), [propB, propA]);
+          await editor.locator("#undo-route").click();
+          assert.deepEqual(await order(), [propA, propB]);
+        } finally {
+          clearTimeout(timer);
+        }
+      } finally {
+        release();
         await browser.close();
       }
     });

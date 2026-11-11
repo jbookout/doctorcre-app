@@ -135,13 +135,13 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
             }
             const resolved = args.kind === "entry-point" ? posix.normalize(args.path)
               : posix.normalize(posix.join(posix.dirname(args.importer), args.path));
-            if ((args.kind !== "entry-point" && !args.path.startsWith(".")) || !paths.includes(resolved)) {
+            if ((args.kind !== "entry-point" && !args.path.startsWith(".")) || !(paths.includes(resolved) || resolved === "src/ui/public-tour-packet.ts")) {
               throw new Error(`report import is not an admitted artifact input: ${args.path}`);
             }
             return { path: resolved, namespace: "artifact-source" };
           });
           builder.onLoad({ filter: /.*/, namespace: "artifact-source" }, async (args) => ({
-            contents: (await readSource(args.path)).toString("utf8"), loader: "js",
+            contents: (await readSource(args.path)).toString("utf8"), loader: args.path.endsWith(".ts") ? "ts" : "js",
           }));
         } }],
       });

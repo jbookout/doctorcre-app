@@ -96,7 +96,79 @@
           "name": "Synthetic clinic",
           "address": "6 Medical Drive"
         }
-      ]
+      ],
+      "presentation": {
+        "version": "2.0.0",
+        "brand": "CARR Healthcare Real Estate",
+        "map": "Tour map",
+        "title": "Your property tour",
+        "overview": "Tour day at a glance",
+        "properties": "Properties",
+        "notes": "My Notes",
+        "unknown": "Unknown",
+        "fields": [
+          [
+            "suite",
+            "Suite"
+          ],
+          [
+            "property_type",
+            "Property type"
+          ],
+          [
+            "size",
+            "Size"
+          ],
+          [
+            "asking_economics",
+            "Asking economics"
+          ],
+          [
+            "availability",
+            "Availability"
+          ],
+          [
+            "parking",
+            "Parking"
+          ]
+        ],
+        "summary": "1 property in tour order.",
+        "stops": [
+          {
+            "property_ref": "property:public:synthetic_property_01",
+            "route_sequence": 1,
+            "route_label": "A",
+            "name": "Synthetic clinic",
+            "address": "6 Medical Drive",
+            "facts": [
+              {
+                "label": "Suite",
+                "value": "Unknown"
+              },
+              {
+                "label": "Property type",
+                "value": "Unknown"
+              },
+              {
+                "label": "Size",
+                "value": "Unknown"
+              },
+              {
+                "label": "Asking economics",
+                "value": "Unknown"
+              },
+              {
+                "label": "Availability",
+                "value": "Unknown"
+              },
+              {
+                "label": "Parking",
+                "value": "Unknown"
+              }
+            ]
+          }
+        ]
+      }
     },
     "nearMiss": {
       "stops": [
@@ -107,7 +179,79 @@
           "name": "Synthetic clinic",
           "address": "16 Medical Drive"
         }
-      ]
+      ],
+      "presentation": {
+        "version": "2.0.0",
+        "brand": "CARR Healthcare Real Estate",
+        "map": "Tour map",
+        "title": "Your property tour",
+        "overview": "Tour day at a glance",
+        "properties": "Properties",
+        "notes": "My Notes",
+        "unknown": "Unknown",
+        "fields": [
+          [
+            "suite",
+            "Suite"
+          ],
+          [
+            "property_type",
+            "Property type"
+          ],
+          [
+            "size",
+            "Size"
+          ],
+          [
+            "asking_economics",
+            "Asking economics"
+          ],
+          [
+            "availability",
+            "Availability"
+          ],
+          [
+            "parking",
+            "Parking"
+          ]
+        ],
+        "summary": "1 property in tour order.",
+        "stops": [
+          {
+            "property_ref": "property:public:synthetic_property_01",
+            "route_sequence": 1,
+            "route_label": "A",
+            "name": "Synthetic clinic",
+            "address": "16 Medical Drive",
+            "facts": [
+              {
+                "label": "Suite",
+                "value": "Unknown"
+              },
+              {
+                "label": "Property type",
+                "value": "Unknown"
+              },
+              {
+                "label": "Size",
+                "value": "Unknown"
+              },
+              {
+                "label": "Asking economics",
+                "value": "Unknown"
+              },
+              {
+                "label": "Availability",
+                "value": "Unknown"
+              },
+              {
+                "label": "Parking",
+                "value": "Unknown"
+              }
+            ]
+          }
+        ]
+      }
     },
     "active": {
       "projection_ref": "projection:public:synthetic_projection_01",
@@ -210,5 +354,6 @@
         }
       }
     }
-  }
+  },
+  "packet_source_commit": "fe5a1c1c4c56aa0a6c74b215576d0d667f51c007"
 }

@@ -7,6 +7,7 @@
 // Run only from a clean checkout at exactly origin/main, under Joe's explicit
 // instruction for that release. `versions deploy ... @100%` is the one
 // irreversible step; undo it with `npm run rollback:production -- <id>`.
+import { appendFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 import { credentialFreeEnv } from "./release-environment.mjs";
@@ -19,6 +20,11 @@ const run = (command, args, { capture = false } = {}) => execFileSync(command, a
   stdio: capture ? "pipe" : "inherit",
   env: credentialFreeEnv(),
 });
+
+const receipt = (disposition, providerVersionId) => {
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT,
+    `disposition=${disposition}\nprovider_version_id=${providerVersionId}\npublication_observed_at=${new Date().toISOString()}\n`);
+};
 
 const sourceCommit = run("git", ["rev-parse", "HEAD"], { capture: true }).trim();
 const mainCommit = run("git", ["rev-parse", "origin/main"], { capture: true }).trim();
@@ -51,6 +57,7 @@ if (deployment.versions.length === 1 && active.percentage === 100) {
   const source = version.resources.bindings.find(binding => binding.name === "GIT_SHA" && binding.type === "plain_text");
   if (source?.text === sourceCommit) {
     console.log(`Production already serves source ${sourceCommit}; no publication needed.`);
+    receipt("already-live", active.version_id);
     process.exit(0);
   }
 }
@@ -61,3 +68,5 @@ const providerVersionId = uploadedVersionId(uploadOutput);
 provider(["versions", "deploy", `${providerVersionId}@100%`, "--env", "",
   "--message", message, "--yes"]);
 provider(["deployments", "status", "--env", "", "--json"]);
+
+receipt("published", providerVersionId);
