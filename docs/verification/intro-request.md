@@ -4,7 +4,7 @@ Card: WR591.S26.J1
 
 Medium app-only slice. No subagents per dispatch. Two designs considered before code: a form embedded in each connection, and one retained review dialog. The retained dialog keeps an uncertain request when the user closes and reopens a path. The existing snapshot owns offered-path eligibility.
 
-System design: one typed review module owns form state and the retained request. The live client owns authenticated, session-bound MCP transport. Before dispatch read the snapshot and compare the exact path. After a receipt read back the exact canonical edge. Current and 10x load use one preflight read, one validation readback and the existing network refresh per user write, with no fan-out, queue, new cache, database access or N+1 loop. Display freshness uses the existing 120-second snapshot. A failed call stops until user action. Existing transport deadlines bound external calls. Same-key recovery has no automatic retry.
+System design: one typed review module owns form state and the retained request. The live client owns authenticated, session-bound MCP transport. Before dispatch read the snapshot and compare the exact path. After a receipt read back the exact canonical edge. Current and 10x load use one preflight read, one validation readback and the existing network refresh per user write, with no fan-out, queue, new cache, database access or N+1 loop. Display freshness uses the existing 120-second snapshot. A failed call stops until user action. Existing transport deadlines bound external calls. Same-key recovery has no automatic retry. Recovery first reads a fresh canonical snapshot. An exact committed requested edge permits same-key reconciliation even after the offer is suppressed; otherwise the original offered path must still pass current eligibility and identity checks. Failed reconciliation retains unknown intent. Preflight 401, 403 and session_changed retire the review and clear private identities and notes.
 
 ```mermaid
 stateDiagram-v2
@@ -52,6 +52,9 @@ Transition-to-test mapping:
 | Confirmed to confirmed on refresh | V03 explicitly reviews and records the exact introduction, all widths/themes |
 | Submitting to retired | retirement suppresses a late receipt and all later sends |
 | Other active states to retired | retirement clears selected/reviewing/unknown/refused/confirmed/changed_source review and prevents further sends |
+| Unknown to submitting to unknown on failed reconciliation | uncommitted recovery revalidates restricted/removed/stale/changed/already-requested before any new write; unavailable recovery read retains unknown intent until reconciliation can finish |
+| Unknown to submitting to confirmed after offer suppression | committed recovery remains possible after offer suppression and endpoint restriction |
+| Preflight session refusal to retired | preflight session refusal clears the review; retirement ignores a pending preflight that resolves/rejects later |
 | Transport session change to retired | transport session refusal retires and clears the retained review; V03 changed-session recovery sends no second write and clears private review identities |
 | Read-only proof and cancel | V03 proof observation passes exact identity |
 | Proof identity mismatch | V03 proof observation rejects near-miss identity |
