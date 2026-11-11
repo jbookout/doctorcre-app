@@ -29,7 +29,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
   assets.set("/js/deliverable-fixture.js", {
     contentType: "text/javascript",
     body: Buffer.from(
-      `import {mountDealDocuments} from '/js/ui-deal-documents.js';mountDealDocuments(document.querySelector('#panel'),{dealId:'${deal}',client:{listDealDocuments:async()=>({ok:true,schema_version:'deal-documents.v1',documents:[],has_more:false,next_cursor:null})}});`,
+      `import {mountDealDocuments} from '/js/ui-deal-documents.js';window.deliverablesHandle=mountDealDocuments(document.querySelector('#panel'),{dealId:'${deal}',client:{listDealDocuments:async()=>({ok:true,schema_version:'deal-documents.v1',documents:[],has_more:false,next_cursor:null})}});`,
     ),
   });
   assets.set("/css/deliverable-fixture.css", {
@@ -106,6 +106,11 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await page.goto(`${server.origin}/share-intake.html`);
         await page.evaluate((theme) => (document.documentElement.dataset.theme = theme), theme);
         const panel = page.getByRole("region", { name: "Deal Deliverables", exact: true });
+        await panel.getByRole("button", { name: "Drop a deliverable or choose a file" }).focus();
+        const keyboardChooser = page.waitForEvent("filechooser");
+        await page.keyboard.press("Enter");
+        await (await keyboardChooser).setFiles([]);
+
         await panel
           .getByText("No deliverables yet.", { exact: false })
           .waitFor({ timeout: 3000 })
@@ -128,6 +133,8 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
             element.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: transfer }));
           });
         } else await panel.getByLabel("Choose a deliverable", { exact: true }).setInputFiles(file);
+        page.once("dialog", (dialog) => dialog.dismiss());
+        assert.equal(await page.evaluate("window.deliverablesHandle.confirmLeave()"), false);
         await panel.getByRole("button", { name: "Upload to this deal", exact: true }).click();
         await panel.getByText("Unknown.", { exact: false }).waitFor();
         await page.reload();

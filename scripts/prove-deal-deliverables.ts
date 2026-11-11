@@ -58,6 +58,9 @@ export async function proveDeliverables({
           await page.setViewportSize({ width, height: 1000 });
           await page.emulateMedia({ colorScheme: theme });
           await page.goto(`${origin}/deals?deal=${dealId}`);
+          await page.evaluate((theme) => {
+            document.documentElement.dataset.theme = theme;
+          }, theme);
           await page.getByRole("tab", { name: "Documents", exact: true }).click();
           const panel = page.getByRole("region", { name: "Deal Deliverables", exact: true });
           await panel.getByRole("link", { name: `Download ${receipt.filename}`, exact: true }).waitFor();
