@@ -79,11 +79,12 @@ test('quoted action refs work and commented uses lines do not count', async t =>
   await writeFile(join(root, '.github/workflows/ci.yml'), workflow(`      # - uses: actions/checkout@v4\n      - uses: "actions/checkout@${sha}" # immutable`));
   await checkActionPins(root);
 });
-test('CI checks pins before dependency and browser setup while retaining the full suite', async () => {
+test('CI checks pins before app checks while retaining the full suite', async () => {
   const ci = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const checks = await readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
   assert.ok(checks.includes('run: npm run ci:fast'));
   assert.ok(checks.indexOf('run: npm ci') < checks.indexOf('run: npm run ci:fast'));
+  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npm run check'));
   assert.doesNotMatch(checks, /playwright install|ci-postgres\.sh/);
   const shards = ci.split(/^  shards:\n/m)[1].split(/^  \w+:/m)[0];
   assert.match(shards, /shard: \[1, 2, 3, 4\]/);

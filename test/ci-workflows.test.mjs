@@ -121,7 +121,7 @@ test('typed surfaces check the merge group against its base and reject new JavaS
   }
 });
 
-test('signed-in Calendar CI installs the producer PostgreSQL binaries before its real journey', () => {
+test('signed-in Calendar CI verifies the producer image before its real journey', () => {
   assert.match(ci, /uses: \.\/\.github\/workflows\/checks\.yml/);
   assert.match(checks, /run: python3 \/opt\/ci\/capabilities\.py verify app/);
   const journey = checks.split('name: Verify signed-in Calendar')[1];
@@ -188,7 +188,7 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
     /app-owned\.yml contains a database connection string/, "app-owned content must remain guarded");
 });
 
-test('source CI keeps the full required suite and checks privacy before browser downloads', async t => {
+test('source CI keeps the full required suite and checks privacy before browser tests', async t => {
   const steps = checks.split(/^      - /m).slice(1);
   assert.match(ci, /^  test:/m);
   assert.match(ci, /^  checks:\n.*\n    uses: \.\/\.github\/workflows\/checks\.yml\n    secrets: inherit$/m);
