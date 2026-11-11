@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
+import { UI_ENTRIES } from '../scripts/ui-bundle.mjs';
 import { JSDOM } from 'jsdom';
 const root=new URL('../',import.meta.url);
 const packetRecording=JSON.parse(await readFile(new URL('test/fixtures/packet-parity/share.json',root),'utf8'));
@@ -11,7 +13,13 @@ function packetForContext(target) {
  for(const stop of [value.stops[0],value.presentation.stops[0]]) {stop.property_ref=`property:public:synthetic_property_${target}`;stop.name=`Private projection ${target}`;}
  return value;
 }
-const bundle=await build({entryPoints:[new URL('reports/share.js',root).pathname],external:['/vendor/*'],bundle:true,write:false,format:'iife'});
+const bundle=await build({entryPoints:[new URL('reports/share.js',root).pathname],external:['/vendor/*'],bundle:true,write:false,format:'iife',plugins:[{name:'current-ui-sources',setup(builder){
+ builder.onResolve({filter:/\/js\/ui-[^/]+\.js$/},args=>{
+ const entry=Object.entries(UI_ENTRIES).find(([name])=>args.path.endsWith(`/js/${name}.js`));
+ if(!entry)return undefined;
+ return builder.resolve(fileURLToPath(new URL(`src/ui/${entry[1]}`,root)),{kind:args.kind,resolveDir:fileURLToPath(root)});
+ });
+}}]});
 const html=await readFile(new URL('reports/share.html',root),'utf8');
 const flush=async()=>{for(let i=0;i<12;i++)await new Promise(r=>setTimeout(r,0));};
 let cookie='A';
