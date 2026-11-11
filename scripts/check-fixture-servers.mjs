@@ -297,6 +297,7 @@ export async function checkFixtureServers(root = fileURLToPath(new URL('../', im
   const errors = [...results.values()].flatMap(r => r.errors);
   const transportVisited = new Set();
   function checkTransportGraph(file) {
+    if (file.endsWith('.json')) return;
     if (transportVisited.has(file)) return;
     transportVisited.add(file);
     const source = sources.get(file);

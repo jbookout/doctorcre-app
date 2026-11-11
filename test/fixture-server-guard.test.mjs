@@ -90,8 +90,12 @@ test('fixed Worker transport graph refuses filesystem capabilities in its router
   execFileSync('git', ['init', '-q', root]);
   await mkdir(root + '/scripts'); await mkdir(root + '/src');
   await writeFile(root + '/scripts/fixture-http.mjs', "import {handleDoctorcreRequest} from '../src/worker.js'; export const startWorkerFixture = async () => {};");
-  await writeFile(root + '/src/worker.js', 'export const handleDoctorcreRequest = () => {};');
+  await writeFile(root + '/src/worker.js', "import './packet.json' with { type: 'json' }; export const handleDoctorcreRequest = () => {};");
+  await writeFile(root + '/src/packet.json', '{"stops": []}');
   assert.deepEqual(await checkFixtureServers(root), []);
+  await writeFile(root + '/src/packet.json', '{"stops": unknown}');
+  await assert.rejects(checkFixtureServers(root), SyntaxError);
+  await writeFile(root + '/src/packet.json', '{"stops": []}');
   await writeFile(root + '/src/worker.js', "import './assets'; export const handleDoctorcreRequest = () => {};");
   await writeFile(root + '/src/assets.js', "const {readFile} = await import('node:fs/promises');");
   assert.ok((await checkFixtureServers(root)).some(error => /src\/assets.js:1:.*filesystem/.test(error)));
