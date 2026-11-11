@@ -183,6 +183,9 @@ export async function prove({
       for (const theme of ["light", "dark"]) {
         await activePage.setViewportSize({ width, height: 900 });
         await activePage.evaluate((theme) => document.documentElement.setAttribute("data-theme", theme), theme);
+        if ((await row.locator("details").getAttribute("open")) === null)
+          await row.locator("summary").click({ timeout: remaining() });
+        assert.equal(await row.locator("h3").textContent(), approved.description);
         for (const [field, value] of Object.entries({
           Client: `${approved.client_name} (${approved.client_id})`,
           Deal: `${approved.deal_name} (${approved.deal_id})`,
