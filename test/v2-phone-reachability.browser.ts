@@ -264,13 +264,10 @@ for (const size of [20, 60])
                 if (event.target instanceof Element && event.target.closest("[data-action]"))
                   Reflect.set(window, "tapped", "small");
               }
-            : (event) => call.handleClick(event.target);
+            : (event) => call.handleClick(event.currentTarget);
       }, child);
       await page.locator(child === "action" ? "#small" : "#retry").tap();
-      assert.equal(
-        await page.evaluate(() => Reflect.get(window, "tapped")),
-        child === "action" ? "small" : child === "decoration" ? "" : "retry",
-      );
+      assert.equal(await page.evaluate(() => Reflect.get(window, "tapped")), child === "action" ? "small" : "retry");
       for (const reverse of [false, false, true]) {
         const audit = await inspectPhoneAccessibility(page, page.mainFrame(), reverse);
         if (child === "action") {
@@ -407,4 +404,56 @@ test("React delegated pointer targets retain their declared activation area", as
   assert.equal(await page.evaluate(() => Reflect.get(window, "tapped")), true);
   const audit = await inspectPhoneAccessibility(page);
   assert.equal(audit.small.find((target) => target.id === "small")?.width, 20);
+});
+
+test("Opaque self-listener refuses an undiscovered child action", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+  await page.setContent(
+    '<main><button id="owner" style="position:relative;width:100px;height:100px;padding:0"><span id="small" style="position:absolute;left:0;top:0;display:block;width:20px;height:20px">X</span></button></main>',
+  );
+  await page.evaluate(() => {
+    Reflect.set(window, "taps", 0);
+    const dispatch = (target: EventTarget | null) => {
+      if (target instanceof Element && target.id === "small")
+        Reflect.set(window, "taps", Reflect.get(window, "taps") + 1);
+    };
+    const owner = document.getElementById("owner");
+    if (!owner) throw Error("Owner missing");
+    owner.onclick = (event) => dispatch(event.target);
+  });
+  await page.locator("#small").tap();
+  assert.equal(await page.evaluate(() => Reflect.get(window, "taps")), 1);
+  await page.locator("#owner").tap();
+  assert.equal(await page.evaluate(() => Reflect.get(window, "taps")), 1, "Owner center does not activate the child");
+  for (const reverse of [false, false, true])
+    await assert.rejects(
+      inspectPhoneAccessibility(page, page.mainFrame(), reverse),
+      /unknown target dispatch semantics/,
+    );
+});
+
+test("Wrapper listener preserves its only small native button", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+  await page.setContent(
+    '<main><div id="owner" style="width:200px;height:120px"><button id="small" style="width:20px;height:20px;padding:0">X</button></div></main>',
+  );
+  await page.evaluate(() =>
+    document.getElementById("owner")?.addEventListener("click", () => Reflect.set(window, "tapped", true)),
+  );
+  await page.locator("#small").tap();
+  assert.equal(await page.evaluate(() => Reflect.get(window, "tapped")), true);
+  for (const reverse of [false, false, true]) {
+    const audit = await inspectPhoneAccessibility(page, page.mainFrame(), reverse);
+    assert.deepEqual(
+      audit.small.map((target) => target.id),
+      ["small"],
+    );
+    assert.equal(audit.small[0].width, 20);
+    assert.equal(audit.small[0].height, 20);
+    assert.deepEqual(audit.covered, []);
+  }
 });
