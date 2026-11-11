@@ -214,7 +214,6 @@ for (const width of [1440, 390])
           "today-triage",
           "deal-room-changes",
           "unread-count",
-          "correspondence-readiness",
           "list-feature-switches","list-doc-suggestions",
         ].includes(v),
       ),

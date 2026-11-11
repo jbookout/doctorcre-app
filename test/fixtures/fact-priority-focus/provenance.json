@@ -29,9 +29,9 @@
   "parser": "createLiveClient rawRpc production fact-review response parser",
   "procedure": "producer.txt contains exact producer bytes and executed recipe",
   "reused_from": "test/fixtures/fact-review-pending-status-view",
-  "parser_revision": "41311508175e33ac1eba2726d6719058ec965483",
-  "parser_sha256": "d85ec316771e3237932285d09b84259c4cf1e0894e9350c4b7228763c1dd45f1",
+  "parser_revision": "d9888eac639dc4d1b30ce5e213b6af27ac377678",
+  "parser_sha256": "803d6fefd8bf8311e37b6f068ae9a67932ad3a88e9b0bb67b20312d06306c3f3",
   "producer_file_sha256": "057ec5840a6b30f6ce6ad1a4e0579d3a4fef93f5f08928a82cd5245dd4b1b768",
   "priority_cases": "Recorded normal values are unchanged. Browser tests vary priority and add a competing observation through createLiveClient rawRpc, the exact production parser. Cases include high, null, omitted, blank and future values. These are parser-contract cases, not producer replays.",
-  "parser_revalidation": "WR591.S26.J4 revalidates the recorded fact priority cases through createLiveClient after e8609ccc removed generated introduction UI loading from the transport. The fact-review parser and recorded producer bytes are unchanged."
+  "parser_revalidation": "WR622.S13.J336 removes two unused mailbox methods and their request import from createLiveClient. The fact-review parser and recorded producer bytes are unchanged. Fact-review client, fact-priority browser and proof browser cases revalidate the same production parser."
 }

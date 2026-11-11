@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   staging:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: staging
     steps:
@@ -27,7 +27,9 @@ jobs:
           node-version: 26.12.1
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/setup-browsers
+        with:
+          browsers: chromium
       - run: npm run build
         env:
           DOCTORCRE_SOURCE_COMMIT: ${{ github.sha }}
