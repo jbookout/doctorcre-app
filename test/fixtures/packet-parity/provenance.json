@@ -1,17 +1,19 @@
 {
   "schema": "doctorcre-synthetic-packet-fixture.v2",
   "repository": "DoctorCRE/carr-system",
-  "source_commit": "1e6caca72230732d8e0754a481394e0374ffb832",
+  "source_commit": "7cf35ff3c45af3e5f9318035251b07db01d6c4ae",
   "contract_version": "2.1.0",
   "renderer_version": "2.0.0",
   "presentation_version": "2.0.0",
   "source_hashes": {
     "mcp-server/src/tour-pdf-renderer.js": "21191cebef21847a5a52949a369d988b2423fdfdf47eb87d797c8ea89687203b",
     "mcp-server/src/tour-packet-render.js": "459f133e639c3b9d3a71d16a5f31887cf24621ea94401c75d6f73f6672c0709d",
-    "mcp-server/src/tour-packet-template.ts": "b15ce046fdeb64763fd00114442c12d36840075e8e5b09096064da015aa80365",
-    "mcp-server/src/tour-sharing.js": "cd330e7e66285bf4bc2aa806f4095c85772a82a44c745fb01079fee378fbe7dd"
+    "mcp-server/src/tour-packet-template.ts": "aaab1be10e0c57ed16ed796c89306a1c5863dc6613901a8214bb2d865b23fc90",
+    "mcp-server/src/tour-sharing.js": "2e82d8d676f5e101bccc743c68e11d91b9cfcdfb511e6da509455aead69744a1"
   },
   "note": "Synthetic actual 2.0.0 renderer text, coordinates, font weights and page identity recorded from PDF bytes. Tests replay Base14 fonts; exact embedded-font fidelity is not asserted. HTML and share are actual producer outputs.",
   "output": "text-recording.json",
-  "pdf_sha256": "5aeb839d5c48534a5f3bb5adf0d5d54bc160c326e40f1d26736339fbef2f6242"
+  "pdf_sha256": "a07b425ed8c1c4b55dd8b0920aa4e0a4eb30feeb05478102c0b2b207f224b0f4",
+  "timezone": "America/Chicago",
+  "sanitization": "Producer fixture uses Synthetic location A/B; raw appointment facts retained."
 }

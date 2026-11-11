@@ -64,6 +64,10 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
           packet.stops.length + 1,
         );
         assert.doesNotMatch(await page.locator("#packet-preview").innerHTML(), /\bstyle\s*=/i);
+        assert.doesNotMatch(
+          (await page.locator("#packet-preview").textContent()) || "",
+          /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/,
+        );
         assert.equal(
           await page.locator("#packet-preview a").getAttribute("href"),
           `/api/tours/pdf/download?render_job_id=${job}`,
@@ -101,6 +105,9 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
         await page.getByRole("button", { name: "Fit page", exact: true }).first().click();
         if (process.env.PACKET_PARITY_SHOTS) {
           await mkdir(process.env.PACKET_PARITY_SHOTS, { recursive: true });
+          await page.bringToFront();
+          await page.evaluate(() => scrollTo(0, 0));
+          await page.screenshot({ fullPage: true });
           await page.screenshot({
             path: `${process.env.PACKET_PARITY_SHOTS}/preview-${width}-${theme}.png`,
             fullPage: true,
@@ -181,6 +188,7 @@ test("the public packet renders the same synthetic stop facts at both widths", a
           document.documentElement.dataset.theme = theme;
         }, theme);
         await page.locator(".report-item dd").first().waitFor();
+        assert.doesNotMatch((await page.locator("body").textContent()) || "", /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
         const share = await page.locator(".report-item").evaluateAll((nodes) =>
           nodes.map((node) => ({
             property: node.getAttribute("data-property-ref") || "",

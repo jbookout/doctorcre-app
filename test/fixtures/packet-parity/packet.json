@@ -7,7 +7,7 @@
       "route_sequence": 1,
       "route_label": "A",
       "name": "Alpha Health Center",
-      "address": "100 Alpha Drive, Pensacola, FL",
+      "address": "Synthetic location A",
       "suite": "Suite 120",
       "property_type": "Medical office",
       "availability": "Available",
@@ -31,7 +31,7 @@
       "route_sequence": 2,
       "route_label": "B",
       "name": "Beta Medical Plaza",
-      "address": "200 Beta Lane, Pensacola, FL",
+      "address": "Synthetic location B",
       "suite": "Suite 220",
       "property_type": "Medical office",
       "availability": "Available",
@@ -49,5 +49,7 @@
       "appointment_end": null,
       "as_of": "2026-08-27T12:00:00Z"
     }
-  ]
+  ],
+  "contract_version": "2.1.0",
+  "renderer_version": "2.0.0"
 }

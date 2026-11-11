@@ -6,7 +6,10 @@ const stop = z.object({
   route_label: z.string(),
   name: z.string(),
   address: z.string(),
-  appointment: z.string().nullable(),
+  appointment: z
+    .string()
+    .nullish()
+    .transform((value) => (value && !/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) ? value : null)),
   public_packet_note: z.string().nullable(),
   facts: z.array(z.object({ label: z.string(), value: z.string() })).length(6),
 });

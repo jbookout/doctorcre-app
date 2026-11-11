@@ -38,37 +38,30 @@
         "bold": true
       },
       {
-        "text": "1. A · Alpha Health Center · 100 Alpha Drive, Pensacola, FL · 2031-03-04T14:00:00.123456+00:00 to",
+        "text": "1. A · Alpha Health Center · Synthetic location A · Tue, Mar 4, 8:00 to 8:30 AM CST",
         "x": 42,
         "y": 630,
         "size": 11,
         "bold": false
       },
       {
-        "text": "2031-03-04T14:30:00.123456+00:00",
+        "text": "2. B · Beta Medical Plaza · Synthetic location B",
         "x": 42,
-        "y": 615,
-        "size": 11,
-        "bold": false
-      },
-      {
-        "text": "2. B · Beta Medical Plaza · 200 Beta Lane, Pensacola, FL",
-        "x": 42,
-        "y": 592,
+        "y": 607,
         "size": 11,
         "bold": false
       },
       {
         "text": "Tour map",
         "x": 42,
-        "y": 569,
+        "y": 584,
         "size": 16,
         "bold": true
       },
       {
         "text": "Properties",
         "x": 42,
-        "y": 541,
+        "y": 556,
         "size": 16,
         "bold": true
       }
@@ -89,14 +82,14 @@
         "bold": true
       },
       {
-        "text": "100 Alpha Drive, Pensacola, FL",
+        "text": "Synthetic location A",
         "x": 42,
         "y": 622,
         "size": 11.5,
         "bold": false
       },
       {
-        "text": "2031-03-04T14:00:00.123456+00:00 to 2031-03-04T14:30:00.123456+00:00",
+        "text": "Tue, Mar 4, 8:00 to 8:30 AM CST",
         "x": 42,
         "y": 592,
         "size": 9,
@@ -105,13 +98,6 @@
       {
         "text": "Suite",
         "x": 42,
-        "y": 570,
-        "size": 9,
-        "bold": true
-      },
-      {
-        "text": " ",
-        "x": 62.4525,
         "y": 570,
         "size": 9,
         "bold": true
@@ -131,13 +117,6 @@
         "bold": true
       },
       {
-        "text": " ",
-        "x": 97.6695,
-        "y": 521,
-        "size": 9,
-        "bold": true
-      },
-      {
         "text": "Medical office",
         "x": 210,
         "y": 521,
@@ -147,13 +126,6 @@
       {
         "text": "Size",
         "x": 42,
-        "y": 472,
-        "size": 9,
-        "bold": true
-      },
-      {
-        "text": " ",
-        "x": 58.164,
         "y": 472,
         "size": 9,
         "bold": true
@@ -173,13 +145,6 @@
         "bold": true
       },
       {
-        "text": " ",
-        "x": 113.99549999999999,
-        "y": 423,
-        "size": 9,
-        "bold": true
-      },
-      {
         "text": "USD 24.00 per NNN",
         "x": 210,
         "y": 423,
@@ -194,13 +159,6 @@
         "bold": true
       },
       {
-        "text": " ",
-        "x": 86.67150000000002,
-        "y": 374,
-        "size": 9,
-        "bold": true
-      },
-      {
         "text": "Available",
         "x": 210,
         "y": 374,
@@ -210,13 +168,6 @@
       {
         "text": "Parking",
         "x": 42,
-        "y": 325,
-        "size": 9,
-        "bold": true
-      },
-      {
-        "text": " ",
-        "x": 72.42,
         "y": 325,
         "size": 9,
         "bold": true
@@ -259,7 +210,7 @@
         "bold": true
       },
       {
-        "text": "200 Beta Lane, Pensacola, FL",
+        "text": "Synthetic location B",
         "x": 42,
         "y": 622,
         "size": 11.5,
@@ -268,13 +219,6 @@
       {
         "text": "Suite",
         "x": 42,
-        "y": 570,
-        "size": 9,
-        "bold": true
-      },
-      {
-        "text": " ",
-        "x": 62.4525,
         "y": 570,
         "size": 9,
         "bold": true
@@ -294,13 +238,6 @@
         "bold": true
       },
       {
-        "text": " ",
-        "x": 97.6695,
-        "y": 521,
-        "size": 9,
-        "bold": true
-      },
-      {
         "text": "Medical office",
         "x": 210,
         "y": 521,
@@ -310,13 +247,6 @@
       {
         "text": "Size",
         "x": 42,
-        "y": 472,
-        "size": 9,
-        "bold": true
-      },
-      {
-        "text": " ",
-        "x": 58.164,
         "y": 472,
         "size": 9,
         "bold": true
@@ -336,13 +266,6 @@
         "bold": true
       },
       {
-        "text": " ",
-        "x": 113.99549999999999,
-        "y": 423,
-        "size": 9,
-        "bold": true
-      },
-      {
         "text": "USD 24.00 per NNN",
         "x": 210,
         "y": 423,
@@ -357,13 +280,6 @@
         "bold": true
       },
       {
-        "text": " ",
-        "x": 86.67150000000002,
-        "y": 374,
-        "size": 9,
-        "bold": true
-      },
-      {
         "text": "Available",
         "x": 210,
         "y": 374,
@@ -373,13 +289,6 @@
       {
         "text": "Parking",
         "x": 42,
-        "y": 325,
-        "size": 9,
-        "bold": true
-      },
-      {
-        "text": " ",
-        "x": 72.42,
         "y": 325,
         "size": 9,
         "bold": true

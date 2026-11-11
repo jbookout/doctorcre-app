@@ -1,5 +1,4 @@
 {
-  "as_of": "2026-08-27T12:00:00Z",
   "contract_version": "2.1.0",
   "renderer_version": "2.0.0",
   "stops": [
@@ -8,7 +7,7 @@
       "route_sequence": 1,
       "route_label": "A",
       "name": "Alpha Health Center",
-      "address": "100 Alpha Drive, Pensacola, FL",
+      "address": "Synthetic location A",
       "suite": "Suite 120",
       "property_type": "Medical office",
       "size": {
@@ -31,7 +30,7 @@
       "route_sequence": 2,
       "route_label": "B",
       "name": "Beta Medical Plaza",
-      "address": "200 Beta Lane, Pensacola, FL",
+      "address": "Synthetic location B",
       "suite": "Suite 220",
       "property_type": "Medical office",
       "size": {
@@ -92,8 +91,8 @@
         "route_sequence": 1,
         "route_label": "A",
         "name": "Alpha Health Center",
-        "address": "100 Alpha Drive, Pensacola, FL",
-        "appointment": "2031-03-04T14:00:00.123456+00:00 to 2031-03-04T14:30:00.123456+00:00",
+        "address": "Synthetic location A",
+        "appointment": "Tue, Mar 4, 8:00 to 8:30 AM CST",
         "public_packet_note": "Please meet in the lobby",
         "facts": [
           {
@@ -127,7 +126,7 @@
         "route_sequence": 2,
         "route_label": "B",
         "name": "Beta Medical Plaza",
-        "address": "200 Beta Lane, Pensacola, FL",
+        "address": "Synthetic location B",
         "appointment": null,
         "public_packet_note": null,
         "facts": [
