@@ -214,6 +214,33 @@ test("Mixed delegated and native targets retain the real 20 px action", async (t
   }
 });
 
+for (const focusable of [false, true])
+  test(`Delegated grandparent retains small action with focusable owner ${focusable}`, async (t) => {
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+    await page.setContent(
+      `<html lang="en"><head><title>Delegated target</title></head><body><main><h1>Targets</h1><div id="owner" ${focusable ? 'tabindex="0"' : ""} style="width:200px;height:120px"><ul style="margin:0;padding:0"><li id="small" data-action="small" style="display:block;width:20px;height:20px;background:red"><span style="pointer-events:none">X</span></li><li style="display:block"><button style="width:60px;height:60px">Large</button></li></ul></div></main></body></html>`,
+    );
+    await page.evaluate(() =>
+      document.getElementById("owner")?.addEventListener("click", (event) => {
+        if (event.target instanceof Element && event.target.closest("[data-action]"))
+          Reflect.set(window, "tapped", true);
+      }),
+    );
+    const box = await page.locator("#small").boundingBox();
+    assert.ok(box);
+    await page.touchscreen.tap(box.x + 10, box.y + 10);
+    assert.equal(await page.evaluate(() => Reflect.get(window, "tapped")), true);
+    for (const reverse of [false, false, true]) {
+      const audit = await inspectPhoneAccessibility(page, page.mainFrame(), reverse);
+      const small = audit.small.find((target) => target.id === "small");
+      assert.equal(small?.width, 20, "real 20 px delegated action must be discovered");
+      assert.equal(small?.height, 20);
+      assert.deepEqual(audit.covered, []);
+    }
+  });
+
 for (const dispatch of ["dynamic selector", "target id"])
   test(`Unknown delegated dispatch refuses clean evidence: ${dispatch}`, async (t) => {
     const browser = await chromium.launch();
