@@ -159,9 +159,16 @@ test("Proof deadline closes a late browser launch and a stalled evaluation", asy
   for (const mode of ["late-launch", "stalled-evaluation"]) {
     let acquired: Awaited<ReturnType<typeof rawChromium.launch>> | undefined;
     let evaluated = false;
+    let ownedPids: number[] = [];
     const engine = {
       async launch(options: Parameters<typeof rawChromium.launch>[0]) {
         acquired = await rawChromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options?.args || [])] });
+        const session = await acquired.newBrowserCDPSession();
+        try {
+          ownedPids = (await session.send("SystemInfo.getProcessInfo")).processInfo.map((process) => process.id);
+        } finally {
+          await session.detach();
+        }
         if (mode === "late-launch") await new Promise((resolve) => setTimeout(resolve, 1500));
         else {
           const newPage = acquired.newPage.bind(acquired);
@@ -191,6 +198,8 @@ test("Proof deadline closes a late browser launch and a stalled evaluation", asy
     await new Promise((resolve) => setTimeout(resolve, 1700));
     assert.ok(acquired, "proof acquired the run-owned browser");
     assert.equal(acquired.isConnected(), false, mode);
+    assert.ok(ownedPids.length > 0);
+    for (const pid of ownedPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
     if (mode === "stalled-evaluation") assert.equal(evaluated, true);
   }
 });
