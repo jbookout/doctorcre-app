@@ -64,8 +64,10 @@ test("Home brief stays inline with inbox and restores priority focus in both the
           assert.equal(await page.locator(".home-brief-toggle").getAttribute("aria-expanded"), "true");
           await page.locator(".home-brief-toggle").click();
           assert.equal(await brief.isVisible(), false);
-          await page.locator(".home-brief-toggle").click();
+          await page.locator("#docMorning").evaluate((node: HTMLElement) => node.click());
+          await brief.waitFor();
           assert.equal(await brief.isVisible(), true);
+          assert.equal(await page.evaluate(() => document.activeElement?.id), "morningTitle");
         }
         assert.equal(await checkbox.isChecked(), true);
         assert.equal(await reason.inputValue(), "Keep this synthetic draft");

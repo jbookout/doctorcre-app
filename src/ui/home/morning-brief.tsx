@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 export function MorningBrief() {
   const [expanded, setExpanded] = useState(
@@ -6,7 +7,7 @@ export function MorningBrief() {
   );
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const expand = () => setExpanded(true);
+    const expand = () => flushSync(() => setExpanded(true));
     document.addEventListener("doctorcre:open-home-brief", expand);
     document.dispatchEvent(new Event("doctorcre:mount-home-brief"));
     const node = host.current;

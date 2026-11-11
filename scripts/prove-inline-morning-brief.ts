@@ -10,7 +10,8 @@ export async function observeInlineBrief(page: Page, origin: string) {
   await page.goto(`${origin}/?mode=live`);
   const brief = page.locator("#homeBrief #docMorningBrief");
   const toggle = page.locator(".home-brief-toggle");
-  if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+  await toggle.waitFor({ state: "attached" });
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
   await brief.waitFor();
   for (const width of [1440, 390])
     for (const theme of ["light", "dark"]) {
