@@ -12,7 +12,7 @@
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "vars": { "APP_ENV": "production" },
   "services": [{ "binding": "CARR", "service": "carr-mcp" }, { "binding": "ENGINE", "service": "doctorcre-engine" }],
-  "kv_namespaces": [{ "binding": "DEALS_ROUTING" }],
+  "kv_namespaces": [{ "binding": "DEALS_ROUTING", "id": "1b69f9569abb4f33b22356bd621349d4" }],
   "observability": { "enabled": true, "head_sampling_rate": 0.1 },
   "limits": { "cpu_ms": 200 },
   "env": {
@@ -26,7 +26,7 @@
       "version_metadata": { "binding": "CF_VERSION_METADATA" },
       "vars": { "APP_ENV": "staging" },
       "services": [{ "binding": "CARR", "service": "carr-mcp-staging" }, { "binding": "ENGINE", "service": "doctorcre-engine-staging" }],
-      "kv_namespaces": [{ "binding": "DEALS_ROUTING" }]
+      "kv_namespaces": [{ "binding": "DEALS_ROUTING", "id": "1b69f9569abb4f33b22356bd621349d4" }]
     }
   }
 }
