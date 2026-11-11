@@ -13,7 +13,7 @@ import introRecording from "./fixtures/introduction-request.json" with { type: "
 const assets = await appAssetSnapshot();
 const relationshipPage = assets.get("/relationships.html");
 assert.ok(relationshipPage);
-async function open(t: TestContext, width = 1440) {
+async function open(t: TestContext, width = 1440, paceMs = 0) {
   assert.ok(relationshipPage);
   const server = await startWorkerFixture({
     routes: new Map([
@@ -48,7 +48,14 @@ async function open(t: TestContext, width = 1440) {
   let recorded: ReturnType<typeof relationshipNetworkFixture>["edges"][number] | null = null;
   let mode = "intro";
   page.on("pageerror", (e) => errors.push(e.message));
+  let dispatch = Promise.resolve();
+  let requestCount = 0;
   await page.route("**/*", async (r) => {
+    requestCount++;
+    if (paceMs) {
+      dispatch = dispatch.then(() => delay(paceMs));
+      await dispatch;
+    }
     const url = new URL(r.request().url());
     if (url.origin !== origin) return r.abort();
     if (url.pathname === "/api/v1/business/relationships") {
@@ -99,6 +106,7 @@ async function open(t: TestContext, width = 1440) {
     page,
     origin,
     errors,
+    requestCount: () => requestCount,
     writes,
     setMode: (value: string) => {
       mode = value;
@@ -259,9 +267,9 @@ for (const mismatch of [false, true])
         });
         observer.observe(document, { subtree: true, childList: true });
       });
-    if (mismatch)
-      await assert.rejects(() => observeIntroduction(page, origin), /Expected values to be strictly deep-equal/);
-    else assert.equal((await observeIntroduction(page, origin)).status, "passed");
+    await page.goto(`${origin}/relationships?mode=live`);
+    if (mismatch) await assert.rejects(() => observeIntroduction(page), /Expected values to be strictly deep-equal/);
+    else assert.equal((await observeIntroduction(page)).status, "passed");
     assert.equal(writes.length, 0);
   });
 
@@ -277,10 +285,16 @@ for (const mismatch of [false, true])
           if (n && !n.textContent.startsWith("Wrong ")) n.textContent = `Wrong ${n.textContent}`;
         }).observe(document, { subtree: true, childList: true });
       });
+    let requests = 0;
+    let navigations = 0;
+    page.on("request", () => requests++);
+    page.on("request", (request) => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) navigations++;
+    });
     const run = () =>
       proveIntroduction({
         origin,
-        commit,
+        expectedCommit: commit,
         engine: {
           launch: async () => ({
             newPage: async () => page,
@@ -295,6 +309,8 @@ for (const mismatch of [false, true])
       const receipt = await run();
       assert.equal(receipt.status, "passed");
       assert.equal(receipt.observations.length, 4);
+      console.log(JSON.stringify({ requests, navigations }));
+      assert.equal(navigations, 1, "reuse the app download across widths and themes");
     }
     assert.equal(writes.length, 0);
     assert.equal(page.isClosed(), true);
@@ -328,9 +344,30 @@ for (const scenario of ["late launch", "stalled evaluation"])
       },
     };
     await assert.rejects(
-      () => proveIntroduction({ origin, commit, engine, timeoutMs: 1000 }),
+      () => proveIntroduction({ origin, expectedCommit: commit, engine, timeoutMs: 1000 }),
       (error: unknown) => !!error && typeof error === "object" && "exitCode" in error && error.exitCode === 78,
     );
     assert.equal(closed, 1);
     assert.equal(page.isClosed(), true);
   });
+
+test("V03 paced proof finishes within the original total deadline", async (t) => {
+  const { page, origin, requestCount } = await open(t, 1440, 110);
+  try {
+    const result = await proveIntroduction({
+      origin,
+      expectedCommit: "1".repeat(40),
+      engine: {
+        launch: async () => ({
+          newPage: async () => page,
+          close: async () => {
+            await page.close();
+          },
+        }),
+      },
+    });
+    assert.equal(result.observations.length, 4);
+  } finally {
+    console.log(JSON.stringify({ pacedRequests: requestCount() }));
+  }
+});

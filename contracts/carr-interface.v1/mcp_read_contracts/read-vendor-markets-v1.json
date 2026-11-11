@@ -1,0 +1,13 @@
+{
+  "write": false,
+  "schema_version": "vendor-markets.v1",
+  "version": "1.0.0",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "3d49c4b8d490828183f24d888ab671ad1e7ae8dc",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/3183",
+    "path": "mcp-server/contracts/vendor-markets.v1.json"
+  },
+  "arguments": {"market": "Optional canonical slug or reviewed alias, resolved only by producer"},
+  "response_contract": "contracts/vendor-markets.v1.json"
+}

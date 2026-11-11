@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
-import type { BrowserContext, Page } from "playwright";
+import type { Page } from "playwright";
 import { chromium } from "playwright";
 import { launchProofBrowser, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
+import { installDragReadGuard } from "./drag-read-guard.ts";
+import { signedInReplyEngine } from "./prove-reply-action-link.ts";
 
 export async function observeStopDrag(page: Page) {
   const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
@@ -49,6 +51,8 @@ export async function prove(options: {
   expectedCommit: string;
   tourUrl: string;
   storageState?: string;
+  cdpUrl?: string;
+  engine?: ReturnType<typeof signedInReplyEngine>;
   timeoutMs: number;
 }) {
   const controller = new AbortController();
@@ -60,47 +64,82 @@ export async function prove(options: {
     controller.signal.throwIfAborted();
     return Math.max(1, Math.ceil(deadline - performance.now()));
   };
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
-  try {
+  let acquisition: Promise<{ newPage(): Promise<unknown>; close(): Promise<void> }> | undefined;
+  let page: Page | undefined;
+  let requests = 0;
+  const work = async () => {
     const release = await readAppRelease(options.origin, { timeoutMs: remaining() });
     if (!/^[a-f0-9]{40}$/.test(options.expectedCommit)) throw insufficient();
     await requireContainingRelease(options.expectedCommit, release.source_commit, { signal: controller.signal });
-    if (!options.tourUrl || new URL(options.tourUrl).origin !== options.origin || !options.storageState)
-      throw insufficient();
-    let context: BrowserContext;
-    let page: Page;
+    if (!options.cdpUrl && !options.storageState && !options.engine) throw insufficient();
     try {
-      browser = await launchProofBrowser(
-        chromium,
-        { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() },
-        { signal: controller.signal },
-      );
-      context = await browser.newContext({ storageState: options.storageState, serviceWorkers: "block" });
-      page = await context.newPage();
+      if (options.cdpUrl || options.engine) {
+        acquisition = (options.engine ?? signedInReplyEngine(options.cdpUrl || "")).launch({ timeout: remaining() });
+      } else {
+        acquisition = launchProofBrowser(
+          chromium,
+          { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() },
+          { signal: controller.signal },
+        ).then(async (browser) => {
+          try {
+            const context = await browser.newContext({
+              storageState: options.storageState || "",
+              serviceWorkers: "block",
+            });
+            return { newPage: () => context.newPage(), close: () => browser.close() };
+          } catch (error) {
+            await browser.close();
+            throw error;
+          }
+        });
+      }
+      const owner = await acquisition;
+      controller.signal.throwIfAborted();
+      // The shared CDP owner returns a full Playwright page through its narrower reply-proof interface.
+      page = (await owner.newPage()) as Page;
+      controller.signal.throwIfAborted();
     } catch (error) {
       throw Object.assign(insufficient(), { cause: error });
     }
-    let writes = 0,
-      requests = 0;
-    await context.route("**/*", (route) => {
-      const request = route.request();
-      if (++requests > 300 || new URL(request.url()).origin !== options.origin) return route.abort();
-      if (!["GET", "HEAD"].includes(request.method())) {
-        writes++;
-        return route.abort();
-      }
-      return route.continue();
+    if (!options.tourUrl || new URL(options.tourUrl).origin !== options.origin)
+      throw Object.assign(
+        Error(
+          "No qualified Tour supplied: an existing deal workspace Tour with two editable flexible stops is required; legacy Tours do not qualify",
+        ),
+        { exitCode: 78 },
+      );
+    const activePage = page;
+    // The guard only uses route; page scope preserves routing on borrowed tabs.
+    const installPageReadGuard = installDragReadGuard as (
+      scope: Pick<Page, "route">,
+      origin: string,
+      timeoutMs: number,
+    ) => ReturnType<typeof installDragReadGuard>;
+    const guard = await installPageReadGuard(activePage, options.origin, remaining());
+    await activePage.route("**/*", (route) => {
+      requests++;
+      return route.fallback();
     });
-    page.setDefaultTimeout(remaining());
+    activePage.setDefaultTimeout(remaining());
     const observations = [];
     for (const width of [1440, 390])
       for (const theme of ["light", "dark"] as const) {
-        await page.setViewportSize({ width, height: 900 });
-        await page.emulateMedia({ colorScheme: theme });
-        await page.goto(options.tourUrl);
-        await page.locator('iframe[title="Tour shortlist, route and packet"]').waitFor();
-        await page.frameLocator('iframe[title="Tour shortlist, route and packet"]').locator("#route-editing").waitFor();
-        const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
+        await activePage.setViewportSize({ width, height: 900 });
+        await activePage.emulateMedia({ colorScheme: theme });
+        await activePage.goto(options.tourUrl);
+        if (new URL(options.tourUrl).pathname === "/tours/route-editor.html")
+          throw Object.assign(
+            Error(
+              "No qualified Tour at supplied URL: expected an existing deal workspace Tour; legacy standalone route-editor Tours do not qualify",
+            ),
+            { exitCode: 78 },
+          );
+        await activePage.locator('iframe[title="Tour shortlist, route and packet"]').waitFor();
+        await activePage
+          .frameLocator('iframe[title="Tour shortlist, route and packet"]')
+          .locator("#route-editing")
+          .waitFor();
+        const editor = activePage.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
         if (!editor) throw insufficient();
         await editor.locator("#route-editing").evaluate((el) => {
           if (el instanceof HTMLDetailsElement) el.open = true;
@@ -109,12 +148,12 @@ export async function prove(options: {
         await editor.evaluate((theme) => {
           document.documentElement.dataset.theme = theme;
         }, theme);
-        await page.evaluate((theme) => {
+        await activePage.evaluate((theme) => {
           document.documentElement.dataset.theme = theme;
         }, theme);
-        const before = await observeStopDrag(page);
-        await page.reload();
-        const refreshed = page.frameLocator('iframe[title="Tour shortlist, route and packet"]');
+        const before = await observeStopDrag(activePage);
+        await activePage.reload();
+        const refreshed = activePage.frameLocator('iframe[title="Tour shortlist, route and packet"]');
         await refreshed.locator("#route-stops > li").first().waitFor({ state: "attached" });
         assert.deepEqual(
           await refreshed
@@ -122,16 +161,38 @@ export async function prove(options: {
             .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-property-id"))),
           before,
         );
-        assert.equal(writes, 0);
+        assert.equal(guard.writes, 0, "no writes during drag");
         observations.push({ width, theme, orderRestored: true, canonicalReadbackUnchanged: true });
       }
-    return { release, observations, writes };
+    assert.deepEqual(await readAppRelease(options.origin, { timeoutMs: remaining() }), release);
+    return { release, observations, writes: guard.writes, requests };
+  };
+  try {
+    return await Promise.race([
+      work(),
+      new Promise<never>((_, reject) => {
+        controller.signal.addEventListener(
+          "abort",
+          () => {
+            void page?.close().catch(() => {});
+            reject(controller.signal.reason);
+          },
+          { once: true },
+        );
+      }),
+    ]);
   } catch (error) {
-    if (controller.signal.aborted || (error instanceof Error && error.name === "TimeoutError")) throw insufficient();
+    if (controller.signal.aborted || !(error instanceof assert.AssertionError))
+      throw error instanceof Error ? Object.assign(error, { exitCode: 78 }) : insufficient();
     throw error;
   } finally {
     clearTimeout(timer);
-    await browser?.close();
+    controller.abort();
+    await page?.close().catch(() => {});
+    await acquisition?.then(
+      (owner) => owner.close(),
+      () => {},
+    );
   }
 }
 
@@ -145,12 +206,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const timeoutMs = Number(value("--timeout-ms") || 30000);
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120000) throw Error("Invalid timeout");
     const state = value("--storage-state");
+    const cdpUrl = value("--cdp-url");
     console.log(
       JSON.stringify(
         await prove({
           origin: value("--origin"),
           expectedCommit: value("--expected-commit"),
           tourUrl: value("--tour-url"),
+          ...(cdpUrl ? { cdpUrl } : {}),
           ...(state ? { storageState: state } : {}),
           timeoutMs,
         }),

@@ -99,19 +99,38 @@ button:focus-visible, .download-link:focus-visible, select:focus-visible, textar
 
 [hidden] { display: none !important; }
 
-.report-list > li:first-child { padding-block: var(--space-3); }
-.report-list > li:first-child h2 { margin-top: 0; }
-.report-list > li:first-child ol { display: grid; gap: var(--space-3); padding-left: var(--space-5); }
 .report-item { min-width: 0; overflow-wrap: anywhere; }
 .report-item h3 { font-size: var(--font-size-3); }
-.report-item dl { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr); gap: var(--space-3) var(--space-4); margin-block: var(--space-5); }
-.report-item dt { color: var(--fg-muted); }
-.report-item dd { margin: 0; color: var(--fg); }
 .report-item .packet-appointment { color: var(--fg); font-weight: var(--font-weight-strong); }
 .report-item .packet-public-note { padding-block: var(--space-4); border-block: var(--hairline-width) solid var(--hairline); color: var(--fg); white-space: pre-wrap; }
 @media (max-width: 600px) {
   .report-list { font-size: 1rem; line-height: 1.6; }
-  .report-item dl { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
-  .report-item dd { margin-bottom: var(--space-3); }
   .report-item h3 { font-size: 1.375rem; }
+}
+.packet-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin: var(--space-5) 0 0; }
+.packet-facts div { min-width: 0; }
+.packet-facts dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.packet-facts dd { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
+.packet-notes, .packet-overview { display: none; }
+@media (max-width: 560px) {
+  .packet-facts { grid-template-columns: 1fr; gap: var(--space-3); }
+}
+@page { size: letter; margin: .6in; }
+@media print {
+  html, body, body.report-shell { background: white !important; color: black !important; margin: 0 !important; padding: 0 !important; }
+  #appShell, nav, .tour-flow, .report-footer, button, .feedback-controls, #feedback-status, #status, .skip-link, #map-note { display: none !important; }
+  body.report-shell .shell, .shell { width: 100% !important; margin: 0 !important; padding: 0 !important; }
+  h1, h2, h3, h4, .report-item p, .packet-facts dt, .packet-facts dd, .summary { color: black !important; }
+  .packet-overview { display: block; }
+  button.maplibregl-marker { display: grid !important; color: black; background: white; border: 1px solid black; }
+  .maplibregl-control-container { display: none; }
+  .masthead { border-bottom: 1px solid Gray; }
+  #map-section { padding: 0; border: 0; background: white; break-inside: avoid; }
+  #tour-map { height: 3in; border: 1px solid Gray; }
+  .report-list { display: block; }
+  .report-item { break-before: page; break-inside: avoid; border: 0; border-radius: 0; background: white; padding: 0; }
+  .packet-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .packet-notes { display: block; margin-top: .4in; height: 3in; }
+  .packet-notes div { height: .4in; border-bottom: 1px solid Silver; }
+  .packet-notes h4 { background: white; margin: 0; padding: 0 0 12px; }
 }

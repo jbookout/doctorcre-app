@@ -87,4 +87,6 @@ mobile-a11y-evidence/
 /js/ui-packet-facts.js
 /js/ui-packet-preview.js
 /js/ui-packet-worker.js
+/js/ui-deal-space-searches.js
+/js/ui-vendor-markets.js
 /js/ui-tour-navigation.js

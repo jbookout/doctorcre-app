@@ -97,7 +97,7 @@ test('S1 browser: simultaneous public links keep their own context and a refresh
  await app.context.route('**/api/share/{report,map,feedback}',async route=>{
    const target=/synthetic-share=([^;]+)/.exec(route.request().headers().cookie||'')?.[1];
    const path=new URL(route.request().url()).pathname;
-   const data=path.endsWith('/report')?sharePackets.responses[target]:path.endsWith('/map')?{points:[]}:{projection_ref:projection(target),permission_scopes:[],items:[]};
+   const data=path.endsWith('/report')?sharePackets.responses[target]:path.endsWith('/map')?{points:sharePackets.responses[target].stops.map(stop=>({property_ref:stop.property_ref,route_sequence:stop.route_sequence,route_label:stop.route_label,latitude:30.4,longitude:-87.2}))}:{projection_ref:projection(target),permission_scopes:[],items:[]};
    return route.fulfill({json:{data}});
  });
  await Promise.all([a.goto(`${app.origin}/share#${tokens.A}`),b.goto(`${app.origin}/share#${tokens.B}`)]);

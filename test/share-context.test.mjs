@@ -38,6 +38,7 @@ async function open(t,{token='',state=null,flip=false,sameProjection=false,missi
    const target=cookie;reads++;
    if(path === missingScope) return {ok:false,status:404,json:async()=>({error:'not_found'})};
    if(flip && path==='/api/share/map')cookie='B';
+   if(path==='/api/share/map' && missingScope !== '/api/share/report') return {ok:false,status:404,json:async()=>({error:'not_found'})};
    const data=path==='/api/share/report'?packetForContext(target):path==='/api/share/map'?{points:[]}:{projection_ref:`projection:public:synthetic_projection_${sameProjection?'common':target}`,permission_scopes:[],items:[]};
    return {ok:true,json:async()=>({data})};
  };

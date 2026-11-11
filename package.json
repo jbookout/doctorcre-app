@@ -9,7 +9,7 @@
   "scripts": {
     "build": "node scripts/build-artifact.mjs build",
     "artifact:verify": "node scripts/build-artifact.mjs verify",
-    "check": "npm run typecheck && node scripts/check-typescript.ts && knip && node --test \"**/*.test.ts\" && node --test test/client-lint.test.mjs && node scripts/check-javascript.ts && node scripts/check-client-safety.ts && node scripts/check-repository.mjs && node scripts/check-fixture-servers.mjs && npm run copy:check",
+    "check": "node scripts/check-production-workflow.ts && npm run typecheck && node scripts/check-typescript.ts && knip && node --test \"**/*.test.ts\" && node --test test/client-lint.test.mjs && node scripts/check-javascript.ts && node scripts/check-client-safety.ts && node scripts/check-repository.mjs && node scripts/check-fixture-servers.mjs && npm run copy:check",
     "deployment:check": "npm run deployment:check:staging && npm run deployment:check:production",
     "deployment:check:staging": "wrangler versions upload --env staging --strict --dry-run --var GIT_SHA:0000000000000000000000000000000000000000",
     "deployment:check:production": "wrangler versions upload --env \"\" --strict --dry-run --var GIT_SHA:0000000000000000000000000000000000000000",

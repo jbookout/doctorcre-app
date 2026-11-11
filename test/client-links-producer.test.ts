@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readPacketPresentation } from "../src/ui/packet-facts.ts";
+import { parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
+
+test("client-link packets match the pinned presentation producer and production parser", () => {
+  const recorded = JSON.parse(readFileSync(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"));
+  assert.equal(recorded.packet_source_commit, "1e6caca72230732d8e0754a481394e0374ffb832");
+  for (const name of ["packet", "nearMiss"]) {
+    assert.ok(readPacketPresentation(recorded.responses[name]));
+    assert.equal(parsePublicTourPacket(recorded.responses[name])[0]?.address, recorded.inputs[name].stops[0].address);
+  }
+});
 
 test("client-link response recordings match the exact CARR production projectors", {
   skip:
@@ -166,4 +178,16 @@ test("packet recordings match the pinned 2.1.0 producer independently of feedbac
   const producer = await import(pathToFileURL(root + "/mcp-server/src/tour-sharing.js").href);
   for (const name of ["packet", "nearMiss"])
     assert.deepEqual(producer.projectTourClientPacket(recorded.inputs[name]), recorded.responses[name]);
+});
+
+test("recorded production 1.x packets have an explicit refusal through the real parser", () => {
+  const legacy = JSON.parse(
+    readFileSync(new URL("./fixtures/client-links/legacy-producer.json", import.meta.url), "utf8"),
+  );
+  for (const name of ["packet", "nearMiss"])
+    assert.throws(() => parsePublicTourPacket(legacy.responses[name]), {
+      name: "UnsupportedPublicTourPacketError",
+      message:
+        "This report uses an older packet format (1.x). Please reopen the shared link after the report service is updated.",
+    });
 });

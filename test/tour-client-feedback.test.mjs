@@ -152,8 +152,8 @@ async function openShare({ refuseOnce = false, properties = [{ property_ref: pro
   dom.window.fetch = async (path, options = {}) => {
     if (!options.method) reads.push(path);
     let data;
-    if (path === "/api/share/report") data = { ...packetRecording, stops: properties, presentation: { ...packetRecording.presentation, stops: properties.map((p, i) => ({ ...packetRecording.presentation.stops[0], ...p, route_sequence: p.route_sequence || i + 1, route_label: p.route_label || String(i + 1), address: p.address || "Address unavailable", appointment: null, public_packet_note: null })) } };
-    else if (path === "/api/share/map") data = { points: [] };
+    if (path === "/api/share/report") data = { ...packetRecording, stops: properties.map((p, i) => ({ ...p, route_sequence: p.route_sequence || i + 1, route_label: p.route_label || String(i + 1) })), presentation: { ...packetRecording.presentation, stops: properties.map((p, i) => ({ ...packetRecording.presentation.stops[0], ...p, route_sequence: p.route_sequence || i + 1, route_label: p.route_label || String(i + 1), address: p.address || "Address unavailable", appointment: null, public_packet_note: null })) } };
+    else if (path === "/api/share/map") return { ok:false,status:404,json:async()=>({error:"not_found"}) };
     else if (path === "/api/share/feedback") {
       if (feedbackRead) {
         const response = await feedbackRead(options);
@@ -269,7 +269,7 @@ test("an unavailable projection identity clears the whole share and requires reo
 test("a successful grant without feedback scopes stays read-only without an outage or retry", async t => {
   const app = await openShare({ feedbackKind: "feedbackReadOnly" });
   assert.equal(app.doc.querySelectorAll(".feedback-controls").length, 0);
-  assert.equal(app.doc.querySelector("#status").textContent, "Report and map loaded.");
+  assert.equal(app.doc.querySelector("#status").textContent, "Report loaded.");
   assert.equal(app.doc.querySelector("#feedback-status").textContent, "");
   assert.equal([...app.doc.querySelectorAll("button")].filter(button => button.textContent === "Retry feedback" && !button.hidden).length, 0);
 });

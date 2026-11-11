@@ -9,8 +9,7 @@ type Engine = ReturnType<typeof signedInReplyEngine>;
 type ProofPage = Awaited<ReturnType<Awaited<ReturnType<Engine["launch"]>>["newPage"]>>;
 const insufficient = (message: string) => Object.assign(Error(message), { exitCode: 78 });
 
-export async function observeIntroduction(page: ProofPage, origin: string) {
-  await page.goto(`${origin}/relationships?mode=live`);
+export async function observeIntroduction(page: ProofPage) {
   await page.waitForFunction(
     () =>
       Boolean(document.querySelector("#networkIntroductions [data-node]")) ||
@@ -71,26 +70,27 @@ export async function observeIntroduction(page: ProofPage, origin: string) {
   assert.equal(observed.overflow, false);
   await page.evaluate(() => document.querySelector<HTMLButtonElement>(".introduction-review [data-close]")?.click());
   assert.equal(await page.locator(".introduction-review[open]").count(), 0);
+  await page.evaluate(() => document.querySelector<HTMLButtonElement>("[data-close-card]")?.click());
   return { status: "passed", people: observed.people, evidence: "read-only review and cancel; persistence unverified" };
 }
 
 export async function prove({
   origin,
-  commit,
+  expectedCommit,
   cdpUrl,
   engine,
   timeoutMs = 30000,
 }: {
   origin: string;
-  commit: string;
+  expectedCommit: string;
   cdpUrl?: string | undefined;
   engine?: Engine | undefined;
   timeoutMs?: number;
 }) {
   const url = new URL(origin);
   assert.ok(["https:", "http:"].includes(url.protocol) && url.origin === origin && !url.username && !url.password);
-  assert.match(commit, /^[0-9a-f]{40}$/);
-  assert.ok(!/^0+$/.test(commit));
+  assert.match(expectedCommit, /^[0-9a-f]{40}$/);
+  assert.ok(!/^0+$/.test(expectedCommit));
   assert.ok(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 30000);
   const lifetime = new AbortController();
   const timeout = setTimeout(() => lifetime.abort(insufficient("Total proof deadline exceeded")), timeoutMs);
@@ -98,6 +98,7 @@ export async function prove({
     lifetime.signal.addEventListener("abort", () => reject(lifetime.signal.reason), { once: true }),
   );
   let acquisition: ReturnType<Engine["launch"]> | undefined;
+  let containingRelease = false;
   try {
     const work = async () => {
       const read = async (target: URL) => {
@@ -106,7 +107,8 @@ export async function prove({
         return { type: response.headers.get("content-type") || "", body: Buffer.from(await response.arrayBuffer()) };
       };
       const release = await readAppRelease(origin, read);
-      await requireContainingRelease(commit, release.source_commit, { signal: lifetime.signal });
+      await requireContainingRelease(expectedCommit, release.source_commit, { signal: lifetime.signal });
+      containingRelease = true;
       if (!cdpUrl && !engine) throw insufficient("Supply an authorized signed-in loopback CDP session");
       acquisition = (engine || signedInReplyEngine(cdpUrl || "")).launch({ timeout: timeoutMs });
       const browser = await acquisition;
@@ -133,28 +135,28 @@ export async function prove({
         return route.abort();
       });
       const observations = [];
+      await page.goto(`${origin}/relationships?mode=live`);
       for (const width of [1440, 390])
         for (const theme of ["light", "dark"]) {
           if (lifetime.signal.aborted) throw lifetime.signal.reason;
           if (!("setViewportSize" in page) || typeof page.setViewportSize !== "function")
             throw insufficient("Viewport control unavailable");
+          await page.setViewportSize({ width: 1440, height: 1000 });
+          if ((await page.locator("html").getAttribute("data-theme")) !== theme)
+            await page.getByRole("button", { name: "Dark mode", exact: true }).click();
+          assert.equal(await page.locator("html").getAttribute("data-theme"), theme);
           await page.setViewportSize({ width, height: 1000 });
-          await page.goto(`${origin}/relationships?mode=live`);
-          await page.evaluate(
-            (theme) =>
-              localStorage.setItem(
-                "doctorcre.visual-preferences",
-                JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } }),
-              ),
-            theme,
-          );
-          observations.push({ width, theme, ...(await observeIntroduction(page, origin)) });
+          observations.push({ width, theme, ...(await observeIntroduction(page)) });
         }
       assert.equal(writes, 0);
       assert.deepEqual(await readAppRelease(origin, read), release);
       return { status: "passed", release, observations };
     };
     return await Promise.race([work(), aborted]);
+  } catch (error) {
+    if (!containingRelease || !(error instanceof assert.AssertionError))
+      throw error instanceof Error ? Object.assign(error, { exitCode: 78 }) : insufficient(String(error));
+    throw error;
   } finally {
     clearTimeout(timeout);
     lifetime.abort();
@@ -169,17 +171,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const { values } = parseArgs({
       options: {
         origin: { type: "string" },
-        commit: { type: "string" },
+        "expected-commit": { type: "string" },
         "cdp-url": { type: "string" },
         "timeout-ms": { type: "string", default: "30000" },
       },
     });
-    assert.ok(values.origin && values.commit);
+    assert.ok(values.origin && values["expected-commit"]);
     console.log(
       JSON.stringify(
         await prove({
           origin: values.origin,
-          commit: values.commit,
+          expectedCommit: values["expected-commit"],
           cdpUrl: values["cdp-url"],
           timeoutMs: Number(values["timeout-ms"]),
         }),
