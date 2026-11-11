@@ -281,6 +281,11 @@ body.record-open { overflow: hidden; }
   .vendor-meetings:not([open]) > summary { min-height: 60px; }
   .vendor-meetings:not([open]) > summary h2 { font-size: var(--font-size-1); }
 }
+.client-needs { overflow-wrap: anywhere; }
+.client-needs-list { list-style: none; margin: 0; padding: 0; }
+.client-needs-list > li { padding: 1rem 0; border-bottom: 1px solid var(--border); }
+.client-needs-list h4 { margin: 0 0 .5rem; }
+.client-needs button { margin: .5rem .5rem .5rem 0; min-height: 44px; }
 
 .vendor-markets { overflow-wrap: anywhere; }
 .result-heading:has(.vendor-markets [aria-busy]) > div { width: 100%; }

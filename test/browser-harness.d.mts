@@ -14,3 +14,5 @@ export function fixtureServer(
 export function settles(check: () => unknown | Promise<unknown>, budgetMs?: number): Promise<void>;
 
 export declare const WAIT_MS: number;
+
+export function pausedClock(page: Page, time: number | Date): Promise<void>;
