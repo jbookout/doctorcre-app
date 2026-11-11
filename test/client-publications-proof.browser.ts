@@ -61,7 +61,7 @@ test("proof CLI passes exact projections, fails near misses and refuses missing 
   const evidence = {
     client_read: { ok: true, schema_version: "client-portal.v1", portal },
     receipt: { id, version: 2, published: true },
-    hidden_canaries: ["PRIVATE FILE", "HIDDEN MILESTONE"],
+    hidden_canaries: ["PRIVATE FILE", "HIDDEN MILESTONE", "PRIVATE\nFILE"],
   };
   const run = (extra: string[] = []) =>
     new Promise<{ code: number; output: string }>((resolve) =>
@@ -95,6 +95,14 @@ test("proof CLI passes exact projections, fails near misses and refuses missing 
   await writeFile(evidencePath, JSON.stringify(evidence));
   const pass = await run();
   assert.equal(pass.code, 0, pass.output);
+  Reflect.set(portal, "private_file_canary", "PRIVATE\nFILE");
+  const rawLeak = await run();
+  assert.equal(
+    rawLeak.code,
+    1,
+    "Raw server canaries must remain visible to the proof even when the display parser drops extra fields",
+  );
+  Reflect.deleteProperty(portal, "private_file_canary");
   await writeFile(
     evidencePath,
     JSON.stringify({
@@ -108,6 +116,15 @@ test("proof CLI passes exact projections, fails near misses and refuses missing 
   const fail = await run();
   assert.equal(fail.code, 1, fail.output);
   await writeFile(evidencePath, JSON.stringify(evidence));
+  await writeFile(
+    evidencePath,
+    JSON.stringify({ ...evidence, client_read: { ...evidence.client_read, schema_version: "client-publications.v1" } }),
+  );
+  assert.equal((await run()).code, 78, "a partner preview is not independent client-read evidence");
+  await writeFile(evidencePath, JSON.stringify(evidence));
+  assert.equal((await run(["--evidence", `${scratch}/missing.json`])).code, 78);
+  assert.equal((await run(["--origin", "not-a-url"])).code, 78);
+  assert.equal((await run(["--carr-origin", server.origin])).code, 78);
   assert.equal((await run(["--commit", "b".repeat(40)])).code, 78);
   assert.equal((await run(["--cdp-url", "http://127.0.0.1:1"])).code, 78);
 });

@@ -63,6 +63,7 @@ export async function prove({
 }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(unavailable("Proof deadline exceeded")), timeoutMs);
+  let containing = false;
   let browser: { newPage(): Promise<Page>; close(): Promise<void> } | undefined;
   try {
     const release = await readAppRelease(origin, { timeoutMs });
@@ -81,12 +82,21 @@ export async function prove({
       !evidence.hidden_canaries.length
     )
       throw unavailable("Existing client read, receipt and hidden canaries required");
+    containing = true;
+    if (evidence.client_read.ok !== true || evidence.client_read.schema_version !== "client-portal.v1")
+      throw unavailable("Independent client-read evidence required");
     const client = parsePortal({ ...evidence.client_read, schema_version: "client-publications.v1" });
     if (!client) throw unavailable("Existing active portal required");
-    browser = await launchProofBrowser(signedInEngine(endpoint), { timeout: timeoutMs }, { signal: controller.signal });
+    let engine: ReturnType<typeof signedInEngine>;
+    try {
+      engine = signedInEngine(endpoint);
+    } catch {
+      throw unavailable("Signed-in browser endpoint unavailable");
+    }
+    browser = await launchProofBrowser(engine, { timeout: timeoutMs }, { signal: controller.signal });
     const page = await browser.newPage();
     page.setDefaultTimeout(timeoutMs);
-    type Reads = { preview?: Portal | null; authored?: Publication[] };
+    type Reads = { preview?: Portal | null; authored?: Publication[]; rawPreview?: unknown };
     const reads: Reads = {};
     const currentReads = (): Reads => reads;
     const capture = async (response: BrowserResponse) => {
@@ -96,7 +106,10 @@ export async function prove({
         if (verb?.arguments?.deal_id !== deal) return;
         const result = await response.json();
         const value = JSON.parse(result.result.content.find((row: { type: string }) => row.type === "text").text);
-        if (verb.name === "preview-deal-client-view") reads.preview = parsePortal(value);
+        if (verb.name === "preview-deal-client-view") {
+          reads.preview = parsePortal(value);
+          reads.rawPreview = value.portal;
+        }
         if (verb.name === "list-deal-client-publications") reads.authored = parsePublications(value);
       } catch {
         /* Missing evidence is refused below. */
@@ -106,6 +119,7 @@ export async function prove({
     for (const width of [1440, 390])
       for (const theme of ["light", "dark"] as const) {
         delete reads.preview;
+        delete reads.rawPreview;
         delete reads.authored;
         page.on("response", capture);
         await page.setViewportSize({ width, height: 1000 });
@@ -118,8 +132,9 @@ export async function prove({
         const root = page.locator("[data-client-preview]");
         await root.waitFor();
         page.off("response", capture);
-        const { preview, authored } = currentReads();
-        if (!preview || !authored) throw unavailable("Authenticated preview and authored read unavailable");
+        const { preview, authored, rawPreview } = currentReads();
+        if (!preview || !authored || rawPreview === undefined)
+          throw unavailable("Authenticated preview and authored read unavailable");
         assert.deepEqual(preview, client, "partner preview equals independent existing client projection");
         const expected: { title: string; body: string }[] = [...client.materials, ...client.publications].map(
           (row) => ({
@@ -137,8 +152,14 @@ export async function prove({
           })),
         );
         assert.deepEqual(actual, expected, "exact visible values");
-        for (const hidden of evidence.hidden_canaries)
-          assert.ok(!JSON.stringify(preview).includes(hidden), "hidden canary absent");
+        const rawSources = [JSON.stringify(rawPreview), JSON.stringify(evidence.client_read)];
+        for (const hidden of evidence.hidden_canaries) {
+          const marker = JSON.stringify(hidden).slice(1, -1);
+          assert.ok(
+            rawSources.every((source) => !source.includes(marker)),
+            "hidden canary absent from raw server and client projections",
+          );
+        }
         const receipt = evidence.receipt;
         assert.ok(
           authored.some(
@@ -154,6 +175,10 @@ export async function prove({
         observations.push({ width, theme, items: actual.length });
       }
     return { status: "passed", release, carr, observations };
+  } catch (cause) {
+    if (containing && cause instanceof Error && "code" in cause && cause.code === "ERR_ASSERTION")
+      Object.assign(cause, { exitCode: 1 });
+    throw cause;
   } finally {
     clearTimeout(timer);
     controller.abort();
@@ -202,7 +227,7 @@ async function main() {
     );
   } catch (cause) {
     const error = cause instanceof Error ? cause : Error("Proof unavailable");
-    const exitCode = "exitCode" in error && typeof error.exitCode === "number" ? error.exitCode : 1;
+    const exitCode = "exitCode" in error && typeof error.exitCode === "number" ? error.exitCode : 78;
     console.log(JSON.stringify({ status: exitCode === 78 ? "insufficient_evidence" : "failed", error: error.message }));
     process.exitCode = exitCode;
   }
