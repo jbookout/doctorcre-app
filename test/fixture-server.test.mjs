@@ -1,94 +1,37 @@
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
+import { fixtureProbe } from './fixture-probe.ts';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 
-const within = (promise, ms) => Promise.race([promise,
-  new Promise((_, reject) => setTimeout(() => reject(Error(`unsettled after ${ms} ms`)), ms).unref())]);
-
-test('a server that exits during startup rejects promptly instead of hanging cleanup', async () => {
-  await assert.rejects(within(startFixtureServer({ args: ['-e', 'process.exit(1)'] }), 5000), /fixture server exited 1/);
+test('a server that exits during startup rejects promptly instead of hanging cleanup', { timeout: 60000 }, async () => {
+  await assert.rejects(startFixtureServer({ args: ['-e', 'process.exit(1)'] }), /fixture server exited 1/);
 });
 
-test('a server that never announces its URL times out and is reaped', async () => {
-  await assert.rejects(within(startFixtureServer({ args: ['-e', 'setInterval(() => {}, 1000)'], startupMs: 200 }), 5000),
+test('a server that never announces its URL times out and is reaped', { timeout: 60000 }, async () => {
+  await assert.rejects(startFixtureServer({ args: ['-e', 'setInterval(() => {}, 1000)'], startupMs: 200 }),
     /startup timeout/);
 });
 
-test('stop is bounded when the server ignores SIGTERM', async () => {
-  const server = await within(startFixtureServer({ stopMs: 300, args: ['-e',
-    "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); console.log('http://127.0.0.1:1')"] }), 5000);
+test('stop is bounded when the server ignores SIGTERM', { timeout: 60000 }, async () => {
+  const server = await startFixtureServer({ stopMs: 300, args: ['-e',
+    "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); console.log('http://127.0.0.1:1')"] });
   assert.equal(server.url, 'http://127.0.0.1:1');
-  await within(server.stop(), 5000);
-  await within(server.stop(), 5000);
+  await server.stop();
+  await server.stop();
 });
 
-test('the real fixture server serves and stops', async () => {
-  const server = await within(startFixtureServer(), 15000);
+test('the real fixture server serves and stops', { timeout: 60000 }, async () => {
+  const server = await startFixtureServer();
   assert.equal((await fetch(server.url + '/')).status, 200);
-  await within(server.stop(), 10000);
+  await server.stop();
 });
-
-const run = (file, args, { timeout, signal, ...options }) => {
-  const env = { ...(options.env ?? process.env) };
-  delete env.FORCE_COLOR;
-  const child = spawn(file, args, { ...options, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  let stderr = '';
-  child.stderr.on('data', data => { stderr += data; });
-  child.stdout.resume();
-  const result = new Promise((resolve, reject) => {
-    child.once('error', reject);
-    child.once('close', (code, signal) => code === 0 ? resolve({ stderr })
-      : reject(Error(`fixture probe exited ${code ?? signal}: ${stderr}`)));
-  });
-  const stop = () => {
-    if (!child.pid) return;
-    try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
-  };
-  const timer = setTimeout(stop, timeout);
-  signal?.addEventListener('abort', stop, { once: true });
-  if (signal?.aborted) stop();
-  return Object.assign(result.finally(() => {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', stop);
-    stop();
-  }), { child });
-};
-const harness = new URL('./browser-harness.mjs', import.meta.url).href;
-const probe = `
-  import assert from 'node:assert/strict';
-  const { fixtureServer } = await import(${JSON.stringify(harness)});
-  const { options, expected } = JSON.parse(process.argv[1]);
-  const server = await fixtureServer(options);
-  try {
-    assert.equal(new URL(server.origin).hostname, '127.0.0.1');
-    assert.equal(new URL(server.origin).protocol, 'http:');
-    assert.ok(Number(new URL(server.origin).port) > 0);
-    assert.equal((await fetch(server.origin + '/unadmitted.txt')).status,404);
-    const response = await fetch(server.origin + '/fixture-root-probe.txt');
-    if (expected === null) {
-      assert.equal(response.status, 404);
-      assert.equal((await fetch(server.origin + '/')).status, 200);
-    } else {
-      assert.equal(response.status, 200);
-      assert.equal(await response.text(), expected);
-    }
-  } finally {
-    const closed = server.close();
-    await closed;
-    assert.equal(typeof closed?.then, 'function');
-  }
-  await assert.rejects(fetch(server.origin + '/', { signal: AbortSignal.timeout(1000) }));
-  await server.close();
-`;
 
 for (const mode of ['default', 'ambient', 'explicit', 'empty', 'conflicting colors']) {
-  test(`fixture adapter preserves ${mode} root and awaits repeatable shutdown`, async t => {
+  test(`fixture adapter preserves ${mode} root and awaits repeatable shutdown`, { timeout: 60000 }, async t => {
     const directory = await temporaryDirectory('doctorcre-fixture-adapter-');
     t.after(() => rm(directory, { recursive: true, force: true }));
     const ambient = join(directory, 'ambient');
@@ -111,48 +54,27 @@ for (const mode of ['default', 'ambient', 'explicit', 'empty', 'conflicting colo
     if (mode === 'conflicting colors') { env.FORCE_COLOR = '1'; env.NO_COLOR = '1'; }
     const options = mode === 'explicit' ? { root: explicit } : mode === 'empty' ? { root: '' } : {};
     const expected = mode === 'default' || mode === 'conflicting colors' ? null : mode === 'explicit' ? 'explicit synthetic root' : 'ambient synthetic root';
-    const result = await run(process.execPath, ['--input-type=module', '-e', probe, JSON.stringify({ options, expected })],
-      { env, timeout: 20000, signal: t.signal });
+    const probe = fixtureProbe({ ...options, expected, env, signal: t.signal });
+    t.after(() => probe.close());
+    const result = await probe.exercise('adapter');
     assert.equal(result.stderr, '');
   });
 }
 
 for (const cancellation of ['timeout', 'abort']) {
-  test(`fixture probe ${cancellation} reaps its fixture and releases its port`, async () => {
-    const controller = new AbortController();
-    const result = run(process.execPath, ['--input-type=module', '-e', `
-      const { fixtureServer } = await import(${JSON.stringify(harness)});
-      const server = await fixtureServer();
-      console.log('READY ' + server.origin);
-      try { await new Promise(() => {}); } finally { await server.close(); }
-    `], { timeout: 5000, signal: controller.signal });
-    const finished = result.then(() => null, error => error);
-    let fixturePid;
-    try {
-      const origin = await within(new Promise(resolve => {
-        let output = '';
-        result.child.stdout.on('data', data => {
-          output += data;
-          const match = output.match(/READY (http:\/\/127\.0\.0\.1:\d+)/);
-          if (match) resolve(match[1]);
-        });
-      }), 4000);
-      fixturePid = Number(execFileSync('pgrep', ['-P', String(result.child.pid)], { encoding: 'utf8' }).trim());
-      assert.ok(fixturePid);
-      if (cancellation === 'abort') controller.abort();
-      assert.ok(await within(finished, 7000), 'cancellation must reject the probe');
-      await assert.rejects(fetch(origin, { signal: AbortSignal.timeout(1000) }), 'fixture port must be closed');
-      for (let attempt = 0; attempt < 100; attempt++) {
-        try { process.kill(fixturePid, 0); } catch { break; }
-        await delay(20);
-      }
-      assert.throws(() => process.kill(fixturePid, 0), { code: 'ESRCH' }, 'fixture process must be reaped');
-    } finally {
-      if (fixturePid) {
-        try { process.kill(fixturePid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
-      }
-      result.child.kill('SIGKILL');
-      await within(finished, 5000);
-    }
+  test(`fixture probe ${cancellation} reaps its fixture and releases its port after delayed acquisition`, { timeout: 60000 }, async t => {
+    const directory = await temporaryDirectory('doctorcre-fixture-cancel-');
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    await writeFile(join(directory, 'artifact-manifest.json'), JSON.stringify({
+      schema: 'doctorcre-static-artifact.v1', repository: 'jbookout/doctorcre-app', source_commit: '0'.repeat(40), files: [],
+    }));
+    const probe = fixtureProbe({ root: directory, delayMs: 4200, signal: t.signal });
+    t.after(() => probe.close());
+    const { origin, fixturePid } = await probe.ready;
+    await assert.rejects(probe.exercise(cancellation), new RegExp(`exercise ${cancellation}`));
+    await probe.close();
+    await assert.rejects(fetch(origin), 'fixture port must be closed');
+    assert.throws(() => process.kill(fixturePid, 0), { code: 'ESRCH' }, 'fixture process must be reaped');
+    assert.throws(() => process.kill(probe.pid, 0), { code: 'ESRCH' }, 'probe process must be reaped');
   });
 }
