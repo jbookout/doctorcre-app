@@ -33,12 +33,38 @@ async function fixture(t: import("node:test").TestContext, mode = "ready", sourc
                   .replaceAll("Meeting reason not recorded", "Wrong reason")
                   .replaceAll("row.reason ||", '"Wrong reason" ||'),
               )
-            : value.body,
+            : mode === "theme-reset-failure" && path === "/js/workspace-business.js"
+              ? Buffer.concat([
+                  value.body,
+                  Buffer.from(
+                    ';document.documentElement.setAttribute("data-theme","bogus");new MutationObserver(()=>{if(document.documentElement.getAttribute("data-theme")!=="bogus")document.documentElement.setAttribute("data-theme","bogus")}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});',
+                  ),
+                ])
+              : value.body,
       },
     ]),
   );
   const server = await startWorkerFixture({
-    assets: snapshot,
+    assets:
+      mode === "throttled-reloads"
+        ? new Map([...snapshot].filter(([path]) => path !== "/js/workspace-business.js"))
+        : snapshot,
+    routes:
+      mode === "throttled-reloads"
+        ? new Map([
+            [
+              "/js/workspace-business.js",
+              {
+                sequence: [
+                  snapshot.get("/js/workspace-business.js"),
+                  snapshot.get("/js/workspace-business.js"),
+                  snapshot.get("/js/workspace-business.js"),
+                  { status: 429, body: "Too many requests" },
+                ],
+              },
+            ],
+          ])
+        : new Map(),
     env: {
       APP_ENV: "production",
       GIT_SHA: source,
@@ -48,6 +74,12 @@ async function fixture(t: import("node:test").TestContext, mode = "ready", sourc
           if (url.pathname.startsWith("/api/v1/business/")) return Response.json(directoryFixture(request.url));
           if (url.pathname === "/mcp") {
             const body = await request.json();
+            if (
+              mode === "later-429" &&
+              body.params.name === "read-vendor-meetings" &&
+              body.params.arguments.view === "research"
+            )
+              return new Response("Too many requests", { status: 429 });
             const payload = body.params.name === "read-vendor-meetings" ? recordings[body.params.arguments.view] : {};
             return Response.json({
               jsonrpc: "2.0",
@@ -63,6 +95,13 @@ async function fixture(t: import("node:test").TestContext, mode = "ready", sourc
   t.after(() => server.close());
   return server;
 }
+test("proof covers both themes and widths without reloading into the asset rate limit", async (t) => {
+  const server = await fixture(t, "throttled-reloads");
+  const result = await prove({ origin: server.origin, expectedCommit: commit, fixture: true, timeoutMs: 12000 });
+  assert.equal(result.status, "passed");
+  assert.equal(result.observations.length, 8);
+  assert.equal(server.requests.filter((r) => r.path === "/vendors").length, 1);
+});
 test("proof CLI passes exact values and rejects near-miss rendered values", async (t) => {
   const server = await fixture(t);
   const result = await exec(process.execPath, [
@@ -200,3 +239,30 @@ test("real CDP deadline closes delayed page and preserves the original tab", asy
     `exit 78; tabs before ${before}; tabs after ${context.pages().length}; delayed tab closed; original tab usable`,
   );
 });
+
+for (const [mode, expectedExit] of [
+  ["later-429", 78],
+  ["theme-reset-failure", 1],
+] as const)
+  test(`proof CLI classifies ${mode} on a containing release`, async (t) => {
+    const server = await fixture(t, mode);
+    await assert.rejects(
+      exec(process.execPath, [
+        "scripts/prove-vendor-meetings.ts",
+        "--origin",
+        server.origin,
+        "--expected-commit",
+        commit,
+        "--fixture",
+        "--timeout-ms",
+        "10000",
+      ]),
+      (error) => {
+        assert.ok(error && typeof error === "object" && "code" in error && "stdout" in error);
+        t.diagnostic(JSON.stringify({ mode, code: error.code, stdout: error.stdout }));
+        assert.equal(error.code, expectedExit);
+        assert.match(String(error.stdout), mode === "later-429" ? /Too many requests|429/ : /bogus/);
+        return true;
+      },
+    );
+  });

@@ -43,11 +43,12 @@ export async function prove({
   let page: Page | undefined;
   let acquisition: Promise<Browser> | undefined;
   let pageAcquisition: Promise<Page> | undefined;
-  let assertionsStarted = false;
+  let containingRelease = false;
   const observations: unknown[] = [];
   const work = async () => {
     const release = await readAppRelease(origin, { timeoutMs: remaining() });
     await requireContainingRelease(expectedCommit, release.source_commit, { signal: controller.signal });
+    containingRelease = true;
     if (fixture)
       browser = await launchProofBrowser(
         chromium,
@@ -96,38 +97,47 @@ export async function prove({
       return route.abort();
     });
     if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
+    await activePage.setViewportSize({ width: 1440, height: 900 });
+    const firstRead = activePage.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname === "/mcp" &&
+        r.request().postDataJSON()?.params?.name === "read-vendor-meetings" &&
+        r.request().postDataJSON()?.params?.arguments?.view === "suggested",
+      { timeout: remaining() },
+    );
+    firstRead.catch(() => {});
+    await activePage.goto(`${origin}/vendors`, { timeout: remaining() });
+    const section = activePage.getByRole("region", { name: "People worth meeting" });
+    await section.waitFor({ timeout: remaining() });
     for (const width of [1440, 390])
       for (const theme of ["light", "dark"]) {
         remaining();
+        await activePage.setViewportSize({ width: 1440, height: 900 });
+        if ((await activePage.locator("html").getAttribute("data-theme")) !== theme)
+          await activePage.getByRole("button", { name: "Dark mode", exact: true }).click({ timeout: remaining() });
+        assert.equal(await activePage.locator("html").getAttribute("data-theme"), theme);
         await activePage.setViewportSize({ width, height: 900 });
-        await activePage.addInitScript(
-          (theme) => localStorage.setItem("doctorcre.visual-preferences", JSON.stringify({ theme })),
-          theme,
-        );
-        const response = activePage.waitForResponse(
-          (r) =>
-            new URL(r.url()).pathname === "/mcp" && r.request().postDataJSON()?.params?.name === "read-vendor-meetings",
-          { timeout: remaining() },
-        );
-        response.catch(() => {});
-        await activePage.goto(`${origin}/vendors`, { timeout: remaining() });
-        const section = activePage.getByRole("region", { name: "People worth meeting" });
-        if (width === 390) await activePage.locator(".vendor-meetings > summary").click({ timeout: remaining() });
+        if ((await activePage.locator(".vendor-meetings").getAttribute("open")) === null)
+          await activePage.locator(".vendor-meetings > summary").click({ timeout: remaining() });
         for (const view of ["suggested", "research"] satisfies MeetingQuery["view"][]) {
-          const read =
-            view === "suggested"
-              ? response
-              : activePage.waitForResponse(
-                  (r) =>
-                    new URL(r.url()).pathname === "/mcp" &&
-                    r.request().postDataJSON()?.params?.name === "read-vendor-meetings" &&
-                    r.request().postDataJSON()?.params?.arguments?.view === "research",
-                  { timeout: remaining() },
-                );
+          const initial = width === 1440 && theme === "light" && view === "suggested";
+          const read = initial
+            ? firstRead
+            : activePage.waitForResponse(
+                (r) =>
+                  new URL(r.url()).pathname === "/mcp" &&
+                  r.request().postDataJSON()?.params?.name === "read-vendor-meetings" &&
+                  r.request().postDataJSON()?.params?.arguments?.view === view,
+                { timeout: remaining() },
+              );
           read.catch(() => {});
-          if (view === "research")
-            await section.getByRole("tab", { name: "Research", exact: true }).click({ timeout: remaining() });
-          const envelope: unknown = await (await read).json();
+          if (!initial)
+            await section
+              .getByRole("tab", { name: view === "suggested" ? "Suggested" : "Research", exact: true })
+              .click({ timeout: remaining() });
+          const response = await read;
+          if (!response.ok()) throw insufficient(`Authorized response unavailable (HTTP ${response.status()})`);
+          const envelope: unknown = await response.json();
           if (
             !envelope ||
             typeof envelope !== "object" ||
@@ -144,7 +154,6 @@ export async function prove({
           if (!content || typeof content.text !== "string") throw insufficient("Authorized response unavailable");
           const snapshot = parseMeetingPage(JSON.parse(content.text), { view, q: "", limit: 5 });
           await section.locator('[role="tabpanel"][aria-busy="false"]').waitFor({ timeout: remaining() });
-          assertionsStarted = true;
           assert.equal(
             await section
               .getByRole("tab", { name: view === "suggested" ? "Suggested" : "Research", exact: true })
@@ -218,7 +227,7 @@ export async function prove({
             theme,
             view,
             total: snapshot.total,
-            people: snapshot.items.map((p) => p.contact?.id ?? null),
+            count: snapshot.items.length,
           });
         }
       }
@@ -239,8 +248,8 @@ export async function prove({
       }),
     ]);
   } catch (error) {
-    if (error instanceof Error && (!assertionsStarted || /Timeout|closed|connectOverCDP/.test(error.message)))
-      throw Object.assign(error, { exitCode: 78 });
+    if (!containingRelease || !(error instanceof assert.AssertionError))
+      throw error instanceof Error ? Object.assign(error, { exitCode: 78 }) : insufficient(String(error));
     throw error;
   } finally {
     clearTimeout(timer);
