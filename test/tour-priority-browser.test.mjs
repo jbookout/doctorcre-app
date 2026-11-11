@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import { detail, tourId } from './fixtures/tour-day.synthetic.mjs';
+import { bindParityNavigation } from './fixtures/tour-navigation/detail.ts';
 import { receipt } from './fixtures/tour-map.synthetic.mjs';
 
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
@@ -14,7 +15,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     Object.assign(fixture, { projection_id: 'synthetic-parity-v1', canonical_dataset_version: 'synthetic-v1', component_registry_version: 'map-v1' });
     route.stops.forEach((stop, index) => { stop.locked_appointment = false; stop.route_label = String(index + 1); });
     Object.assign(fixture, { route_version_id: route.id, route_version_state: 'accepted', accepted_route_version: 1, stops: route.stops });
-    fixture.map_promotion_receipt = { ...structuredClone(receipt), tour_id: fixture.id, route_version_id: route.id, route_version: 1, projection_id: fixture.projection_id };
+    bindParityNavigation(fixture);
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.route('**/api/**', r => {
       const path = new URL(r.request().url()).pathname;
@@ -75,3 +76,23 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });
 }
+
+test('Tour day refuses retired promotion-only navigation while preserving the ordered itinerary', async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  const fixture = structuredClone(detail), route = fixture.routes[0];
+  Object.assign(fixture, { projection_id: 'synthetic-parity-v1', canonical_dataset_version: 'synthetic-v1', component_registry_version: 'map-v1',
+    route_version_id: route.id, route_version_state: 'accepted', accepted_route_version: 1, stops: route.stops });
+  fixture.map_promotion_receipt = { ...structuredClone(receipt), tour_id: fixture.id, route_version_id: route.id, route_version: 1, projection_id: fixture.projection_id };
+  await page.route('**/api/**', r => {
+    const path = new URL(r.request().url()).pathname;
+    return r.fulfill({ json: path === '/api/tours/detail' ? { data: fixture }
+      : ['/api/system-work/session','/auth/session'].includes(path) ? { actor: { slug: 'joe' }, csrf_token: 'synthetic-only' } : {} });
+  });
+  await page.goto(`${server.origin}/tours/day.html?tour=${tourId}`);
+  await page.locator('.day-stop').nth(1).waitFor();
+  assert.equal(await page.getByRole('link', { name: 'Navigate', exact: true }).count(), 0, 'retired receipt does not authorize Navigate');
+  assert.deepEqual(await page.locator('.day-stop').evaluateAll(rows => rows.map(row => row.dataset.stopId)),
+    [...route.stops].sort((a, b) => a.route_sequence - b.route_sequence).map(stop => stop.id), 'ordered itinerary remains available');
+});
