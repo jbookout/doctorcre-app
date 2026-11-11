@@ -76,6 +76,8 @@ test("saved search to saved cart to reviewed route preserves identities and expl
             const payload = structuredClone(reading ? responses.reopened : responses.positive);
             if (!reading) {
               payload.search.last_run_at = new Date().toISOString();
+              payload.search.has_more = true;
+              payload.search.next_cursor = "synthetic-next-page";
               savedSearch = structuredClone(payload.search);
             } else payload.searches = [savedSearch];
             parseSearchResponse(payload, deal, reading);
@@ -161,6 +163,9 @@ test("saved search to saved cart to reviewed route preserves identities and expl
           const panel = editor.getByRole("region", { name: "Saved space searches", exact: true });
           await panel.getByRole("button", { name: responses.saved.search.name, exact: true }).click();
           await panel.getByRole("button", { name: "Rerun saved search", exact: true }).click();
+          await panel
+            .getByText("This is the first 100 results. Narrow your criteria to review more.", { exact: true })
+            .waitFor();
           await panel.getByRole("checkbox").check();
           await panel.getByRole("button", { name: "Add chosen results to Tour cart", exact: true }).click();
           await editor.locator("#selection-state").filter({ hasText: "cart draft" }).waitFor();
