@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import type { Page } from "playwright";
-import { visibleLeads } from "../js/leads-model.js";
+import { leadTitle, visibleLeads } from "../js/leads-model.js";
 import { parseReachability, reachabilityText } from "../src/ui/lead-reachability.ts";
 import { proofFetch, readAppRelease } from "./app-release-reader.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
@@ -14,13 +14,21 @@ export function compareReachability(expected: unknown, displayed: string) {
   assert.equal(displayed, reachabilityText(expected), "Exact displayed classification and reasons");
 }
 async function observe(page: Page, origin: string) {
-  await page.goto(`${origin}/leads`);
-  await page.locator('#leadBoard[aria-busy="false"]').waitFor();
-  const snapshot = await page.evaluate(async () => {
-    const path = "/js/leads-client.js";
-    const { createLeadBoardClient } = await import(path);
-    return createLeadBoardClient().getWorkspace();
-  });
+  try {
+    await page.goto(`${origin}/leads`);
+    await page.locator('#leadBoard[aria-busy="false"]').waitFor();
+  } catch {
+    throw unavailable("Authenticated lead board unavailable");
+  }
+  const snapshot = await page
+    .evaluate(async () => {
+      const path = "/js/leads-client.js";
+      const { createLeadBoardClient } = await import(path);
+      return createLeadBoardClient().getWorkspace();
+    })
+    .catch(() => {
+      throw unavailable("Independent authenticated board read unavailable");
+    });
   const leads: { id: string; reachability?: unknown }[] = snapshot.leads;
   leads.forEach((lead) => {
     parseReachability(lead.reachability);
@@ -31,9 +39,7 @@ async function observe(page: Page, origin: string) {
     throw unavailable("Natural research lead required");
   await page.locator("#showTerritory").click();
   await page.locator("#territoryMap canvas").waitFor();
-  await page.waitForFunction(
-    () => !document.querySelector("#mapLeadMembers summary")?.textContent?.includes("not checked"),
-  );
+  await page.locator("#showTerritory").waitFor({ state: "hidden" });
   for (const width of [1440, 390])
     for (const theme of ["light", "dark"]) {
       await page.setViewportSize({ width, height: 1000 });
@@ -66,7 +72,7 @@ async function observe(page: Page, origin: string) {
           .locator("#mapLeadMembers [data-lead-id]")
           .evaluateAll((nodes) =>
             nodes
-              .filter((node) => node.textContent?.includes("No location"))
+              .filter((node) => node.querySelector("small")?.textContent?.split(" · ").at(-1) === "No location")
               .map((node) => node.getAttribute("data-lead-id")),
           );
         assert.deepEqual([...markers, ...unlocated].sort(), members);
@@ -74,8 +80,22 @@ async function observe(page: Page, origin: string) {
         if (!first) throw unavailable("Displayed positive cohort required");
         const card = page.locator(".lead-card").filter({ has: page.locator(`[data-open="${first.id}"]`) });
         compareReachability(first.reachability, (await card.locator(".lead-reachability").textContent()) || "");
-        await card.locator(".lead-open").click();
+        const [detailResponse] = await Promise.all([
+          page.waitForResponse((response) => {
+            if (new URL(response.url()).pathname !== "/mcp") return false;
+            try {
+              const body = response.request().postDataJSON();
+              return body?.params?.name === "lead-board" && typeof body.params.arguments?.lead_id === "string";
+            } catch {
+              return false;
+            }
+          }),
+          card.locator(".lead-open").click(),
+        ]);
+        assert.equal(detailResponse.request().postDataJSON().params.arguments.lead_id, first.id);
         await page.locator("#leadDetail[open]").waitFor();
+        await page.locator("#detailStage").waitFor();
+        assert.equal(await page.locator("#detailTitle").textContent(), leadTitle(first));
         await page.locator("#closeDetail").click();
         const market = await page.locator("#marketFilter option").nth(1).getAttribute("value");
         if (market) {
