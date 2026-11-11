@@ -18,7 +18,7 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: production
     concurrency:
@@ -44,7 +44,9 @@ jobs:
       - if: steps.candidate.outputs.ready == 'true'
         run: npm ci
       - if: steps.candidate.outputs.ready == 'true'
-        run: npx playwright install --with-deps chromium
+        uses: ./.github/actions/setup-browsers
+        with:
+          browsers: chromium
       - if: steps.candidate.outputs.ready == 'true'
         run: npm run build
         env:
