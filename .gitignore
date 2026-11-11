@@ -78,3 +78,4 @@ mobile-a11y-evidence/
 /tsconfig.*.generated.json
 
 /js/ui-vendor-meetings.js
+/js/ui-broker-cheat-sheet.js

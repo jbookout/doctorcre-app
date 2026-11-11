@@ -1,3 +1,4 @@
+import { generatedSheet, sheetHistory, appendSheetSections } from "../js/ui-broker-cheat-sheet.js";
 import { createPageBudget } from '../js/read-budget.mjs';
 import { sessionFetch } from '../js/private-session.js';
 import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
@@ -12,6 +13,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   const $ = (selector) => document.querySelector(selector);
   const state = { csrf: "", sessionGeneration: 0, sessionInvalidated: false, tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "", cheatDraftRevision: null,
     searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
+  let sheetGenerated = "", sheetRegenerating = false;
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
   const text = (value, fallback = "") => typeof value === "string" && value ? value : fallback;
@@ -117,7 +119,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   }
   function canRegenerateSheet() {
     return Boolean(state.tour && state.cheatDraftTourId === state.tour.id && sessionBinding &&
-      !sheetBusy && !sheetPending && !sheetConflict && !sheetComposing && !tourAction && !tourActionPreparing &&
+      !sheetRegenerating && !sheetBusy && !sheetPending && !sheetConflict && !sheetComposing && !tourAction && !tourActionPreparing &&
       itinerarySheetText(state.tour));
   }
   function renderSheetRecovery() {
@@ -132,7 +134,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     $("#save-sheet").textContent = sheetPending ? "Check save outcome" : "Save now";
     $("#regenerate-sheet").disabled = !canRegenerateSheet();
     $("#restore-sheet").disabled = sheetBusy || Boolean(sheetPending) || Boolean(sheetConflict);
-    $("#sheet-state").textContent = sheetMessage || (state.cheatDirty ? "Unsaved changes. Saves after a pause." : text(state.tour?.cheat_sheet?.revision_label, "Not saved"));
+    $("#sheet-state").textContent = sheetMessage || (state.cheatDirty ? "Unsaved changes. Saves after a pause." : text(state.tour?.cheat_sheet?.revision_label, state.tour?.cheat_sheet?.revision_number ? `Saved revision ${state.tour.cheat_sheet.revision_number}` : "Not saved"));
   }
   async function currentSheetConflict(tourId) {
     sheetConflict = { tourId, current: null }; sheetMessage = "The sheet changed. Your draft is kept; read and review the current revision."; renderSheetRecovery();
@@ -249,6 +251,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     for (const selector of ["#preview-pdf", "#download-pdf", "#tour-day-link"]) { const link = $(selector); link.hidden = true; link.removeAttribute("href"); }
     $(".discovery").hidden = true; $("#empty-state").hidden = false; $("#empty-copy").textContent = "Your session ended. Sign in to reopen Tours.";
     $("#retry-library").hidden = true; $("#tour-name").textContent = ""; $("#tour-meta").textContent = "";
+    sheetGenerated = ""; $("#sheet-generated").textContent = ""; $("#sheet-history").replaceChildren(); $("#sheet-history-status").textContent = "";
     $("#cheat-content").value = ""; $("#share-url").value = ""; $("#share-link").hidden = true;
     $("#create-tour-form").reset(); $("#create-tour-panel").open = false;
     const recovery = $("#tour-recovery"), signIn = document.createElement("a");
@@ -554,11 +557,12 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   }
   function initComposer(tour) {
     const rows = routeRows(tour), accepted = (tour.routes || []).find(route => route.accepted);
+    const sheetOpen = composer?.tourId === tour.id ? $("#internal-cheat-sheet").open : !accepted;
     const base = accepted ? { ...accepted, stops: routeRows({ stops: accepted.stops }) } : null;
     composer = { sessionBinding, tourId: tour.id, routeId: tour.route_version_id, prior: Number(tour.accepted_route_version || 0), snapshot: routeSnapshot(tour), reviewDigest: tour.routes?.[0]?.acceptance_digest || "", rows, base, dirty: false, saved: tour.route_version_state === "draft" && rows.length > 0,
       phase: "ready", message: "", busy: false, plan: null, undo: null };
     $("#route-editing").open = !accepted;
-    $("#internal-cheat-sheet").open = !accepted;
+    $("#internal-cheat-sheet").open = sheetOpen;
     $("#property-evidence-panel").open = !accepted;
     const retained = readPending()?.composer;
     if (retained?.tourId === tour.id && retained.plan) composer = { ...retained, busy: false, phase: "unknown", message: "Outcome unknown after reload. Reconcile the saved route before retrying the retained request." };
@@ -851,6 +855,10 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     $("#projection-note").textContent = state.projectionId ? "The approved projection is ready for a deliberately scoped, expiring share." : tour.projection_status === "draft" ? "A projection draft exists but cannot be shared until a human authority seals it." : "A projection is required before an external link can be issued.";
     if (!state.cheatDirty || state.cheatDraftTourId !== tour.id) {
       $("#cheat-content").value = cheatSheetText(tour.cheat_sheet?.content);
+      sheetGenerated = generatedSheet(tour.cheat_sheet?.content);
+      $("#sheet-generated").textContent = sheetGenerated;
+      $("#sheet-history").replaceChildren();
+      $("#sheet-history-status").textContent = "";
       state.cheatDirty = false; state.cheatDraftTourId = tour.id; state.cheatDraftRevision = null;
     }
     if (sheetPending?.tourId === tour.id && (!state.cheatDirty || state.cheatDraftTourId !== tour.id)) {
@@ -989,18 +997,14 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   }
   async function saveSheet() {
     cancelSheetAutosave();
-    if (!state.tour || sheetBusy || sheetConflict) return;
+    if (!state.tour || sheetRegenerating || sheetBusy || sheetConflict) return;
     const tourId = state.tour.id, binding = sessionBinding;
     let confirmed = false;
     sheetBusy = true; renderSheetRecovery();
     try {
       if (!sheetPending) {
         const draft = $("#cheat-content").value, baseRevision = state.cheatDirty ? state.cheatDraftRevision : sheetRevision(state.tour);
-        let content;
-        try { content = JSON.parse(draft || "{}"); } catch { content = { notes: draft }; }
-        if (!content || typeof content !== "object" || Array.isArray(content)) {
-          sheetMessage = "Enter a JSON object or plain text notes. JSON arrays and scalar values cannot be saved."; return;
-        }
+        const content = { notes: draft, ...(sheetGenerated ? { generated_itinerary: sheetGenerated } : {}) };
         const latest = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
         if (latest.id !== tourId || binding !== sessionBinding) throw new Error("session_changed");
         const revision = sheetRevision(latest);
@@ -1193,15 +1197,45 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       expected_prior_route_version: Number(tour.accepted_route_version || 0), acceptance_digest: tour.route_acceptance_digest,
       idempotency_key: uuid() }, "Route acceptance", latest => latest.route_version_id === tour.route_version_id && latest.accepted_route_version === tour.accepted_route_version);
   }));
-  $("#regenerate-sheet").addEventListener("click", () => {
+  $("#regenerate-sheet").addEventListener("click", () => void action(async () => {
     if (!canRegenerateSheet()) return;
-    const editor = $("#cheat-content"), generated = itinerarySheetText(state.tour);
-    if (new TextEncoder().encode(JSON.stringify({ notes: generated })).length > 32768) {
-      sheetMessage = "The itinerary is too long for one sheet. Your notes are kept."; renderSheetRecovery(); return;
+    const tourId = state.tour.id, binding = sessionBinding;
+    sheetRegenerating = true; cancelSheetAutosave(); renderSheetRecovery();
+    try {
+      const latest = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
+      if (state.tour?.id !== tourId || binding !== sessionBinding || state.sessionInvalidated) return;
+      const generated = itinerarySheetText(latest);
+      if (!generated) throw new Error("No accepted itinerary is available. Your notes are kept.");
+      if (new TextEncoder().encode(JSON.stringify({ notes: $("#cheat-content").value, generated_itinerary: generated })).length > 32768)
+        throw new Error("The itinerary is too long for one sheet. Your notes are kept.");
+      sheetGenerated = generated; $("#sheet-generated").textContent = generated;
+      $("#cheat-content").dispatchEvent(new Event("input"));
+    } catch {
+      if (state.tour?.id === tourId && binding === sessionBinding && !state.sessionInvalidated) {
+        if (state.cheatDirty && state.cheatDraftTourId === tourId) $("#cheat-content").dispatchEvent(new Event("input"));
+        sheetMessage = "The current itinerary could not be read. Your notes are kept."; status(sheetMessage);
+      }
+    } finally { sheetRegenerating = false; renderSheetRecovery(); }
+  }));
+  $("#read-sheet-history").addEventListener("click", () => void action(async () => {
+    const tourId = state.tour?.id, binding = sessionBinding;
+    if (!tourId || state.sessionInvalidated) return;
+    $("#sheet-history-status").textContent = "Reading saved revisions…";
+    try {
+      const revisions = sheetHistory(await request(`/api/tours/cheat-sheet/history/v1?tour_id=${encodeURIComponent(tourId)}`));
+      if (state.tour?.id !== tourId || binding !== sessionBinding || state.sessionInvalidated) return;
+      const container = $("#sheet-history"); container.replaceChildren();
+      for (const revision of revisions) {
+        const row = document.createElement("details"), heading = document.createElement("summary"), content = document.createElement("pre");
+        heading.textContent = `Revision ${revision.revision_number}`;
+        content.textContent = [generatedSheet(revision.content), cheatSheetText(revision.content)].filter(Boolean).join("\n\n");
+        row.append(heading, content); container.append(row);
+      }
+      $("#sheet-history-status").textContent = revisions.length ? "Latest 100 revisions. Opening a revision does not change your draft." : "No saved revisions.";
+    } catch {
+      if (binding === sessionBinding && !state.sessionInvalidated) $("#sheet-history-status").textContent = "Saved revisions are unavailable. Try reading them again.";
     }
-    if (editor.value && !window.confirm("Replace your internal notes with the accepted itinerary? This will autosave a new revision. Existing saved revisions remain unchanged.")) return;
-    editor.value = generated; editor.dispatchEvent(new Event("input")); editor.focus();
-  });
+  }));
   const saveSheetExclusively = exclusive("sheet", saveSheet);
   $("#cheat-content").addEventListener("compositionstart", () => { sheetComposing = true; cancelSheetAutosave(); renderSheetRecovery(); });
   $("#cheat-content").addEventListener("compositionend", () => { sheetComposing = false; $("#cheat-content").dispatchEvent(new Event("input")); });
@@ -1248,6 +1282,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       ["p", draft ? "Unsaved draft" : Number.isSafeInteger(revision) && revision > 0 ? `Saved revision ${revision}` : "Not saved"],
       ["pre", $("#cheat-content").value || "No internal notes recorded."],
     ]) { const node = document.createElement(tag); node.textContent = value; output.append(node); }
+    appendSheetSections(output, sheetGenerated || itinerarySheetText(tour));
     return true;
   }
   $("#print-sheet").addEventListener("click", () => { if (prepareSheetPrint()) window.print(); });
