@@ -515,7 +515,7 @@ const validationWorkflow = parseYaml(ci);
 
 function validationPolicy({ eventName = 'pull_request', action = 'opened', changes = {}, number = 7, runId = 1, workflow = validationWorkflow.name } = {}) {
   const github = { workflow, event_name: eventName, run_id: runId,
-    event: { action, changes, ...(eventName === 'pull_request' ? { pull_request: { number } } : {}) } };
+    event: { action, changes, ...(eventName === 'pull_request' ? { pull_request: { number, head: { sha: 'fixture-head' } } } : {}) } };
   const evaluate = value => {
     const expression = value.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
     assert.match(expression, /^(?:github(?:\.[a-z_]+)+|'[^']*'|null|[\s()=!&|])+$/);
@@ -565,7 +565,7 @@ test('CI isolates PRs, workflows, main pushes and merge-group runs', () => {
     assert.equal(policy.triggers, eventName === 'push');
     assert.equal(policy.cancel, false);
     assert.notEqual(policy.group, active.group);
-    assert.notEqual(policy.group, validationPolicy({ eventName, runId: 2 }).group);
+    assert.equal(policy.group, validationPolicy({ eventName, runId: 2 }).group);
   }
 });
 
