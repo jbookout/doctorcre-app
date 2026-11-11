@@ -1,0 +1,26 @@
+{
+  "as_of": "2026-08-27T12:00:00Z",
+  "caveat": null,
+  "properties": [
+    {
+      "property_ref": "property:public:AlphaHealthCenter01",
+      "route_sequence": 1,
+      "route_label": "A",
+      "name": "Alpha Health Center",
+      "address": "100 Alpha Drive, Pensacola, FL",
+      "suite": "Suite 120",
+      "property_type": "Medical office",
+      "size": {
+        "value": 1600,
+        "unit": "SF"
+      },
+      "asking_economics": {
+        "value": "24.00",
+        "currency": "USD",
+        "period": "NNN"
+      },
+      "availability": "Available",
+      "parking": "4.5/1,000 SF"
+    }
+  ]
+}

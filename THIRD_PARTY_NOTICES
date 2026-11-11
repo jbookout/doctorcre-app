@@ -97,3 +97,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## PDF.js
+
+PDF.js 6.5.438 by Mozilla Foundation is distributed under Apache License 2.0.
+Source: https://github.com/mozilla/pdf.js
+The complete license is published at `tours/vendor/pdfjs/LICENSE`.
+The packet preview and its worker bundle include PDF.js.

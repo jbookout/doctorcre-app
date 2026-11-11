@@ -1,3 +1,4 @@
+import { packetFacts } from "../js/ui-packet-facts.js";
 import { generatedSheet, sheetHistory, appendSheetSections } from "../js/ui-broker-cheat-sheet.js";
 import { createPageBudget } from '../js/read-budget.mjs';
 import { sessionFetch } from '../js/private-session.js';
@@ -5,7 +6,7 @@ import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
-import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDisplayName, tourMetaLine } from "./tour-format.js";
+import { cheatSheetText, itinerarySheetText, formatTourDate, tourDisplayName, tourMetaLine } from "./tour-format.js";
 
 (() => {
   "use strict";
@@ -871,11 +872,12 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     if (!stops().length) list.textContent = "No stops in this route cart.";
     state.renderJobId = text(tour.pdf_render_job_id); state.pdfQcRunDigest = text(tour.pdf_qc_run_digest);
     $("#pdf-state").textContent = text(tour.pdf_status, "Not rendered").replaceAll("_", " ");
+    const downloadable = tour.pdf_status === "available" && id(state.renderJobId);
     const reviewable = tour.pdf_status === "review_ready" && id(state.renderJobId);
-    $("#preview-pdf").hidden = !reviewable;
+    $("#preview-pdf").hidden = !reviewable && !downloadable;
     $("#review-pdf").hidden = !reviewable;
     if (reviewable) $("#preview-pdf").href = `/api/tours/pdf/preview?render_job_id=${encodeURIComponent(state.renderJobId)}`;
-    const downloadable = tour.pdf_status === "available" && id(state.renderJobId);
+    if (downloadable) $("#preview-pdf").href = `/tours/packet-preview.html?render_job_id=${encodeURIComponent(state.renderJobId)}`;
     $("#download-pdf").hidden = !downloadable;
     if (downloadable) $("#download-pdf").href = `/api/tours/pdf/download?render_job_id=${encodeURIComponent(state.renderJobId)}`;
     mountPropertyPanel({ tour, request });
@@ -920,7 +922,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     }
     renderCreate();
   }
-  async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
+  async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${facts.suite ? ` - ${text(facts.suite)}` : ""}\n${packetFacts(facts).map(([label, value]) => `${label}: ${value}`).join("\n")}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
   async function loadTour(tourId, { requireComposerDetail = false, throwOnFailure = false, keepEditorVisible = false } = {}) {
     if (state.sessionInvalidated) return false;

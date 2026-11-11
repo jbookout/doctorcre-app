@@ -1,3 +1,4 @@
+import { appendPacketFacts } from "../js/ui-packet-facts.js";
 import { mountNavigation } from "../js/navigation.js";
 
 mountNavigation(document, location.pathname, { report: true });
@@ -221,8 +222,9 @@ mountNavigation(document, location.pathname, { report: true });
       const heading = document.createElement("h3");
       heading.textContent = text(item.name, text(item.title, "Tour property"));
       const detail = document.createElement("p");
-      detail.textContent = text(item.summary, text(item.status, propertyAddress(item, "Details available in the packet.")));
+      detail.textContent = text(item.address, "Address unavailable") + (typeof item.suite === "string" && item.suite ? ` - ${item.suite}` : "");
       row.append(route, heading, detail);
+      appendPacketFacts(row, item);
       renderFeedbackControls(row, item);
       list.append(row);
     }

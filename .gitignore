@@ -78,3 +78,7 @@ mobile-a11y-evidence/
 /tsconfig.*.generated.json
 
 /js/ui-broker-cheat-sheet.js
+
+/js/ui-packet-facts.js
+/js/ui-packet-preview.js
+/js/ui-packet-worker.js

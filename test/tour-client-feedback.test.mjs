@@ -359,3 +359,23 @@ for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stal
   assert.equal(signals[0]?.aborted, true);
   assert.equal(app.dom.window.history.state, null);
 });
+
+test("an approved packet keeps a preview of the downloadable artifact", async () => {
+  const job = "55555555-5555-4555-8555-555555555555";
+  const app = await openBroker(() => feedbackResponse("A"), {
+    detailRead: data => ({ ...data, pdf_status: "available", pdf_render_job_id: job }),
+  });
+  app.doc.querySelector(".tour-button").click(); await settle();
+  const preview = app.doc.querySelector("#preview-pdf");
+  assert.equal(preview.hidden, false);
+  assert.equal(preview.getAttribute("href"), `/tours/packet-preview.html?render_job_id=${job}`);
+  assert.equal(app.doc.querySelector("#download-pdf").getAttribute("href"), `/api/tours/pdf/download?render_job_id=${job}`);
+  assert.equal(app.doc.querySelector("#review-pdf").hidden, true);
+});
+
+test("the shared packet displays the PDF property facts, not a summary fallback", async () => {
+  const app = await openShare({ properties: [{ property_ref: propertyRef, name: "Alpha Health Center", address: "100 Alpha Drive", suite: "Suite 120", property_type: "Medical office", size: { value: 1600, unit: "SF" }, asking_economics: { value: "24.00", currency: "USD", period: "NNN" }, availability: "Available", parking: "4.5/1,000 SF" }] });
+  const row = app.doc.querySelector(".report-item");
+  assert.deepEqual([...row.querySelectorAll("dd")].map(node => node.textContent), ["Medical office", "1600 SF", "USD 24.00 / NNN", "Available", "4.5/1,000 SF"]);
+  assert.equal(row.querySelector("h3 + p").textContent, "100 Alpha Drive - Suite 120");
+});
