@@ -3,6 +3,8 @@ import type { parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
 
 export async function packetProofPdf(packet: ReturnType<typeof parsePublicTourPacket>, nearMiss: boolean) {
   const document = await PDFDocument.create();
+  document.setSubject("Tour template 2.0.0");
+  document.setProducer("CARR deterministic PDF renderer 2.0.0");
   const font = await document.embedFont(StandardFonts.Helvetica);
   const pages = [
     [

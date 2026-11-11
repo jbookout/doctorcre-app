@@ -29,6 +29,8 @@ Keep this file outside Git and logs. The proof output excludes links, cookies, r
 Exit 0 means all grants passed at 1440 and 390 widths in light and dark with a stable containing app release.
 Exit 1 means a displayed value, permission, or supported packet format assertion failed on a containing release.
 Exit 78 means the release, browser, network or independent input evidence was insufficient.
+Recorded 1.x packets and downloaded PDFs with a pre-2.0.0 Tour template or CARR renderer are insufficient evidence. The refusal names the observed version.
+The PDF digest check also requires embedded CARR renderer metadata. Stored, previously reviewed PDFs retain their original bytes; a current JSON packet does not upgrade them.
 The proof refuses older, unrelated and unavailable release identities.
 The app release identity does not attest the independent CARR deployment. Deploy CARR PRs 3181 and 3182 before running this proof for acceptance.
 

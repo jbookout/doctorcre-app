@@ -9,6 +9,7 @@ import { parsePublicTourPacket, UnsupportedPublicTourPacketError } from "../src/
 import { launchProofBrowser, proofFetch, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
+import { requireCurrentTourPdf } from "./public-tour-pdf-proof.ts";
 
 type Row = { propertyRef: string; label: string; name: string; detail: string };
 type Evidence = { active: string; revoked: string; viewOnly: string; rows: Row[]; pdfSha256: string };
@@ -212,6 +213,7 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
             if (kind === "active") {
               assert.equal(download.status, 200);
               assert.equal(download.type, "application/pdf");
+              await requireCurrentTourPdf(Buffer.concat(chunks));
               assert.equal(download.digest, expected.pdfSha256);
               await page.getByRole("button", { name: "Download PDF", exact: true }).click();
               await page.getByText("PDF downloaded.", { exact: true }).waitFor();
@@ -288,7 +290,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     );
   } catch (error) {
     const exitCode =
-      error instanceof assert.AssertionError || error instanceof UnsupportedPublicTourPacketError
+      error instanceof assert.AssertionError
         ? 1
         : object(error) && typeof error.exitCode === "number"
           ? error.exitCode

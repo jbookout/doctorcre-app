@@ -41,26 +41,25 @@ function identity(row: Record<string, unknown>) {
   return { property_ref: row.property_ref, route_sequence: row.route_sequence, route_label: row.route_label };
 }
 export class UnsupportedPublicTourPacketError extends Error {
-  constructor() {
+  readonly exitCode = 78;
+  constructor(version = "1.x", evidence = "packet format") {
     super(
-      "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
+      `This report uses an older ${evidence} (${version}). Please reopen the shared link after the report service is updated.`,
     );
     this.name = "UnsupportedPublicTourPacketError";
   }
+}
+export function requireCurrentTourVersion(version: unknown, evidence = "packet format") {
+  if (typeof version === "string" && /^(?:(?:0|1)(?:\.x|\.\d+\.\d+(?:-[\w.-]+)?)|2\.0\.0-[\w.-]+)$/.test(version))
+    throw new UnsupportedPublicTourPacketError(version, evidence);
+  if (version !== "2.0.0") throw new Error(`Unsupported ${evidence}`);
 }
 export function parsePublicTourPacket(value: unknown) {
   const input = record(value);
   if (!Array.isArray(input.stops) || !input.stops.length || input.stops.length > 50)
     throw new Error("Invalid public packet");
   const presentation = input.presentation === undefined ? { version: "1.x" } : record(input.presentation);
-  switch (presentation.version) {
-    case "1.x":
-      throw new UnsupportedPublicTourPacketError();
-    case "2.0.0":
-      break;
-    default:
-      throw new Error("Unsupported packet template");
-  }
+  requireCurrentTourVersion(presentation.version);
   if (!Array.isArray(presentation.stops)) throw new Error("Invalid packet presentation");
   const stops = presentation.stops
     .map((value) => {

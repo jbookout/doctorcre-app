@@ -5,6 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import test, { after } from "node:test";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { PDFDocument } from "pdf-lib";
 import { chromium } from "playwright";
 import { buildArtifact } from "../scripts/artifact.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
@@ -16,7 +17,14 @@ const recorded = JSON.parse(await readFile(new URL("./fixtures/client-links/prod
 const legacy = JSON.parse(
   await readFile(new URL("./fixtures/client-links/legacy-producer.json", import.meta.url), "utf8"),
 );
-const pdf = Buffer.from("%PDF-1.4 synthetic reviewed packet");
+async function storedPdf(template = "2.0.0", renderer = "2.0.0") {
+  const document = await PDFDocument.create();
+  document.setSubject(`Tour template ${template}`);
+  document.setProducer(`CARR deterministic PDF renderer ${renderer}`);
+  document.addPage();
+  return Buffer.from(await document.save());
+}
+const pdf = await storedPdf();
 const row = {
   propertyRef: "property:public:synthetic_property_01",
   label: "Stop A",
@@ -34,7 +42,9 @@ async function fixture(
   badSummary = false,
   interrupted = false,
   legacyPacket = false,
+  pdfBytes = pdf,
 ) {
+  const pdf = pdfBytes;
   const html = await readFile(outDir + "/site/reports/share.html", "utf8");
   const share = await readFile(outDir + "/site/reports/share.js", "utf8");
   const css = await readFile(outDir + "/site/reports/share.css", "utf8");
@@ -167,7 +177,7 @@ test("recorded production 1.x is clearly refused without report or download cont
           );
           assert.equal(
             await page.locator("#report-summary").textContent(),
-            "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
+            "This report uses an older packet format (1.x). Please reopen the shared link after the report service is updated.",
           );
           assert.equal(await page.locator("#report-list > li").count(), 0);
           assert.equal(await page.getByRole("button", { name: "Download PDF", exact: true }).count(), 0);
@@ -258,6 +268,8 @@ test("client proof classifies unavailable browser as insufficient evidence", asy
 for (const mode of [
   "pass",
   "legacy packet",
+  "legacy PDF template",
+  "legacy PDF renderer",
   "near miss",
   "summary mismatch",
   "late launch",
@@ -269,7 +281,12 @@ for (const mode of [
     const interrupted = mode === "interrupted observation";
     const timeout = mode === "late launch" || mode === "stalled evaluation" || interrupted;
     const badSummary = mode === "summary mismatch";
-    const options = await fixture(t, nearMiss, badSummary, interrupted, mode === "legacy packet");
+    const legacyPdf = mode.startsWith("legacy PDF");
+    const pdf = await storedPdf(
+      mode === "legacy PDF template" ? "1.1.0" : "2.0.0",
+      mode === "legacy PDF renderer" ? "1.1.0" : "2.0.0",
+    );
+    const options = await fixture(t, nearMiss, badSummary, interrupted, mode === "legacy packet", pdf);
     const root = temporaryDirectory("client-proof-cli-", t);
     const evidenceFile = `${root}/evidence.json`;
     const preload = `${root}/browser.mjs`;
@@ -286,7 +303,7 @@ const chromiumDriver = { launch: chromium.launch.bind(chromium) };
 const recorded = ${JSON.stringify(recorded)};
 const legacy = ${JSON.stringify(legacy)};
 const legacyPacket = ${mode === "legacy packet"};
-const pdf = Buffer.from(${JSON.stringify(pdf.toString())});
+const pdf = Buffer.from(${JSON.stringify(pdf.toString("base64"))}, "base64");
 const nearMiss = ${nearMiss};
 const badSummary = ${badSummary};
 const interrupted = ${interrupted};
@@ -329,15 +346,27 @@ chromium.launch = async options => {
       ],
       { timeout: 40000 },
     );
-    if (nearMiss || badSummary || timeout || mode === "legacy packet")
+    if (nearMiss || badSummary || timeout || mode === "legacy packet" || legacyPdf)
       await assert.rejects(execution, (error: unknown) => {
         assert.ok(error && typeof error === "object" && "code" in error && "stdout" in error);
-        assert.equal(error.code, timeout ? 78 : 1, "stderr" in error ? String(error.stderr) : "no stderr");
-        assert.equal(JSON.parse(String(error.stdout)).status, timeout ? "insufficient_evidence" : "failed");
+        assert.equal(
+          error.code,
+          timeout || mode === "legacy packet" || legacyPdf ? 78 : 1,
+          "stderr" in error ? String(error.stderr) : "no stderr",
+        );
+        assert.equal(
+          JSON.parse(String(error.stdout)).status,
+          timeout || mode === "legacy packet" || legacyPdf ? "insufficient_evidence" : "failed",
+        );
         if (mode === "legacy packet")
           assert.equal(
             JSON.parse(String(error.stdout)).error,
-            "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
+            "This report uses an older packet format (1.x). Please reopen the shared link after the report service is updated.",
+          );
+        if (legacyPdf)
+          assert.match(
+            JSON.parse(String(error.stdout)).error,
+            new RegExp(`${mode === "legacy PDF template" ? "template" : "renderer"} \\(1\\.1\\.0\\)`),
           );
         return true;
       });

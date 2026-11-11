@@ -175,6 +175,6 @@ test("recorded production 1.x packets have an explicit refusal through the real 
     assert.throws(() => parsePublicTourPacket(legacy.responses[name]), {
       name: "UnsupportedPublicTourPacketError",
       message:
-        "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
+        "This report uses an older packet format (1.x). Please reopen the shared link after the report service is updated.",
     });
 });
