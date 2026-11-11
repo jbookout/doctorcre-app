@@ -37,7 +37,7 @@
 .relationship-filters :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 .relationship-filters { display: grid; gap: var(--space-3); padding: var(--space-1) 0 var(--space-5); color: var(--fg-muted); font-size: var(--font-size-1); }
-.relationship-filters label { font-size: var(--font-size-1); color: var(--fg-muted); }
+.relationship-filters label { display: flex; align-items: center; min-width: 44px; min-height: 44px; font-size: var(--font-size-1); color: var(--fg-muted); }
 .relationship-filters input,
 .relationship-filters select {
   width: 100%;
@@ -212,3 +212,5 @@ dialog.introduction-review { width: min(620px, calc(100vw - 24px)); }
   .relationship-page *,
   :is(.relationship-dialog, .introduction-review) * { transition: none !important; scroll-behavior: auto !important; }
 }
+
+#networkKindFilter > label { display: flex; align-items: center; min-width: 44px; min-height: 44px; }

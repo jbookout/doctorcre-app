@@ -369,3 +369,8 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
   #cheat-print .sheet-property { break-before: auto; }
   #cheat-print .sheet-property ~ .sheet-property { break-before: page; }
 }
+
+#internal-cheat-sheet > label { min-width: 44px; min-height: 44px; align-content: center; }
+
+.skip-link:not(:focus) { clip-path: inset(50%); }
+.skip-link:focus { min-width: 44px; min-height: 44px; align-content: center; }
