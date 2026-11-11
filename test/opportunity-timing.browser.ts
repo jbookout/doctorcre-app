@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import test from "node:test";
+import { promisify } from "node:util";
 import { chromium as rawChromium } from "playwright";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-lead-opportunity-timing.ts";
 import { chromium } from "./browser-harness.mjs";
+import { cdpEndpoint } from "./cdp-fixture.ts";
 import { timingFixture } from "./opportunity-timing-fixture.ts";
 
 test("Retirement clears each timing view and fences late detail responses", async (t) => {
   const { server } = await setup(t);
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const page = await browser.newPage();
   for (const selection of ["board", "supported", "unknown"]) {
@@ -58,6 +61,24 @@ test("Retirement clears each timing view and fences late detail responses", asyn
 
 const appCommit = "1".repeat(40);
 const producerCommit = "28ad26f601bdb4714331f122cd68337470509ef6";
+const execute = promisify(execFile);
+function runCli(origin: string, expectedCommit = appCommit, screenshots = false) {
+  return execute(
+    process.execPath,
+    [
+      "scripts/prove-lead-opportunity-timing.ts",
+      "--fixture",
+      "--origin",
+      origin,
+      "--producer-origin",
+      origin,
+      "--expected-commit",
+      expectedCommit,
+      ...(screenshots ? ["--screenshot-dir", "/tmp/WR591.S13.J6-shots"] : []),
+    ],
+    { timeout: 40000 },
+  );
+}
 async function setup(t: { after(fn: () => unknown): void }, corrupt = false) {
   const fixture = timingFixture();
   const assets = await appAssetSnapshot();
@@ -88,18 +109,12 @@ async function setup(t: { after(fn: () => unknown): void }, corrupt = false) {
 }
 test("Opportunity dates proof walks desktop and phone themes with keyboard paths", async (t) => {
   const { server } = await setup(t);
-  await prove({
-    origin: server.origin,
-    producerOrigin: server.origin,
-    expectedCommit: appCommit,
-    fixture: true,
-    timeoutMs: 30000,
-    screenshotDir: "/tmp/WR591.S13.J6-shots",
-  });
+  const { stdout } = await runCli(server.origin, appCommit, true);
+  assert.equal(JSON.parse(stdout).status, "passed");
 });
 test("Selected detail replaces revisions, withdraws and restores support, closes and retires", async (t) => {
   const { server, fixture } = await setup(t);
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, timezoneId: "Asia/Tokyo" });
   await page.goto(`${server.origin}/leads`);
@@ -134,15 +149,9 @@ test("Selected detail replaces revisions, withdraws and restores support, closes
 });
 test("Proof fails on a near-miss date and refuses absent containing releases", async (t) => {
   const { server } = await setup(t);
-  await assert.rejects(
-    prove({ origin: server.origin, producerOrigin: server.origin, expectedCommit: "f".repeat(40), fixture: true }),
-    { exitCode: 78 },
-  );
+  await assert.rejects(runCli(server.origin, "f".repeat(40)), { code: 78 });
   const { server: broken } = await setup(t, true);
-  await assert.rejects(
-    prove({ origin: broken.origin, producerOrigin: broken.origin, expectedCommit: appCommit, fixture: true }),
-    assert.AssertionError,
-  );
+  await assert.rejects(runCli(broken.origin), { code: 1 });
 });
 
 test("Proof deadline closes a late browser launch and a stalled evaluation", async (t) => {
@@ -183,5 +192,50 @@ test("Proof deadline closes a late browser launch and a stalled evaluation", asy
     assert.ok(acquired, "proof acquired the run-owned browser");
     assert.equal(acquired.isConnected(), false, mode);
     if (mode === "stalled-evaluation") assert.equal(evaluated, true);
+  }
+});
+
+test("Late borrowed CDP page closes before disconnect and preserves existing tabs", async (t) => {
+  const { server } = await setup(t);
+  const browser = await rawChromium.launch({
+    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
+  });
+  t.after(() => browser.close());
+  const cdpUrl = await cdpEndpoint(browser);
+  const connection = await rawChromium.connectOverCDP(cdpUrl);
+  t.after(() => connection.close());
+  const context = connection.contexts()[0];
+  assert.ok(context);
+  const existing = await context.newPage();
+  await existing.goto("about:blank#existing");
+  const newPage = context.newPage.bind(context);
+  let acquired = 0;
+  context.newPage = async () => {
+    const page = await newPage();
+    acquired++;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return page;
+  };
+  await assert.rejects(
+    prove({
+      origin: server.origin,
+      producerOrigin: server.origin,
+      expectedCommit: appCommit,
+      expectedProducerCommit: producerCommit,
+      cdpUrl,
+      timeoutMs: 1000,
+      engine: { launch: rawChromium.launch.bind(rawChromium), connectOverCDP: async () => connection },
+    }),
+    { exitCode: 78 },
+  );
+  assert.equal(acquired, 1);
+  const fresh = await rawChromium.connectOverCDP(cdpUrl);
+  try {
+    const pages = fresh.contexts()[0]?.pages();
+    assert.equal(pages?.length, 1);
+    assert.equal(pages?.[0]?.url(), "about:blank#existing");
+    assert.equal(browser.isConnected(), true);
+  } finally {
+    await fresh.close();
   }
 });

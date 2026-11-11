@@ -14,6 +14,7 @@ type Options = {
   origin: string;
   expectedCommit: string;
   producerOrigin: string;
+  expectedProducerCommit?: string;
   producerCwd?: string;
   fixture?: boolean;
   cdpUrl?: string;
@@ -25,6 +26,7 @@ export async function prove({
   origin,
   expectedCommit,
   producerOrigin,
+  expectedProducerCommit,
   producerCwd,
   fixture = false,
   cdpUrl,
@@ -58,7 +60,10 @@ export async function prove({
     const producer = await response.json();
     if (!response.ok || typeof producer.git_sha !== "string")
       throw insufficient("Producer release identity unavailable");
-    await requireContainingRelease("28ad26f601bdb4714331f122cd68337470509ef6", producer.git_sha, {
+    const producerCommit = expectedProducerCommit || (fixture ? "28ad26f601bdb4714331f122cd68337470509ef6" : "");
+    if (!/^[a-f0-9]{40}$/.test(producerCommit) || /^0+$/.test(producerCommit))
+      throw insufficient("Expected producer merge commit required");
+    await requireContainingRelease(producerCommit, producer.git_sha, {
       signal: controller.signal,
       ...(producerCwd ? { cwd: producerCwd } : {}),
     });
@@ -238,6 +243,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         origin: { type: "string" },
         "expected-commit": { type: "string" },
         "producer-origin": { type: "string" },
+        "producer-commit": { type: "string" },
         "producer-cwd": { type: "string" },
         "cdp-url": { type: "string" },
         fixture: { type: "boolean" },
@@ -251,6 +257,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           origin: values.origin || "",
           expectedCommit: values["expected-commit"] || "",
           producerOrigin: values["producer-origin"] || "",
+          ...(values["producer-commit"] ? { expectedProducerCommit: values["producer-commit"] } : {}),
           fixture: values.fixture ?? false,
           timeoutMs: Number(values["timeout-ms"] || 30000),
           ...(values["producer-cwd"] ? { producerCwd: values["producer-cwd"] } : {}),
