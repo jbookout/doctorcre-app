@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { packetStopHeading } from "../src/ui/packet-facts.ts";
 import type { parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
 
 const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -22,7 +23,7 @@ export function assertPublishedPacketText(text: string, packet: ReturnType<typeo
     ...packet.map((stop) =>
       normalize(
         [
-          `Stop ${stop.route_label}`,
+          packetStopHeading(stop.route_label),
           stop.name,
           stop.address,
           ...stop.facts.map((fact) => `${fact.label} ${fact.value}`),
