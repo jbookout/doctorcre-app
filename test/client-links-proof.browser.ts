@@ -25,7 +25,7 @@ const outDir = temporaryDirectory("client-links-proof-");
 after(() => rm(outDir, { recursive: true, force: true }));
 await buildArtifact({ root: new URL("../", import.meta.url).pathname, outDir, commit });
 
-async function fixture(t: test.TestContext, nearMiss = false, badSummary = false) {
+async function fixture(t: test.TestContext, nearMiss = false, badSummary = false, interrupted = false) {
   const html = await readFile(outDir + "/site/reports/share.html", "utf8");
   const share = await readFile(outDir + "/site/reports/share.js", "utf8");
   const css = await readFile(outDir + "/site/reports/share.css", "utf8");
@@ -91,7 +91,8 @@ async function fixture(t: test.TestContext, nearMiss = false, badSummary = false
             return route.fulfill(
               token.startsWith("a") ? { contentType: "application/pdf", body: pdf } : { status: 403, body: "" },
             );
-          if (path === "/api/share/report")
+          if (path === "/api/share/report") {
+            if (interrupted) await new Promise((resolve) => setTimeout(resolve, 2000));
             return route.fulfill({
               json: {
                 data: badSummary
@@ -107,6 +108,7 @@ async function fixture(t: test.TestContext, nearMiss = false, badSummary = false
                     : recorded.responses.packet,
               },
             });
+          }
           if (path === "/api/share/map") return route.fulfill({ status: 404, json: recorded.responses.mapUnavailable });
           return route.fulfill({
             json: {
@@ -114,6 +116,15 @@ async function fixture(t: test.TestContext, nearMiss = false, badSummary = false
             },
           });
         });
+        if (interrupted) {
+          const newPage = context.newPage.bind(context);
+          context.newPage = async () => {
+            const page = await newPage();
+            const wait = page.waitForFunction.bind(page);
+            page.waitForFunction = (fn, arg, options) => wait(fn, arg, { ...options, timeout: 100 });
+            return page;
+          };
+        }
         return context;
       };
       return browser;
@@ -200,12 +211,20 @@ test("client proof classifies unavailable browser as insufficient evidence", asy
   );
 });
 
-for (const mode of ["pass", "near miss", "summary mismatch", "late launch", "stalled evaluation"])
+for (const mode of [
+  "pass",
+  "near miss",
+  "summary mismatch",
+  "late launch",
+  "stalled evaluation",
+  "interrupted observation",
+])
   test(`client proof CLI ${mode}`, async (t) => {
     const nearMiss = mode === "near miss";
-    const timeout = mode === "late launch" || mode === "stalled evaluation";
+    const interrupted = mode === "interrupted observation";
+    const timeout = mode === "late launch" || mode === "stalled evaluation" || interrupted;
     const badSummary = mode === "summary mismatch";
-    const options = await fixture(t, nearMiss, badSummary);
+    const options = await fixture(t, nearMiss, badSummary, interrupted);
     const root = temporaryDirectory("client-proof-cli-", t);
     const evidenceFile = `${root}/evidence.json`;
     const preload = `${root}/browser.mjs`;
@@ -223,6 +242,7 @@ const recorded = ${JSON.stringify(recorded)};
 const pdf = Buffer.from(${JSON.stringify(pdf.toString())});
 const nearMiss = ${nearMiss};
 const badSummary = ${badSummary};
+const interrupted = ${interrupted};
 const engine = { ${options.engine.launch.toString().replaceAll("chromium.launch", "chromiumDriver.launch")} };
 chromium.launch = async options => {
   const browser = await engine.launch({ args: [...CHROMIUM_SAFETY_ARGS, ...(options?.args || [])], ...options });
