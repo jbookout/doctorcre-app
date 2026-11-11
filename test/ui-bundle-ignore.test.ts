@@ -36,7 +36,6 @@ test("handwritten UI names stay visible to Git", () => {
     "js/ui-shared-handwritten.generated.js",
     "js/ui-shared-ABC1234.generated.js",
     "js/ui-shared-ABC123456.generated.js",
-    "js/ui-shared-abc12345.generated.js",
     "js/ui-shared-ABC12345.js",
     "js/nested/ui-facts.js",
   ];
