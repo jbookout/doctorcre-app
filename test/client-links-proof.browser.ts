@@ -120,8 +120,11 @@ async function fixture(t: test.TestContext, nearMiss = false, badSummary = false
           const newPage = context.newPage.bind(context);
           context.newPage = async () => {
             const page = await newPage();
-            const wait = page.waitForFunction.bind(page);
-            page.waitForFunction = (fn, arg, options) => wait(fn, arg, { ...options, timeout: 100 });
+            page.waitForFunction = new Proxy(page.waitForFunction, {
+              apply(wait, receiver, [fn, arg, options]) {
+                return Reflect.apply(wait, receiver, [fn, arg, { ...options, timeout: 100 }]);
+              },
+            });
             return page;
           };
         }

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import type { Browser, LaunchOptions } from "playwright";
+import type { Browser, LaunchOptions, Response } from "playwright";
 import { chromium } from "playwright";
 import { launchProofBrowser, proofFetch, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
@@ -120,6 +120,7 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
             acceptDownloads: true,
             serviceWorkers: "block",
           });
+          let packetResponse: Promise<{ response: Response } | { error: unknown }> | undefined;
           try {
             const page = await context.newPage();
             let violation = false;
@@ -138,13 +139,18 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               return route.fallback();
             });
             await page.goto(expected[kind]);
-            const packetResponse =
+            packetResponse =
               kind === "revoked"
                 ? undefined
-                : page.waitForResponse((response) => {
-                    const url = new URL(response.url());
-                    return url.origin === clientOrigin && url.pathname === "/api/share/report";
-                  });
+                : page
+                    .waitForResponse((response) => {
+                      const url = new URL(response.url());
+                      return url.origin === clientOrigin && url.pathname === "/api/share/report";
+                    })
+                    .then(
+                      (response) => ({ response }),
+                      (error: unknown) => ({ error }),
+                    );
             await page.getByRole("button", { name: "Open tour", exact: true }).click();
             await page.waitForFunction(() => {
               const status = document.querySelector("#status")?.textContent;
@@ -159,8 +165,10 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               assert.equal(await page.locator("#status").textContent(), "This shared report is unavailable.");
               assert.equal(await page.locator(".report-item").count(), 0);
             } else {
-              const response = await packetResponse;
-              assert.ok(response, "packet response required");
+              const packet = await packetResponse;
+              assert.ok(packet, "packet response required");
+              if ("error" in packet) throw packet.error;
+              const { response } = packet;
               assert.ok(response.ok(), "packet response available");
               const envelope: unknown = await response.json();
               assert.ok(object(envelope), "packet envelope required");
@@ -218,7 +226,11 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               "no horizontal overflow",
             );
           } finally {
-            await context.close();
+            try {
+              await context.close();
+            } finally {
+              await packetResponse;
+            }
           }
         }
       }
