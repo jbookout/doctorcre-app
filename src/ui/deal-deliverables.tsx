@@ -138,7 +138,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
     return () => window.removeEventListener("beforeunload", warn);
   }, [active, designation.kind, pending]);
   function choose(files: File[]) {
-    if (busy || life.current.signal.aborted) return;
+    if (!files.length || busy || life.current.signal.aborted) return;
     try {
       if (files.length !== 1 || !files[0]) throw Error("Choose one file at a time.");
       validateSharedFile(files[0]);

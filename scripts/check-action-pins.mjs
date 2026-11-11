@@ -15,6 +15,7 @@ export async function checkActionPins(root = fileURLToPath(new URL('../', import
     'actions/upload-artifact': 'node24',
     'actions/download-artifact': 'node24',
     'actions/setup-python': 'node20',
+    'actions/cache': 'node20',
     'mikepenz/action-junit-report': 'node24',
   };
   const check = (action, sha, label = action) => {

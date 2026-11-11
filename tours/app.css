@@ -13,6 +13,7 @@
 [hidden] { display: none !important; }
 body { margin: 0; min-width: 320px; background: var(--ground); color: var(--fg); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
 body.tour-embedded { min-width: 0; padding: 0; }
+body.tour-embedded #appShell:empty { display: none; }
 body.tour-embedded .layout { display: block; min-height: 0; }
 body.tour-embedded .tours-heading { padding: var(--space-3) 0; }
 body.tour-embedded .workspace { min-width: 0; }
@@ -370,6 +371,10 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
   #cheat-print .sheet-property ~ .sheet-property { break-before: page; }
 }
 
+#internal-cheat-sheet > label { min-width: 44px; min-height: 44px; align-content: center; }
+
+.skip-link:not(:focus) { clip-path: inset(50%); }
+.skip-link:focus { min-width: 44px; min-height: 44px; align-content: center; }
 .saved-space-searches { margin-bottom: 24px; min-width: 0; }
 .saved-space-searches fieldset { border: 0; padding: 0; margin: 18px 0; min-width: 0; }
 .saved-space-searches legend { font-weight: 700; margin-bottom: 12px; }

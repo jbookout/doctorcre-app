@@ -6,12 +6,12 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { Browser } from "playwright";
 import { chromium } from "playwright";
-import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { requireContainingRelease } from "../scripts/containing-release.ts";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove, signedInReplyEngine } from "../scripts/prove-reply-action-link.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 
 const exec = promisify(execFile);
 const reply: unknown = JSON.parse(
@@ -295,19 +295,16 @@ test("closed CDP page acquisition refuses as insufficient evidence", async () =>
 test("reply CLI fixture pass and near miss fail; real CDP late page leaves existing tabs intact", async (t) => {
   const server = await fixture();
   t.after(() => server.close());
-  const portFixture = await fixture();
-  const endpoint = portFixture.origin;
-  await portFixture.close();
-  const browser = await chromium.launch({
-    headless: true,
-    args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${new URL(endpoint).port}`],
-  });
+  const browserFixture = await ownedCdpFixture();
+  t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
+  const endpoint = browserFixture.endpoint;
   let connection: Browser | undefined;
   try {
     connection = await chromium.connectOverCDP(endpoint);
     const context = connection.contexts()[0];
     assert.ok(context);
-    const existing = await context.newPage();
+    const existing = context.pages()[0] || (await context.newPage());
     const before = context.pages().length;
     const cli = [
       "scripts/prove-reply-action-link.ts",
@@ -390,7 +387,7 @@ test("reply browser launch failure exits without leaking its fixture server", as
         error.code === 1 &&
         "stdout" in error &&
         typeof error.stdout === "string" &&
-        /Executable doesn't exist/.test(error.stdout),
+        /Executable doesn't exist|ENOENT/.test(error.stdout),
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

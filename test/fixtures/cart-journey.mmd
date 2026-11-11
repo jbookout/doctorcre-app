@@ -1,0 +1,44 @@
+stateDiagram-v2
+ state workspace {
+ state journey {
+  state "Saved search" as SavedSearch
+  state "Saved search results" as Results
+  state "Local cart draft" as CartDraft
+  state "Cart save unconfirmed" as CartUnknown
+  state "Cart version changed" as CartConflict
+  state "Cart saved" as CartSaved
+  state "Local route draft" as RouteDraft
+  state "Saved route awaiting review" as RouteReview
+  state "Accepted route" as Accepted
+  [*] --> SavedSearch
+  SavedSearch --> Results: Rerun saved search
+  Results --> CartDraft: Choose canonical properties and hand off
+  CartDraft --> Results: Undo local selection
+  CartDraft --> CartUnknown: Save response is lost
+  CartUnknown --> CartSaved: Retry same request and confirm readback
+  CartDraft --> CartConflict: Saved cart changed
+  CartConflict --> CartSaved: Save against refreshed version
+  CartSaved --> RouteDraft: Add cart properties as stops
+  RouteDraft --> RouteReview: Save draft and read back
+  RouteReview --> Accepted: Review and accept exact digest
+  Accepted --> RouteDraft: Edit accepted route into new version
+  Accepted --> SavedSearch: Reopen saved search
+ }
+ --
+ state frame {
+  state "Editor active" as Active
+  state "Editor retired" as Retired
+  [*] --> Active
+  Active --> Retired: Browser back leaves clean frame
+  Retired --> Active: Reopen Tour
+ }
+ --
+ state acceptance {
+  state "Acceptance not recorded" as NoReceipt
+  state "Acceptance recorded" as Receipt
+  [*] --> NoReceipt
+  NoReceipt --> Receipt: Review and accept exact digest
+  Receipt --> NoReceipt: Edit accepted route into new version
+ }
+ }
+ %% never AcceptanceRequiresReceipt: Accepted route & Acceptance not recorded -- An accepted route requires its explicit acceptance receipt

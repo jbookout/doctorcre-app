@@ -10,6 +10,7 @@ import type { Page } from "playwright";
 import { startFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-quiet-lead-history.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { assertProofDeadlineCleanup } from "./proof-browser-harness.mjs";
 
 const run = promisify(execFile),
@@ -174,14 +175,13 @@ test("changing release and stalled release are insufficient evidence", async (t)
 });
 test("late newPage closes before CDP disconnect and fresh connection sees no added tab", async (t) => {
   const { chromium } = await import("playwright");
-  const { chromium: ownedEngine } = await import("../scripts/proof-browser.mjs");
-  const listener = await startFixture();
-  const endpoint = listener.origin,
-    port = new URL(endpoint).port;
-  await listener.close();
-  const owned = await ownedEngine.launch({ args: [`--remote-debugging-port=${port}`] });
+
+  const ownedFixture = await ownedCdpFixture();
+  t.after(() => ownedFixture.close());
+  const owned = ownedFixture.browser;
+  const endpoint = ownedFixture.endpoint;
   t.after(() => owned.close());
-  const existing = await owned.newPage();
+  const existing = ownedFixture.page;
   let created: Page | undefined;
   const engine = {
     connectOverCDP: async () => {

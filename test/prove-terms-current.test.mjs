@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -87,12 +89,11 @@ test('borrowed browser remains connected and late owned page closes', async () =
 
 for (const broken of [false, true]) test(`CLI fixture exits ${broken ? 1 : 0} and disconnects borrowed browser`, async t => {
   const origin = await fixture(t, { broken });
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port;
-  await portFixture.close();
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   try {
-    const args = ['scripts/prove-terms-current.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', `http://127.0.0.1:${port}`, '--timeout-ms', '5000'];
+    const args = ['scripts/prove-terms-current.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', browserFixture.endpoint, '--timeout-ms', '5000'];
     if (broken) await assert.rejects(exec(process.execPath, args, { timeout: 10000 }), error => error.code === 1 && /assertion_failure/.test(error.stdout));
     else { const output = (await exec(process.execPath, args, { timeout: 10000 })).stdout; console.log('CLI pass: exit=0 ' + output.trim()); assert.match(output, /"status":"passed"/); }
     assert.equal(browser.isConnected(), true);
@@ -111,12 +112,11 @@ test('closed browser and missing signed-in context are insufficient evidence', a
 
 for (const nearMiss of [false, 'baseline', 'selected', 'local-read']) test(`real typed transport CLI compares complete displayed counts, nearMiss=${nearMiss}`, async t => {
   const origin = await fixture(t, { nearMiss: nearMiss === 'local-read' ? false : nearMiss, localRead: nearMiss === 'local-read' });
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port;
-  await portFixture.close();
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   try {
-    const args = ['scripts/prove-terms-current.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', `http://127.0.0.1:${port}`, '--timeout-ms', '3000'];
+    const args = ['scripts/prove-terms-current.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', browserFixture.endpoint, '--timeout-ms', '3000'];
     if (nearMiss) await assert.rejects(exec(process.execPath, args), error => error.code === 1 && /assertion_failure/.test(error.stdout));
     else assert.equal(JSON.parse((await exec(process.execPath, args)).stdout).status, 'passed');
   } finally { await browser.close(); }
@@ -124,11 +124,10 @@ for (const nearMiss of [false, 'baseline', 'selected', 'local-read']) test(`real
 
 test('deadline drains a late real CDP page before disconnect and preserves sentinel tabs', async t => {
   const origin = await fixture(t);
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port;
-  await portFixture.close();
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
-  const endpoint = `http://127.0.0.1:${port}`;
+
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
+  const endpoint = browserFixture.endpoint;
   try {
     const initial = await chromium.connectOverCDP(endpoint);
     const sentinel = await initial.contexts()[0].newPage();
@@ -166,7 +165,6 @@ test('newPage rejection on a containing release is insufficient evidence', async
   assert.equal(disconnected, true);
 });
 
-
 test('proof fixture reproduces the pinned registered producer and base provenance', () => {
   const bytes = readFileSync(new URL('./fixtures/market-terms/recordings.json', import.meta.url));
   assert.equal(createHash('sha256').update(bytes).digest('hex'), record.base_sha256);
@@ -180,10 +178,11 @@ test('proof fixture reproduces the pinned registered producer and base provenanc
 
 for (const mode of ['insufficient', 'wrongSource']) test(`CLI refuses ${mode} through real read and production parser`, async t => {
   const origin = await fixture(t, { [mode]: true });
-  const portFixture = await startFixture(); const port = new URL(portFixture.origin).port; await portFixture.close();
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   try {
-    await assert.rejects(exec(process.execPath, ['scripts/prove-terms-current.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', `http://127.0.0.1:${port}`, '--timeout-ms', '5000']), error => {
+    await assert.rejects(exec(process.execPath, ['scripts/prove-terms-current.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', browserFixture.endpoint, '--timeout-ms', '5000']), error => {
       assert.equal(error.code, mode === 'insufficient' ? 78 : 1);
       console.log(`CLI ${mode}: exit=${error.code} ${error.stdout.trim()}`);
       return true;
