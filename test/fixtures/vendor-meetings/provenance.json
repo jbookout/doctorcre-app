@@ -1,0 +1,11 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "source_commit": "9d8242f399eef0269dc0d74773b40ad98ad45685",
+  "path": "mcp-server/src/vendor-meetings.js",
+  "sha256": "605798630a267eb1f37dd568356c46e5f9e8b9f171956a195345cabc07c8ae0c",
+  "recording": "Actual handler invoked on Studio with synthetic SQL rows and absent calendar snapshot. No database used. Replay pins handler envelope; calendar unavailable captured from real vendorCalendar.",
+  "additional_recordings": {
+    "ready.json": "Actual handler with synthetic matching upcoming calendar event and responses_unverified warning.",
+    "page.json": "Actual handler, q Ada, limit 5, six synthetic SQL candidates, opaque cursor returned unchanged."
+  }
+}

@@ -1,0 +1,28 @@
+stateDiagram-v2
+state Workspace {
+  state Session {
+    [*] --> Active
+    Active --> Retired: session ends
+  }
+  --
+  state Read {
+    [*] --> Loading
+    Loading --> Ready: current response arrives
+    Loading --> Empty: current empty response arrives
+    Loading --> Failed: current read fails
+    Ready --> Loading: next page
+    Ready --> Loading: change tab or search
+    Empty --> Loading: change tab or search
+    Failed --> Loading: retry
+    Failed --> Loading: change tab or search
+    Loading --> Loading: change tab or search
+    Loading --> Loading: obsolete response arrives
+    Loading --> Cleared: session ends
+    Ready --> Cleared: session ends
+    Empty --> Cleared: session ends
+    Failed --> Cleared: session ends
+  }
+}
+%% never NoRetiredData: Retired & Ready -- A retired session cannot show private results.
+%% never NoRetiredEmpty: Retired & Empty -- A retired session cannot show a prior empty answer.
+%% never NoRetiredPending: Retired & Loading -- A retired session cannot continue a read.
