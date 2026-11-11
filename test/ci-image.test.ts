@@ -61,3 +61,21 @@ test("producer Python verification refuses a different minor without repair", as
   assert.throws(() => verifyProducerPython("3.14", "Python 3.12.3"));
   assert.throws(() => verifyProducerPython("3.14", "not python"));
 });
+
+test("package-free preview keeps its hosted Node setup and production selects the tested source", () => {
+  const ci = parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+  const preview = ci.jobs.preview;
+  assert.equal(preview.container, undefined);
+  assert.ok(preview.steps.some((step: { uses?: string }) => step.uses?.startsWith("actions/setup-node@")));
+  assert.ok(!preview.steps.some((step: { run?: string }) => step.run?.includes("verify-ci-image")));
+  const production = parse(readFileSync(".github/workflows/deploy-production.yml", "utf8"));
+  assert.equal(production.jobs["ci-image"].with.revision, "$" + "{{ github.event.workflow_run.head_sha }}");
+  const live = ci.jobs.live.steps;
+  const verification = live.findIndex(
+    (step: { run?: string }) => step.run === "node scripts/verify-ci-image.ts ../carr-producer",
+  );
+  const installation = live.findIndex(
+    (step: { name?: string }) => step.name === "Install the CARR runtime the way its own CI does",
+  );
+  assert.ok(verification >= 0 && verification < installation);
+});
