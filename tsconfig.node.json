@@ -8,6 +8,7 @@
       "DOM.Iterable"
     ],
     "paths": {
+      "/js/ui-deal-space-searches.js": ["./src/ui/deal-space-searches.tsx"],
       "/js/ui-phone-push.js": [
         "./src/ui/phone-push.tsx"
       ],
