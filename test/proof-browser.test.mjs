@@ -139,3 +139,15 @@ for (const mode of ['success', 'rejection', 'abort', 'setup exception']) test(`r
   }
   assertNoOwnedProcesses(root, pids);
 });
+
+test('diagnostic setup failure closes the acquired browser and removes its directory', async t => {
+  let root, closes = 0;
+  const reason = Error('diagnostic collector unavailable');
+  await stubLaunch(t, async options => {
+    root = options.env.TMPDIR;
+    return { close: async () => { closes++; }, _connection: { toImpl() { throw reason; } } };
+  });
+  await assert.rejects(chromium.launch(), error => error === reason);
+  assert.equal(closes, 1);
+  assert.equal(existsSync(root), false);
+});
