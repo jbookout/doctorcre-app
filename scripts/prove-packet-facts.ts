@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { packetFacts } from "../src/ui/packet-facts.ts";
+import { packetFixturePdf } from "./packet-fixture.ts";
 import { comparePacketStops, observePdf } from "./packet-pdf-observation.ts";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
 
@@ -18,7 +19,7 @@ export async function provePacket(options: {
     return { status: "insufficient_evidence", exitCode: 78, error: "Deadline must be 1 to 30000 milliseconds" };
   if (options.fixtureCase) {
     assert.ok(["pass", "near-miss"].includes(options.fixtureCase));
-    const pdf = await observePdf(await readFile(new URL("../test/fixtures/packet-parity/packet.pdf", import.meta.url)));
+    const pdf = await observePdf(await packetFixturePdf());
     const fixture: unknown = JSON.parse(
       await readFile(new URL("../test/fixtures/packet-parity/packet.json", import.meta.url), "utf8"),
     );

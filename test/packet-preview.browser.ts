@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { build } from "esbuild";
+import { packetFixturePdf } from "../scripts/packet-fixture.ts";
 import { chromium } from "./browser-harness.mjs";
 import packet from "./fixtures/packet-parity/packet.json" with { type: "json" };
 
 const html = await readFile(new URL("../tours/packet-preview.html", import.meta.url), "utf8");
 const css = await readFile(new URL("../tours/packet-preview.css", import.meta.url), "utf8");
 const tokens = await readFile(new URL("../css/tokens.css", import.meta.url), "utf8");
-const pdf = await readFile(new URL("./fixtures/packet-parity/packet.pdf", import.meta.url));
+const pdf = Buffer.from(await packetFixturePdf());
 const script = await build({ entryPoints: ["src/ui/packet-preview.ts"], bundle: true, write: false, format: "iife" });
 const worker = await build({ entryPoints: ["src/ui/packet-worker.ts"], bundle: true, write: false, format: "esm" });
 const workerCode = worker.outputFiles[0]?.text || "";

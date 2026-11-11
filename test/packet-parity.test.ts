@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { packetFixturePdf } from "../scripts/packet-fixture.ts";
 import { comparePacketStops, observePdf } from "../scripts/packet-pdf-observation.ts";
 import { packetFacts } from "../src/ui/packet-facts.ts";
 import packet from "./fixtures/packet-parity/packet.json" with { type: "json" };
@@ -13,8 +13,8 @@ const expected = packet.properties.map((p) => ({
   address: `${p.address} - ${p.suite}`,
   facts: packetFacts(p).map(([, value]) => value),
 }));
-test("canonical CARR PDF bytes agree exactly with the current client fact formatter", async () => {
-  const pdf = await observePdf(await readFile(new URL("./fixtures/packet-parity/packet.pdf", import.meta.url)));
+test("recorded CARR PDF text agrees exactly with the current client fact formatter", async () => {
+  const pdf = await observePdf(await packetFixturePdf());
   comparePacketStops(pdf, pdf, expected);
   for (const key of ["property", "label", "name", "address"] as const) {
     const changed = structuredClone(expected);

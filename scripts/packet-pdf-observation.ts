@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export type PacketStop = { property: string; label: string; name: string; address: string; facts: string[] };
 export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
-  const loading = getDocument({ data: new Uint8Array(bytes), useSystemFonts: false });
+  const loading = getDocument({
+    data: new Uint8Array(bytes),
+    useSystemFonts: false,
+    standardFontDataUrl: fileURLToPath(new URL("../node_modules/pdfjs-dist/standard_fonts/", import.meta.url)),
+  });
   try {
     const doc = await loading.promise;
     assert.ok(doc.numPages > 0 && doc.numPages <= 50, "One to fifty packet pages required");

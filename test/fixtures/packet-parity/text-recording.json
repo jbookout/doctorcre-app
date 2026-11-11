@@ -1,0 +1,276 @@
+{
+  "schema": "doctorcre-carr-packet-text-recording.v1",
+  "as_of": "2026-08-27T12:00:00Z",
+  "pages": [
+    [
+      {
+        "text": "CARR",
+        "x": 42,
+        "y": 741,
+        "size": 19,
+        "bold": true
+      },
+      {
+        "text": "A",
+        "x": 563.7495,
+        "y": 746,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "Alpha Health Center",
+        "x": 42,
+        "y": 687,
+        "size": 24,
+        "bold": true
+      },
+      {
+        "text": "100 Alpha Drive, Pensacola, FL - Suite 120",
+        "x": 42,
+        "y": 622,
+        "size": 11.5,
+        "bold": false
+      },
+      {
+        "text": "PROPERTY TYPE",
+        "x": 42,
+        "y": 563,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "Medical office",
+        "x": 210,
+        "y": 563,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "SIZE",
+        "x": 42,
+        "y": 505,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "1600 SF",
+        "x": 210,
+        "y": 505,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "ASKING ECONOMICS",
+        "x": 42,
+        "y": 447,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "USD 24.00 / NNN",
+        "x": 210,
+        "y": 447,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "AVAILABILITY",
+        "x": 42,
+        "y": 389,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "Available",
+        "x": 210,
+        "y": 389,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "PARKING",
+        "x": 42,
+        "y": 331,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "4.5/1,000 SF",
+        "x": 210,
+        "y": 331,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "FACTS-ONLY CLIENT NOTE",
+        "x": 58,
+        "y": 224,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "As of August 27, 2026 at 12:00 UTC",
+        "x": 58,
+        "y": 204,
+        "size": 9.5,
+        "bold": false
+      },
+      {
+        "text": "Packet ref: property:public:AlphaHealthCenter01",
+        "x": 42,
+        "y": 76,
+        "size": 6.5,
+        "bold": false
+      },
+      {
+        "text": "Property marker: property-1-AlphaHealthCenter01",
+        "x": 42,
+        "y": 63,
+        "size": 6.5,
+        "bold": false
+      },
+      {
+        "text": "1 / 2",
+        "x": 555.132,
+        "y": 63,
+        "size": 7,
+        "bold": false
+      }
+    ],
+    [
+      {
+        "text": "CARR",
+        "x": 42,
+        "y": 741,
+        "size": 19,
+        "bold": true
+      },
+      {
+        "text": "B",
+        "x": 564.0735,
+        "y": 746,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "Beta Medical Plaza",
+        "x": 42,
+        "y": 687,
+        "size": 24,
+        "bold": true
+      },
+      {
+        "text": "200 Beta Lane, Pensacola, FL - Suite 220",
+        "x": 42,
+        "y": 622,
+        "size": 11.5,
+        "bold": false
+      },
+      {
+        "text": "PROPERTY TYPE",
+        "x": 42,
+        "y": 563,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "Medical office",
+        "x": 210,
+        "y": 563,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "SIZE",
+        "x": 42,
+        "y": 505,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "2600 SF",
+        "x": 210,
+        "y": 505,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "ASKING ECONOMICS",
+        "x": 42,
+        "y": 447,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "USD 24.00 / NNN",
+        "x": 210,
+        "y": 447,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "AVAILABILITY",
+        "x": 42,
+        "y": 389,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "Available",
+        "x": 210,
+        "y": 389,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "PARKING",
+        "x": 42,
+        "y": 331,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "5 spaces",
+        "x": 210,
+        "y": 331,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "FACTS-ONLY CLIENT NOTE",
+        "x": 58,
+        "y": 224,
+        "size": 8.5,
+        "bold": true
+      },
+      {
+        "text": "As of August 27, 2026 at 12:00 UTC",
+        "x": 58,
+        "y": 204,
+        "size": 9.5,
+        "bold": false
+      },
+      {
+        "text": "Packet ref: property:public:BetaMedicalPlaza0002",
+        "x": 42,
+        "y": 76,
+        "size": 6.5,
+        "bold": false
+      },
+      {
+        "text": "Property marker: property-2-BetaMedicalPlaza0002",
+        "x": 42,
+        "y": 63,
+        "size": 6.5,
+        "bold": false
+      },
+      {
+        "text": "2 / 2",
+        "x": 555.132,
+        "y": 63,
+        "size": 7,
+        "bold": false
+      }
+    ]
+  ]
+}
