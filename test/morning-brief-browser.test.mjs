@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
+import { startWorkerFixture } from '../scripts/fixture-http.mjs';
 const root=new URL('../',import.meta.url);
 const routes=(await import("../js/routes.js")).routeContract;
 async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',dueDate,onBrief,dealTitle='Demo Lease Review',dealAction='Review demo lease comments',loopTask}={}) {
@@ -220,22 +222,37 @@ test('refresh retains Details on stable note identity and uses Back when it leav
  assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');assert.equal(await page.locator('#morningContent details[open]').count(),0);
 });
 
-for (const key of ['d']) test(`Doc Control+${key} switches from the brief to the command bar with one modal`, async t => {
- const { page, goto } = await setup(t);
- await goto(); await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();
- await page.keyboard.press(`Control+${key}`);
+for (const width of [1440, 390]) test(`Home Control+d opens one command modal and keeps the brief inline at ${width}px`, async t => {
+ const server = await startWorkerFixture({
+  assets: await appAssetSnapshot(),
+  qaSeed: JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8')),
+ });
+ t.after(() => server.close());
+ const browser = await chromium.launch(); t.after(() => browser.close());
+ const page = await browser.newPage({ viewport: { width, height: 960 } });
+ await page.request.post(`${server.origin}/api/test/seed`, { data: { namespace: `home-command-${width}`, reset: true } });
+ await page.goto(`${server.origin}/#homeBrief`);
+ await page.getByRole('heading', { name: 'Welcome home.' }).waitFor();
+ const brief = page.locator('#homeBrief #docMorningBrief');
+ await brief.waitFor();
+ const priority = brief.locator('[data-brief-record]').first();
+ await priority.waitFor();
+ const title = await priority.innerText();
+ assert.equal(await page.locator('dialog[open]').count(), 0);
+ await page.locator('#morningRefresh').focus();
+ await page.keyboard.press('Control+d');
  await page.locator('#docDetail[open]').waitFor();
+ await page.waitForFunction(() => document.activeElement?.id === 'docCommandInput');
+ await page.keyboard.press('Control+d');
  assert.equal(await page.locator('dialog[open]').count(), 1);
- // The brief's close event lands a task later; focus must still be on the command bar after it.
- await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));
- assert.equal(await page.locator('#docCommandInput').evaluate(node => document.activeElement === node), true);
+ assert.equal(await brief.isVisible(), true);
  await page.keyboard.press('Escape');
- await page.waitForFunction(() => document.activeElement?.id === 'morningTitle');
+ await page.locator('#docDetail').waitFor({ state: 'hidden' });
+ await page.waitForFunction(() => document.activeElement?.id === 'morningRefresh');
  assert.equal(await page.locator('dialog[open]').count(), 0);
- assert.equal(await page.locator('#morningTitle').evaluate(node => document.activeElement === node), true);
- await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
- assert.equal(await page.locator('dialog[open]').count(), 0);
- assert.equal(await page.locator('#docMorningBrief').evaluate(node => !node.hidden), true);
+ assert.equal(await brief.isVisible(), true);
+ assert.equal(await priority.innerText(), title);
+ assert.equal(new URL(page.url()).pathname, '/');
 });
 
 
