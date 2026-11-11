@@ -1,4 +1,9 @@
 import importlib.util
+import os
+import signal
+import sys
+import tempfile
+import time
 import subprocess
 import unittest
 from pathlib import Path
@@ -75,9 +80,40 @@ class BrowserSetupTest(unittest.TestCase):
         self.assertEqual(child.wait.call_count, 2)
 
     def test_probe_timeout_stops_setup(self):
-        with patch.object(self.module.subprocess, 'run', side_effect=subprocess.TimeoutExpired('probe', 15)):
-            with patch.object(self.module.sys, 'platform', 'linux'):
-                self.assertNotEqual(self.module.setup(['chromium']), 0)
+        with tempfile.TemporaryDirectory(prefix='probe-timeout-') as directory:
+            root = Path(directory)
+            pid_file = root / 'apt.pid'
+            apt = root / 'apt-get'
+            apt.write_text(f'#!{sys.executable}\nimport os, pathlib, time\npathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()))\ntime.sleep(60)\n')
+            apt.chmod(0o755)
+            node = root / 'node'
+            node.write_text(f'#!{sys.executable}\nimport subprocess\nsubprocess.run([{str(apt)!r}])\n')
+            node.chmod(0o755)
+            pid = None
+            try:
+                with patch.dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH']), patch.object(self.module.sys, 'platform', 'linux'):
+                    self.assertEqual(self.module.setup(['chromium']), 1)
+                pid = int(pid_file.read_text())
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    try:
+                        os.kill(pid, 0)
+                    except ProcessLookupError:
+                        break
+                    status = Path(f'/proc/{pid}/stat')
+                    if status.exists() and status.read_text().split()[2] == 'Z':
+                        break
+                    time.sleep(0.02)
+                else:
+                    self.fail(f'apt-get descendant {pid} survived the probe deadline')
+            finally:
+                if pid is None and pid_file.exists():
+                    pid = int(pid_file.read_text())
+                if pid is not None:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
 
 
 if __name__ == '__main__':
