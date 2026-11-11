@@ -1,5 +1,4 @@
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { createPageBudget } from "../../js/read-budget.mjs";
 
 GlobalWorkerOptions.workerSrc = "/js/ui-packet-worker.js";
 export function packetDownloadPath(job: string): string {
@@ -39,10 +38,8 @@ export async function mountPacketPreview(root: HTMLElement, job: string): Promis
     const pdf = await loading.promise;
     if (disposed) return dispose;
     if (pdf.numPages > 50) throw new Error("Packet exceeds the preview page limit.");
-    const takePage = createPageBudget();
-    // eslint-disable-next-line no-restricted-syntax -- Limit the renderer to 50 stored pages and pause hidden or expired reads.
+    // eslint-disable-next-line no-restricted-syntax -- Limit rendering to 50 stored pages without network pagination or retries.
     for (let n = 1; n <= pdf.numPages; n++) {
-      takePage();
       if (disposed) break;
       const page = await pdf.getPage(n);
       if (disposed) break;

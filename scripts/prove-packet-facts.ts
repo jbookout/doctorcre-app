@@ -13,6 +13,9 @@ export async function provePacket(options: {
   fixtureCase?: string | undefined;
   timeoutMs?: number;
 }) {
+  const timeoutMs = options.timeoutMs ?? 30000;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
+    return { status: "insufficient_evidence", exitCode: 78, error: "Deadline must be 1 to 30000 milliseconds" };
   if (options.fixtureCase) {
     assert.ok(["pass", "near-miss"].includes(options.fixtureCase));
     const pdf = await observePdf(await readFile(new URL("../test/fixtures/packet-parity/packet.pdf", import.meta.url)));
@@ -80,6 +83,13 @@ export async function provePacket(options: {
       await page.goto(new URL(href, origin).href);
       const previewBytes = await (await response).body();
       const previewStops = await observePdf(previewBytes);
+      await page.waitForFunction((count) => {
+        const pages = Array.from(document.querySelectorAll("canvas[data-rendered=true]"));
+        return (
+          pages.length === count &&
+          pages.every((canvas) => canvas instanceof HTMLCanvasElement && canvas.width > 0 && canvas.height > 0)
+        );
+      }, previewStops.length);
       const downloading = page.waitForEvent("download");
       await page.getByRole("link", { name: "Download this PDF", exact: true }).click();
       const download = await downloading;

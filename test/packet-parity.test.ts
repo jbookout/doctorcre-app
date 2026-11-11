@@ -43,3 +43,21 @@ for (const [fixture, code] of [
     );
     assert.equal(result.status, code, result.stdout + result.stderr);
   });
+
+for (const deadline of ["0", "30001", "NaN"])
+  test(`the CLI refuses deadline ${deadline} before acquiring evidence`, () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "scripts/prove-packet-facts.ts",
+        "--expected-commit",
+        "1".repeat(40),
+        "--fixture-case",
+        "pass",
+        "--timeout-ms",
+        deadline,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 78, result.stdout + result.stderr);
+  });
