@@ -77,7 +77,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
     try {
       if(cdpUrl){
         const endpoint=new URL(cdpUrl);
-        if(endpoint.protocol!=='http:' || !['localhost','127.0.0.1'].includes(endpoint.hostname) || endpoint.username || endpoint.password)throw unavailable('Loopback CDP endpoint required');
+        if(!['http:','ws:'].includes(endpoint.protocol) || !['localhost','127.0.0.1'].includes(endpoint.hostname) || endpoint.username || endpoint.password)throw unavailable('Loopback CDP endpoint required');
       }
       if(cdpUrl){
         const connection=engine.connectOverCDP(cdpUrl,{timeout:remaining()}).then(async acquired=>{

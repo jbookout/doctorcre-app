@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
@@ -143,10 +145,11 @@ test('CLI acquisition failures refuse evidence and late CDP pages are closed bef
  const server=await startWorkerFixture({env:{APP_ENV:'production',GIT_SHA:commit}});
  t.after(()=>server.close());
  const origin=server.origin;
- const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
- const endpoint=`http://127.0.0.1:${port}`;
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
- const existing=await browser.newPage();
+
+ const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+ const endpoint = browserFixture.endpoint;
+ const browser=browserFixture.browser;t.after(()=>browser.close());
+ const existing=browserFixture.page;
  const scratch=temporaryDirectory('attribution-acquisition-',t);
  const playwrightURL=import.meta.resolve('playwright');
  for(const mode of ['unreachable','connect-rejection','retired-context','missing-context','late-page'])await t.test(mode,async()=>{

@@ -129,9 +129,11 @@
 
 .automation-month-agenda { display: none; }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
-  .calendar-day { min-height: 56px; }
-  .calendar-day .automation-job { display: block; width: 22px; height: 22px; min-height: 0; margin: 5px auto 0; padding: 0; border-radius: 50%; background: var(--surface-3); border-color: var(--hairline-strong); }
-  .calendar-day .automation-job[data-state=failed], .calendar-day .automation-job[data-state=missed] { background: var(--surface-3); border: 2px dashed var(--status-danger); border-radius: 2px; }
+  .calendar-day { min-height: 80px; }
+  .automation-calendar { grid-template-columns: repeat(7, minmax(50px, 1fr)); overflow-x: auto; }
+  .calendar-day .automation-job { display: block; position: relative; width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: 5px auto 0; padding: 0; border: 0; background: transparent; }
+  .calendar-day .automation-job::before { content: ""; position: absolute; width: 22px; height: 22px; inset: 11px; box-sizing: border-box; border: 1px solid var(--hairline-strong); border-radius: 50%; background: var(--surface-3); }
+  .calendar-day .automation-job[data-state=failed]::before, .calendar-day .automation-job[data-state=missed]::before { background: var(--surface-3); border: 2px dashed var(--status-danger); border-radius: 2px; }
   .calendar-day .automation-job span { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
   .calendar-day .automation-job time, .calendar-day .automation-job small { display: none; }
   .automation-month-agenda { display: grid; gap: 12px; margin-top: 18px; }

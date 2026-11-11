@@ -1,6 +1,9 @@
 stateDiagram-v2
   state Delivery {
     [*] --> Choosing
+    Choosing --> Choosing: cancel file chooser
+    Failed --> Failed: cancel file chooser
+    Confirmed --> Confirmed: cancel file chooser
     Choosing --> Pending: choose or drop one file [SignedIn]
     %% when SignedIn
     Pending --> Uploading: confirm exact deal [SignedIn]
@@ -11,7 +14,7 @@ stateDiagram-v2
     %% when SignedIn
     Pending --> Retired: discard
     Unknown --> Retired: abandon confirmed
-    Choosing --> Failed: invalid file
+    Choosing --> Failed: invalid file or multiple files
     Failed --> Pending: choose valid file [SignedIn]
     %% when SignedIn
     Confirmed --> Pending: choose next file [SignedIn]

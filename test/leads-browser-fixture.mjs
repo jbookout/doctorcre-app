@@ -1,10 +1,11 @@
-import {readFile} from 'node:fs/promises';
-import {extname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {appAssetSnapshot} from '../scripts/fixture-app-assets.mjs';
 import {handleDoctorcreRequest} from '../src/worker.js';
 import {workspace,detail,emptyQuietFollowUps} from './leads-workspace-fixture.mjs';
+let assetSnapshot;
 
 export async function routeLeads(page,{getBoard=workspace,getReasons=()=>({ok:true,contract:"practice-origination.v1",cards:[],coverage:[],next_cursor:null,outreach_started:false}),getDetail=(row)=>detail(row),onRead=()=>{},onWrite=()=>{}}={}) {
- const types={'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.html':'text/html','.json':'application/json','.geojson':'application/geo+json'};
+ const snapshot = await (assetSnapshot ||= appAssetSnapshot(undefined, fileURLToPath(new URL('../', import.meta.url))));
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());if(url.origin!=='http://localhost')return route.abort();
   const env={APP_ENV:'staging',CARR:{fetch:async request=>{
@@ -21,8 +22,8 @@ export async function routeLeads(page,{getBoard=workspace,getReasons=()=>({ok:tr
    if(path === '/auth/session' || path.startsWith('/api/'))return Response.json({actor:{slug:'example-partner'},csrf_token:'synthetic-test-token',items:[],counts:{}});
    return new Response('synthetic auth gate');
   }},ASSETS:{fetch:async request=>{
-   const path=new URL(request.url).pathname.slice(1);
-   try{return new Response(await readFile(new URL('../'+path,import.meta.url)),{headers:{'content-type':types[extname(path)]||'application/octet-stream'}})}catch{return new Response('',{status:404})}
+   const asset=snapshot.get(new URL(request.url).pathname);
+   return asset ? new Response(asset.body,{status:asset.status || 200,headers:{...asset.headers,'content-type':asset.contentType || 'application/octet-stream'}}) : new Response(null,{status:404});
   }}};
   const response=await handleDoctorcreRequest(new Request(req.url(),{method:req.method(),...(req.postData()?{body:req.postData()}:{}),headers:req.headers()}),env);
   return route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:Buffer.from(await response.arrayBuffer())});

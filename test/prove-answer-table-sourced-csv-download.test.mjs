@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
@@ -111,18 +113,17 @@ test('natural CLI release ancestry and deadline exit matrix', async t => {
   };
   await prepare();
   t.after(() => server?.close());
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port;
-  await portFixture.close();
-  const context = await chromium.launchPersistentContext(temporaryDirectory('sourced-csv-browser-',t),{headless:true,acceptDownloads:true,args:[...CHROMIUM_SAFETY_ARGS,`--remote-debugging-port=${port}`]});
+
+  const contextFixture = await ownedCdpFixture(); t.after(() => contextFixture.close());
+  const context = contextFixture.context;
   t.after(()=>context.close());
-  page = await context.newPage();
+  page = await contextFixture.context.newPage();
   await page.goto(origin);
   await page.locator('.answer-table tbody tr').first().waitFor();
   const runNatural = async (options = {}) => {
     await prepare();
     return new Promise((resolve,reject) => {
-      const child = spawn(process.execPath,['scripts/prove-answer-table-sourced-csv-download.mjs','--origin',origin,...(options.defaultCommit ? [] : ['--commit',equal]),'--timeout-ms',String(options.timeout || 10000),...(options.noSession ? [] : ['--cdp-url',`http://127.0.0.1:${port}`])],{env:{...process.env,PATH:`${root}/bin:${process.env.PATH}`,PROOF_SLOW_GIT:options.slow ? '1' : '0'}});
+      const child = spawn(process.execPath,['scripts/prove-answer-table-sourced-csv-download.mjs','--origin',origin,...(options.defaultCommit ? [] : ['--commit',equal]),'--timeout-ms',String(options.timeout || 10000),...(options.noSession ? [] : ['--cdp-url',contextFixture.endpoint])],{env:{...process.env,PATH:`${root}/bin:${process.env.PATH}`,PROOF_SLOW_GIT:options.slow ? '1' : '0'}});
       let output = '';
       child.stdout.on('data',data=>output+=data);
       child.on('error',reject);
