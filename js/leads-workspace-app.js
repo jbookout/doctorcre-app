@@ -313,7 +313,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       ++state.detailEpoch; state.trigger = null;
       clearGuidance(); $("leadDetail").close(); $("detailTitle").textContent = ""; $("detailBody").replaceChildren();
       render();
-      state.connectionFeedback = error.code === "invalid_projection" ? "Source refused · invalid reachability response. Previous snapshot is stale." : state.board ? "Connection interrupted · Source stale · reconnecting…" : "Connection interrupted · reconnecting…";
+      state.connectionFeedback = error.code === "invalid_projection" ? `Source refused · invalid reachability response.${state.board ? " Previous snapshot is stale." : ""}` : state.board ? "Connection interrupted · Source stale · reconnecting…" : "Connection interrupted · reconnecting…";
       paintCommandFeedback();
       return false;
     } finally {

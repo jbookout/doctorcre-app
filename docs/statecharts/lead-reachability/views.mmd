@@ -1,6 +1,8 @@
 stateDiagram-v2
   [*] --> Loading
   Loading --> All: board arrives
+  Loading --> Unavailable: first source response is refused
+  Unavailable --> All: retry returns a valid board
   All --> Reachable: choose Reachable
   All --> Research: choose Research
   Reachable --> Research: choose Research

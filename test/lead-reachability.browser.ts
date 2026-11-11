@@ -91,7 +91,16 @@ test("views, keyboard selection, refresh, source change and retirement at both w
       failure = "";
       const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
       try {
+        failure = "invalid";
         await page.goto(`${server.origin}/leads`);
+        await page.locator("#leadBoardError").waitFor();
+        assert.equal(
+          await page.locator("#leadBoardError").textContent(),
+          "Source refused · invalid reachability response. Retry",
+        );
+        assert.equal(await page.locator(".lead-card").count(), 0);
+        failure = "";
+        await page.locator("#refreshBoard").click();
         await page.evaluate((theme) => {
           document.documentElement.dataset.theme = theme;
         }, theme);
