@@ -12,7 +12,16 @@ const recording = JSON.parse(
 const schema = JSON.parse(
   readFileSync(new URL("../contracts/lead-reachability.v2/contract.json", import.meta.url), "utf8"),
 );
-const ajv = new Ajv({ strict: false, formats: { "date-time": true, date: true, uuid: true } });
+const ajv = new Ajv({
+  strict: false,
+  formats: {
+    "date-time": (value) =>
+      /^\d{4}-\d\d-\d\d[tT ]\d\d:\d\d:\d\d(?:\.\d+)?(?:[zZ]|[+-]\d\d:\d\d)$/.test(value) &&
+      Number.isFinite(Date.parse(value)),
+    date: (value) => /^\d{4}-\d\d-\d\d$/.test(value) && Number.isFinite(Date.parse(value)),
+    uuid: /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i,
+  },
+});
 const validate = ajv.compile(schema);
 
 test("producer recordings pass copied contract and production reachability parser", () => {
@@ -67,65 +76,107 @@ test("view and composed filters keep exact map and unlocated membership", () => 
   assert.match(reachabilityText(undefined), /Unknown/);
 });
 
-function contractMutations(value, definition, path = []) {
-  const mutations = [];
-  const add = (name, change) => mutations.push({ name: `${path.join(".") || "projection"} ${name}`, change });
-  const at = (root) => path.reduce((node, key) => node[key], root);
-  const replace = (replacement) => (root) => {
-    const parent = path.slice(0, -1).reduce((node, key) => node[key], root);
-    parent[path.at(-1)] = replacement;
+type Schema = {
+  enum?: unknown[];
+  required?: string[];
+  additionalProperties?: boolean;
+  properties?: Record<string, Schema>;
+  maxItems?: number;
+  uniqueItems?: boolean;
+  items?: Schema;
+};
+type Mutation = { name: string; change: (root: unknown) => unknown };
+function changeAt(root: unknown, path: (string | number)[], change: (value: unknown) => unknown): unknown {
+  const [key, ...rest] = path;
+  if (key === undefined) return change(root);
+  if (Array.isArray(root)) return root.map((value, index) => (index === key ? changeAt(value, rest, change) : value));
+  assert.ok(root && typeof root === "object");
+  return Object.fromEntries(
+    Object.entries(root).map(([field, value]) => [field, field === key ? changeAt(value, rest, change) : value]),
+  );
+}
+function contractMutations(value: unknown, definition: Schema, path: (string | number)[] = []): Mutation[] {
+  const mutations: Mutation[] = [];
+  const add = (name: string, change: (value: unknown) => unknown) => {
+    mutations.push({
+      name: `${path.join(".") || "projection"} ${name}`,
+      change: (root) => changeAt(root, path, change),
+    });
   };
   if (path.length) {
-    for (const replacement of [null, {}, [], true, 17, "invalid"])
-      add(`replace with ${JSON.stringify(replacement)}`, replace(replacement));
+    for (const replacement of [null, {}, [], true, 17, "invalid", ""])
+      add(`replace with ${JSON.stringify(replacement)}`, () => replacement);
   }
   if (definition.enum) {
-    add("unknown enum", replace("future_value"));
-    for (const option of definition.enum) add(`enum ${option}`, replace(option));
+    add("unknown enum", () => "future_value");
+    for (const option of definition.enum) add(`enum ${option}`, () => option);
   }
   if (value && typeof value === "object" && !Array.isArray(value)) {
     for (const key of definition.required || [])
-      add(`missing ${key}`, (root) => { delete at(root)[key]; });
+      add(`missing ${key}`, (value) =>
+        Object.fromEntries(Object.entries(value || {}).filter(([field]) => field !== key)),
+      );
     if (definition.additionalProperties === false)
-      add("extra property", (root) => { at(root).future_field = true; });
+      add("extra property", (value) => ({ ...Object(value), future_field: true }));
     for (const [key, child] of Object.entries(definition.properties || {}))
-      if (Object.hasOwn(value, key)) mutations.push(...contractMutations(value[key], child, [...path, key]));
+      if (Object.hasOwn(value, key))
+        mutations.push(...contractMutations(Reflect.get(value, key), child, [...path, key]));
   }
   if (Array.isArray(value)) {
-    if (definition.maxItems !== undefined)
-      add("array over bound", replace(Array.from({ length: definition.maxItems + 1 }, () => value[0])));
-    if (definition.uniqueItems && value.length)
-      add("duplicate item", replace([...value, value[0]]));
-    value.forEach((item, index) => mutations.push(...contractMutations(item, definition.items, [...path, index])));
+    if (definition.maxItems !== undefined) {
+      const length = definition.maxItems + 1;
+      add("array over bound", () => Array.from({ length }, () => value[0]));
+    }
+    if (definition.uniqueItems && value.length) add("duplicate item", () => [...value, value[0]]);
+    if (definition.items)
+      for (const [index, item] of value.entries())
+        mutations.push(...contractMutations(item, definition.items, [...path, index]));
   }
   return mutations;
 }
 
-test("parser agrees with pinned schema on every recording and nested recording mutation", () => {
+test("parser agrees with pinned schema on every recording and nested recording mutation", (t) => {
+  let checked = 0;
   for (const [name, row] of Object.entries(recording.cases)) {
+    assert.ok(row && typeof row === "object" && "reachability" in row);
     for (const mutation of contractMutations(row.reachability, schema)) {
-      const value = structuredClone(row.reachability);
-      mutation.change(value);
+      const value = mutation.change(structuredClone(row.reachability));
       const accepted = validate(value);
-      let parsed;
-      try { parsed = parseReachability(value); } catch { parsed = null; }
+      let parsed: ReturnType<typeof parseReachability> = null;
+      try {
+        parsed = parseReachability(value);
+      } catch {
+        parsed = null;
+      }
       assert.equal(parsed !== null, accepted, `${name}: ${mutation.name}: ${JSON.stringify(validate.errors)}`);
-      if (accepted) assert.equal(parsed.classification, value.classification);
+      if (accepted) {
+        assert.ok(parsed && value && typeof value === "object" && "classification" in value);
+        assert.equal(parsed.classification, value.classification);
+      }
+      checked++;
     }
   }
+  t.diagnostic(`${checked} recording mutations agree with the pinned schema`);
 });
 
-test("malformed reachable evidence never produces verified Reachable copy", () => {
-  const mutations = [
-    (value) => { value.usable_route.kind = "telepathy"; },
-    (value) => { value.successful_contact = {}; },
-    (value) => { value.evidence = [{}]; },
-    (value) => { delete value.source_inputs; },
-  ];
-  for (const mutate of mutations) {
+for (const [name, mutate] of Object.entries({
+  route: (value: Record<string, unknown>) => {
+    assert.ok(value.usable_route && typeof value.usable_route === "object");
+    Reflect.set(value.usable_route, "kind", "telepathy");
+  },
+  contact: (value: Record<string, unknown>) => {
+    value.successful_contact = {};
+  },
+  evidence: (value: Record<string, unknown>) => {
+    value.evidence = [{}];
+  },
+  inputs: (value: Record<string, unknown>) => {
+    delete value.source_inputs;
+  },
+}))
+  test(`malformed reachable ${name} never produces verified Reachable copy`, () => {
     const value = structuredClone(recording.cases.reachable.reachability);
     mutate(value);
     assert.equal(validate(value), false);
     assert.throws(() => reachabilityText(value), { code: "invalid_projection" });
-  }
-});
+  });

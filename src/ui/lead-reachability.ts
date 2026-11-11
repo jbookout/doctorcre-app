@@ -15,6 +15,84 @@ type Reachability = {
 };
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+type Check = (value: unknown) => boolean;
+const string: Check = (value) => typeof value === "string";
+const boolean: Check = (value) => typeof value === "boolean";
+const uuid: Check = (value) =>
+  typeof value === "string" && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value);
+const date: Check = (value) => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
+const timestamp: Check = (value) => {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4}-\d{2}-\d{2})[tT ](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[zZ]|[+-](\d{2}):(\d{2}))$/.exec(value);
+  return (
+    !!match &&
+    date(match[1]) &&
+    Number(match[2]) < 24 &&
+    Number(match[3]) < 60 &&
+    Number(match[4]) <= 60 &&
+    Number(match[5] || 0) < 24 &&
+    Number(match[6] || 0) < 60
+  );
+};
+const nullable =
+  (check: Check): Check =>
+  (value) =>
+    value === null || check(value);
+const fields = (value: unknown, checks: Record<string, Check>): boolean =>
+  object(value) &&
+  Object.keys(value).length === Object.keys(checks).length &&
+  Object.entries(checks).every(([key, check]) => Object.hasOwn(value, key) && check(value[key]));
+const list =
+  (check: Check): Check =>
+  (value) =>
+    Array.isArray(value) && value.length <= 500 && value.every(check);
+const contact: Check = (value) =>
+  fields(value, {
+    activity_id: uuid,
+    occurred_at: timestamp,
+    source: (value) => string(value) && value !== "",
+    kind: string,
+  });
+const route: Check = (value) =>
+  fields(value, {
+    flag_id: uuid,
+    kind: (value) => value === "email" || value === "cell" || value === "office_phone",
+  });
+const evidence: Check = (value) =>
+  fields(value, {
+    flag_id: uuid,
+    kind: string,
+    found: boolean,
+    expired: boolean,
+    proposes_correction: boolean,
+    source: string,
+    observed_at: timestamp,
+    expires_on: nullable(date),
+    value: () => true,
+  });
+const activity: Check = (value) =>
+  fields(value, {
+    id: uuid,
+    lead_id: uuid,
+    kind: string,
+    connected: nullable(boolean),
+    occurred_at: timestamp,
+    source: string,
+    detail: nullable(string),
+  });
+const sourceInputs: Check = (value) =>
+  fields(value, {
+    party_id: uuid,
+    created_at: timestamp,
+    email: nullable(string),
+    cell: nullable(string),
+    phone: nullable(string),
+    activities: list(activity),
+  });
 function invalid(): never {
   throw Object.assign(new Error("Reachability response refused"), { code: "invalid_projection" });
 }
@@ -22,30 +100,33 @@ export function parseReachability(value: unknown): Reachability | null {
   if (value === undefined) return null;
   if (
     !object(value) ||
-    value.schema_version !== "lead-reachability.v2" ||
-    value.basis !== "successful_contact_and_current_route" ||
-    (value.classification !== "reachable" && value.classification !== "research") ||
-    (value.evidence_state !== "unknown" &&
-      value.evidence_state !== "current" &&
-      value.evidence_state !== "expired" &&
-      value.evidence_state !== "conflicting") ||
-    typeof value.source_revision !== "string" ||
-    !/^sha256:[a-f0-9]{64}$/.test(value.source_revision) ||
-    typeof value.evaluated_at !== "string" ||
-    !Number.isFinite(Date.parse(value.evaluated_at)) ||
-    !Array.isArray(value.missing_reasons) ||
-    (value.contact_eligible !== true && value.contact_eligible !== false && value.contact_eligible !== null) ||
-    !["needs_research", "needs_review", "verified"].includes(String(value.research_state)) ||
-    value.contact_freshness_days !== 90 ||
-    !Array.isArray(value.evidence) ||
-    value.evidence.length > 500
+    !fields(value, {
+      schema_version: (value) => value === "lead-reachability.v2",
+      basis: (value) => value === "successful_contact_and_current_route",
+      classification: (value) => value === "reachable" || value === "research",
+      evidence_state: (value) =>
+        value === "unknown" || value === "current" || value === "expired" || value === "conflicting",
+      source_revision: (value) => typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value),
+      evaluated_at: timestamp,
+      missing_reasons: (value) =>
+        Array.isArray(value) &&
+        new Set(value).size === value.length &&
+        value.every((reason) => typeof reason === "string" && Object.hasOwn(reasons, reason)),
+      contact_eligible: nullable(boolean),
+      research_state: (value) => value === "needs_research" || value === "needs_review" || value === "verified",
+      contact_freshness_days: (value) => value === 90,
+      evidence: list(evidence),
+      successful_contact: nullable(contact),
+      usable_route: nullable(route),
+      source_inputs: nullable(sourceInputs),
+    })
   )
     return invalid();
   const missing: Reason[] = [];
+  if (!Array.isArray(value.missing_reasons)) return invalid();
   for (const reason of value.missing_reasons) {
-    if (typeof reason !== "string" || !Object.hasOwn(reasons, reason)) return invalid();
     const key = Object.keys(reasons).find((key): key is Reason => key === reason);
-    if (!key || missing.includes(key)) return invalid();
+    if (!key) return invalid();
     missing.push(key);
   }
   if (
@@ -55,6 +136,16 @@ export function parseReachability(value: unknown): Reachability | null {
       !object(value.usable_route) ||
       value.evidence_state === "conflicting" ||
       missing.length)
+  )
+    return invalid();
+  if (
+    (value.classification !== "reachable" && value.classification !== "research") ||
+    (value.evidence_state !== "unknown" &&
+      value.evidence_state !== "current" &&
+      value.evidence_state !== "expired" &&
+      value.evidence_state !== "conflicting") ||
+    typeof value.source_revision !== "string" ||
+    typeof value.evaluated_at !== "string"
   )
     return invalid();
   return {

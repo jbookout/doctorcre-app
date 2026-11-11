@@ -18,6 +18,24 @@ test("views, keyboard selection, refresh, source change and retirement at both w
   const ajv = new Ajv({ strict: false, formats: { uuid: true, date: true, "date-time": true } });
   const validate = ajv.compile(schema);
   let current = { ...recording.cases.reachable, city: "Pensacola", state: "FL" };
+  const malformed: Record<string, (value: Record<string, unknown>) => void> = {
+    invalid: (value) => {
+      value.classification = "invalid";
+    },
+    route: (value) => {
+      assert.ok(value.usable_route && typeof value.usable_route === "object");
+      Reflect.set(value.usable_route, "kind", "telepathy");
+    },
+    contact: (value) => {
+      value.successful_contact = {};
+    },
+    evidence: (value) => {
+      value.evidence = [{}];
+    },
+    inputs: (value) => {
+      delete value.source_inputs;
+    },
+  };
   let failure = "";
   const calls: string[] = [];
   const board = () => {
@@ -52,7 +70,7 @@ test("views, keyboard selection, refresh, source change and retirement at both w
           const body = await request.json();
           const name = body.params.name;
           calls.push(name);
-          if (name === "lead-board" && failure && failure !== "invalid")
+          if (name === "lead-board" && failure && !Object.hasOwn(malformed, failure))
             return failure === "denied" ? new Response("", { status: 403 }) : new Response("", { status: 503 });
           const payload =
             name === "lead-board"
@@ -66,11 +84,14 @@ test("views, keyboard selection, refresh, source change and retirement at both w
                     tasks_created: false,
                   }
                 : { error: "unsupported_fixture_read" };
-          if (name === "lead-board" && failure === "invalid" && "leads" in payload) {
-            payload.leads = payload.leads.map((row) => ({
-              ...row,
-              reachability: { ...row.reachability, classification: "invalid" },
-            }));
+          if (name === "lead-board" && Object.hasOwn(malformed, failure) && "leads" in payload) {
+            payload.leads = payload.leads.map((row) => {
+              const changed = structuredClone(row);
+              const mutate = malformed[failure];
+              assert.ok(mutate);
+              mutate(changed.reachability);
+              return changed;
+            });
           }
           return Response.json({
             jsonrpc: "2.0",
@@ -91,14 +112,16 @@ test("views, keyboard selection, refresh, source change and retirement at both w
       failure = "";
       const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
       try {
-        failure = "invalid";
-        await page.goto(`${server.origin}/leads`);
-        await page.locator("#leadBoardError").waitFor();
-        assert.equal(
-          await page.locator("#leadBoardError").textContent(),
-          "Source refused · invalid reachability response. Retry",
-        );
-        assert.equal(await page.locator(".lead-card").count(), 0);
+        for (const mutation of Object.keys(malformed)) {
+          failure = mutation;
+          await page.goto(`${server.origin}/leads`);
+          await page.locator("#leadBoardError").waitFor();
+          assert.equal(
+            await page.locator("#leadBoardError").textContent(),
+            "Source refused · invalid reachability response. Retry",
+          );
+          assert.equal(await page.locator(".lead-card").count(), 0, mutation);
+        }
         failure = "";
         await page.locator("#refreshBoard").click();
         await page.evaluate((theme) => {
