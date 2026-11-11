@@ -54,7 +54,7 @@ test("Absolute inspection rejects existing offender shrink and passes only at 44
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
-  for (const width of [41.9375, 20, 10, 44]) {
+  for (const width of [41.9375, 43, 20, 10, 44]) {
     await page.setContent(`<button id="fixture" style="width:${width}px;height:44px;padding:0;border:0">Open</button>`);
     const result = await inspectPhoneAccessibility(page);
     assert.equal(result.small.length, width < 44 ? 1 : 0);

@@ -103,3 +103,28 @@ test("Scroll-triggered list replacement retains the current logical target", asy
   assert.equal(await page.locator("#replaced").getAttribute("data-replaced"), "true");
   assert.deepEqual(audit.covered, []);
 });
+
+test("Scroll replacement measures the current activation area", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await page.setContent(
+    '<button id="replaced" style="position:absolute;top:2000px;width:60px;height:60px">Open</button>',
+  );
+  await page.evaluate(() => {
+    window.addEventListener(
+      "scroll",
+      () => {
+        const node = document.getElementById("replaced");
+        const replacement = node?.cloneNode(true);
+        if (node && replacement instanceof HTMLElement) {
+          replacement.style.width = "43px";
+          node.replaceWith(replacement);
+        }
+      },
+      { once: true },
+    );
+  });
+  const audit = await inspectPhoneAccessibility(page);
+  assert.equal(audit.small.find((target) => target.id === "replaced")?.width, 43);
+});
