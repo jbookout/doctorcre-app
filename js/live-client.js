@@ -134,10 +134,6 @@ export function createLiveClient(opts = {}) {
       throw unknownMcpOutcome(new Error('Draft save receipt unavailable'));
     if (verb === 'submit-email-draft' && !validEmailDraftReceipt(payload, args))
       throw unknownMcpOutcome(new Error('Reply submission receipt unavailable'));
-    if (verb === 'link-parties') {
-      const { parseLinkReceipt } = await import('./ui-introduction-request.js');
-      parseLinkReceipt(payload);
-    }
     return payload;
   }
 
