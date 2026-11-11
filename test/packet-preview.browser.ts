@@ -105,9 +105,6 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
         await page.getByRole("button", { name: "Fit page", exact: true }).first().click();
         if (process.env.PACKET_PARITY_SHOTS) {
           await mkdir(process.env.PACKET_PARITY_SHOTS, { recursive: true });
-          await page.bringToFront();
-          await page.evaluate(() => scrollTo(0, 0));
-          await page.screenshot({ fullPage: true });
           await page.screenshot({
             path: `${process.env.PACKET_PARITY_SHOTS}/preview-${width}-${theme}.png`,
             fullPage: true,
