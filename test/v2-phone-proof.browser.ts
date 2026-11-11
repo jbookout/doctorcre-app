@@ -3,6 +3,9 @@ import { execFile } from "node:child_process";
 import test from "node:test";
 import { promisify } from "node:util";
 import { inspectPhoneAccessibility } from "../scripts/phone-accessibility.ts";
+import { observeV2Accessibility } from "../scripts/prove-v2-phone-accessibility.ts";
+import { createQaServer } from "../scripts/qa-fixture-server.mjs";
+import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { chromium } from "./browser-harness.mjs";
 
 const execute = promisify(execFile);
@@ -57,4 +60,25 @@ test("Absolute inspection rejects existing offender shrink and passes only at 44
     assert.equal(result.small.length, width < 44 ? 1 : 0);
     assert.deepEqual(result.covered, []);
   }
+});
+
+test("Proof refuses a rendered theme mismatch as an assertion failure", async (t) => {
+  const root = await temporaryDirectory("phone-proof-theme-", t);
+  const server = await (await createQaServer()).start();
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "doctorcre.visual-preferences",
+      JSON.stringify({ theme: "dark", walkthroughSeen: { joe: true, dell: true } }),
+    ),
+  );
+  await page.request.post(`${server.origin}/api/test/seed`, { data: { namespace: "phone-proof-theme", reset: true } });
+  await assert.rejects(observeV2Accessibility(page, server.origin, root), (error: unknown) => {
+    assert.ok(error instanceof assert.AssertionError);
+    assert.match(error.message, /requested theme/);
+    return true;
+  });
 });

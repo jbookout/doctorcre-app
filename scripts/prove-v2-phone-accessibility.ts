@@ -11,10 +11,12 @@ import { walkV2Accessibility } from "./v2-accessibility-walk.ts";
 export async function observeV2Accessibility(page: Page, origin: string, shots: string) {
   await mkdir(shots, { recursive: true });
   const results = [];
+  await page.goto(origin);
   for (const width of [390, 1440])
     for (const theme of ["light", "dark"]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.addInitScript(
+      await page.emulateMedia({ colorScheme: theme === "dark" ? "dark" : "light" });
+      await page.evaluate(
         (theme) =>
           localStorage.setItem(
             "doctorcre.visual-preferences",
@@ -25,9 +27,15 @@ export async function observeV2Accessibility(page: Page, origin: string, shots: 
       let rows: Awaited<ReturnType<typeof walkV2Accessibility>>;
       try {
         rows = await walkV2Accessibility(page, origin, async (name) => {
+          assert.equal(
+            await page.evaluate(() => document.documentElement.dataset.theme),
+            theme,
+            "Proof observes the requested theme",
+          );
           await page.screenshot({ path: `${shots}/${name}-${width}-${theme}.png`, fullPage: true });
         });
       } catch (error) {
+        if (error instanceof assert.AssertionError) throw error;
         throw Object.assign(
           Error(`Populated signed-in surface unavailable: ${error instanceof Error ? error.message : String(error)}`),
           { exitCode: 78 },
