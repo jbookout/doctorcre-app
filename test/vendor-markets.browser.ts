@@ -190,3 +190,60 @@ for (const theme of ["light", "dark"])
       "Regional references must start in the first phone viewport",
     );
   });
+
+async function settle(page: import("playwright").Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 100)));
+      }),
+  );
+}
+
+test("Category settles and reloads at exactly /vendors", async (t) => {
+  const { page, section } = await setup(t);
+  const expected = `${new URL(page.url()).origin}/vendors`;
+  await settle(page);
+  const settledUrl = page.url();
+  await page.reload();
+  await section.getByRole("button", { name: "Category", exact: true }).waitFor();
+  await settle(page);
+  assert.equal(page.url(), expected);
+  assert.equal(settledUrl, expected);
+});
+
+test("Market selection then Category replaces URL state and reloads at exactly /vendors", async (t) => {
+  const { page, section } = await setup(t);
+  const expected = `${new URL(page.url()).origin}/vendors`;
+  const historyLength = await page.evaluate(() => history.length);
+  await section.getByRole("button", { name: "Market", exact: true }).click();
+  const select = section.getByLabel("Reviewed market", { exact: true });
+  await select.waitFor();
+  await select.selectOption("sandestin");
+  await section.locator('[data-market-slug="sandestin"]').waitFor();
+  await settle(page);
+  assert.equal(page.url(), `${expected}?vendorView=market&vendorMarket=sandestin`);
+  await section.getByRole("button", { name: "Category", exact: true }).click();
+  await settle(page);
+  assert.equal(page.url(), expected);
+  assert.equal(await page.evaluate(() => history.length), historyLength);
+  await page.reload();
+  await section.getByRole("button", { name: "Category", exact: true }).waitFor();
+  await settle(page);
+  assert.equal(page.url(), expected);
+  assert.equal(
+    await section.getByRole("button", { name: "Category", exact: true }).getAttribute("aria-pressed"),
+    "true",
+  );
+});
+
+test("canonical Market deep link restores Market and its selection", async (t) => {
+  const { page, section } = await setup(t);
+  const expected = `${new URL(page.url()).origin}/vendors?vendorView=market&vendorMarket=sandestin`;
+  await page.goto(expected);
+  await section.locator('[data-market-slug="sandestin"]').waitFor();
+  await settle(page);
+  assert.equal(await section.getByRole("button", { name: "Market", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.equal(await section.getByLabel("Reviewed market", { exact: true }).inputValue(), "sandestin");
+  assert.equal(page.url(), expected);
+});
