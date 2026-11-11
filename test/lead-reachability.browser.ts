@@ -29,8 +29,20 @@ test("views, keyboard selection, refresh, source change and retirement at both w
       leads: [current],
     });
   };
+  const assets = await appAssetSnapshot();
+  const mapScript = assets.get("/js/leads-territory-map.js");
+  assert.ok(mapScript);
+  assets.set("/js/leads-territory-map.js", {
+    ...mapScript,
+    body: Buffer.from(
+      (await readFile(new URL("../js/leads-territory-map.js", import.meta.url), "utf8")).replace(
+        "const markers = new Map();",
+        'Reflect.set(globalThis,"reachabilityMap",map); const markers = new Map();',
+      ),
+    ),
+  });
   const server = await startWorkerFixture({
-    assets: await appAssetSnapshot(),
+    assets,
     env: {
       APP_ENV: "fixture",
       CARR: {
@@ -101,6 +113,10 @@ test("views, keyboard selection, refresh, source change and retirement at both w
         await page.locator(".lead-location").getByText("Market area only", { exact: true }).waitFor();
         const canvas = await page.locator("#territoryMap canvas").elementHandle();
         assert.ok(canvas);
+        const camera = await page.evaluate(() => {
+          const map = Reflect.get(window, "reachabilityMap");
+          return { center: map.getCenter().toArray(), zoom: map.getZoom() };
+        });
         const membership = async () => {
           const boardIds = await page
             .locator("#leadBoard .lead-card")
@@ -130,10 +146,30 @@ test("views, keyboard selection, refresh, source change and retirement at both w
         assert.match((await page.locator(".lead-reachability").textContent()) || "", /Unknown/);
         await membership();
         assert.equal(await canvas.evaluate((node) => node.isConnected), true);
+        assert.deepEqual(
+          await page.evaluate(() => {
+            const map = Reflect.get(window, "reachabilityMap");
+            return { center: map.getCenter().toArray(), zoom: map.getZoom() };
+          }),
+          camera,
+        );
+        await page.locator("#reachabilityFilter").selectOption("");
+        assert.equal(await page.locator(".lead-card").count(), 1);
+        await page.locator("#reachabilityFilter").selectOption("research");
+        await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
+        assert.equal(await page.locator(".lead-card").count(), 0);
+        assert.equal(await page.locator("#mapLeadMembers [data-lead-id]").count(), 0);
+        await page.locator("#refreshBoard").click();
+        await page.locator(".lead-card").waitFor();
         failure = "stale";
         await page.locator("#refreshBoard").click();
         await page.locator("#leadBoardError").waitFor();
         assert.match((await page.locator("#leadBoardError").textContent()) || "", /Source stale/);
+        assert.equal(await page.locator(".lead-card").count(), 1);
+        failure = "";
+        await page.locator("#refreshBoard").click();
+        await page.locator("#leadBoardError").waitFor({ state: "hidden" });
+        assert.equal(await page.locator("#reachabilityFilter").inputValue(), "research");
         assert.equal(await page.locator(".lead-card").count(), 1);
         failure = "invalid";
         await page.locator("#refreshBoard").click();
