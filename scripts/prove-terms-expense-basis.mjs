@@ -18,7 +18,7 @@ export async function requireContainingRelease(expected, observed, { signal, cwd
 
 export function signedInEngine(endpoint, engine = chromium) {
   const url = new URL(endpoint);
-  assert.ok(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && !url.username && !url.password, 'loopback CDP endpoint required');
+  assert.ok(['http:', 'ws:'].includes(url.protocol) && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && !url.username && !url.password, 'loopback CDP endpoint required');
   return { async launch(options) {
     let connection;
     try { connection = await engine.connectOverCDP(endpoint, { timeout: options.timeout, isLocal: true }); }

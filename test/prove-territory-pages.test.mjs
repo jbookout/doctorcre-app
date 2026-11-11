@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,6 +9,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixture } from '../scripts/fixture-http.mjs';
+import { assertProofDeadlineCleanup } from './proof-browser-harness.mjs';
 import { prove } from '../scripts/prove-territory-pages.mjs';
 import { chromium } from '../scripts/proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -34,15 +37,12 @@ for(const count of [0,20,21])test(`insufficient natural subjects ${count}`,async
 test('near miss visible total fails exactly',async t=>{await assert.rejects(prove(await setup(t,{mismatch:true})),e=>!e.exitCode&&e.code==='ERR_ASSERTION');});
 test('containing release and unreachable CDP exit 78',async t=>{const options=await setup(t);await assert.rejects(prove({...options,fixture:false,cdpUrl:'http://127.0.0.1:1',timeoutMs:2000}),e=>e.exitCode===78);});
 for(const mode of ['stalled evaluation','late launch'])test(`timeout drains ${mode}`,async t=>{
-  const options=await setup(t);let owned;
-  const engine={launch:async args=>{
-    owned=await chromium.launch({ ...args, args: [...CHROMIUM_SAFETY_ARGS, ...(args.args || [])] });
-    if(mode==='late launch')await new Promise(r=>setTimeout(r,1800));
-    else {const create=owned.newPage.bind(owned);owned.newPage=async options=>{const page=await create(options);const go=page.goto.bind(page);page.goto=async(...args)=>{await go(...args);return page.evaluate(()=>new Promise(()=>{}));};return page;};}
-    return owned;
-  }};
-  await assert.rejects(prove({...options,engine,timeoutMs:1400}),e=>e.exitCode===78);
-  assert.equal(owned?.isConnected(),false,'zero connected owned browsers');
+  const options = await setup(t);
+  await assertProofDeadlineCleanup(t, {
+    entry: 'scripts/prove-territory-pages.mjs',
+    args: ['--origin', options.origin, '--expected-commit', sha, '--fixture', '--recording', options.recordingUrl],
+    mode, timeoutMs: 1400, evaluationTarget: 'locatorAll',
+  });
 });
 for(const [mode,count,code]of [['pass',45,0],['insufficient',1,78]])test(`CLI ${mode} exits ${code}`,async t=>{
   const options=await setup(t,{count});
@@ -52,9 +52,9 @@ for(const [mode,count,code]of [['pass',45,0],['insufficient',1,78]])test(`CLI ${
 });
 import { chromium as cdpChromium } from 'playwright';
 test('real CDP late page closes before disconnect and preserves borrowed tabs',async t=>{
-  const reservation=await startFixture();const port=Number(new URL(reservation.origin).port);await reservation.close();
-  const owned=await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});t.after(()=>owned.close());
-  const url=`http://127.0.0.1:${port}`, original=await cdpChromium.connectOverCDP(url);t.after(()=>original.close());
+  const ownedFixture = await ownedCdpFixture(); t.after(() => ownedFixture.close());
+  const owned=ownedFixture.browser;t.after(()=>owned.close());
+  const url=ownedFixture.endpoint, original=await cdpChromium.connectOverCDP(url);t.after(()=>original.close());
   const borrowed=await original.contexts()[0].newPage();await borrowed.goto('about:blank');
   const count=original.contexts()[0].pages().length;
   const engine={connectOverCDP:async(...args)=>{
@@ -76,3 +76,56 @@ chromium.launch=async options=>{const browser=await launch(options),create=brows
 });
 
 test('fixture mode refuses nonloopback origins before any read',async()=>{await assert.rejects(prove({origin:'https://example.invalid',expectedCommit:sha,fixture:true,readRelease:()=>{throw Error('must not read');}}),e=>e.exitCode===78);});
+
+test('controlled cold asset startup reaches evaluation before deadline', async t => {
+  const options = await setup(t);
+  const root = temporaryDirectory('territory-timing-', t), preload = join(root, 'preload.mjs');
+  await writeFile(preload, `import { registerHooks, syncBuiltinESMExports } from 'node:module';
+import http from 'node:http';
+import { chromium } from 'playwright';
+const launch = chromium.launch.bind(chromium);
+chromium.launch = async options => {
+  globalThis.reviewDeadline = Date.now() + 1400;
+  const browser = await launch(options);
+  const create = browser.newPage.bind(browser);
+  browser.newPage = async (...args) => {
+    const page = await create(...args);
+    const go = page.goto.bind(page);
+    page.goto = async (url, options) => {
+      await go(url, { ...options, ...(options?.timeout < 400 ? { timeout: 6 } : {}) });
+      process.stderr.write('TIMING_PROBE_EVALUATION_REACHED\\n');
+      return page.evaluate(() => new Promise(() => {}));
+    };
+    return page;
+  };
+  return browser;
+};
+const server = http.createServer;
+http.createServer = function (...args) {
+  const i = args.findIndex(a => typeof a === 'function');
+  if (i >= 0) {
+    const handler = args[i];
+    args[i] = (req, res) => {
+      if (req.url === '/leads') setTimeout(() => handler(req, res), 100);
+      else handler(req, res);
+    };
+  }
+  return server.apply(this, args);
+};
+syncBuiltinESMExports();
+registerHooks({load(url, context, next) {
+  const result = next(url, context);
+  if (url.endsWith('/scripts/fixture-app-assets.mjs')) {
+    result.source = String(result.source).replace('return await loadFixtureAssets', 'await new Promise(r=>setTimeout(r, Math.max(0, globalThis.reviewDeadline-Date.now()-250))); return await loadFixtureAssets');
+  }
+  return result;
+}});
+`.replace("from 'playwright'", `from ${JSON.stringify(import.meta.resolve('playwright'))}`));
+  let result;
+  try { result = await exec(process.execPath, ['--import', preload, 'scripts/prove-territory-pages.mjs', '--origin', options.origin, '--expected-commit', sha, '--fixture', '--recording', options.recordingUrl, '--timeout-ms', '1400'], { timeout: 35000 }); }
+  catch (error) { result = error; }
+  t.diagnostic(`controlled startup exit ${result.code} ${result.stdout?.trim()}`);
+  assert.equal(result.code, 78, result.stdout + result.stderr);
+  assert.match(result.stderr, /TIMING_PROBE_EVALUATION_REACHED/);
+  assert.equal(JSON.parse(result.stdout).status, 'insufficient_evidence');
+});

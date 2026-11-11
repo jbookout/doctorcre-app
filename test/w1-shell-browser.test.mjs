@@ -167,7 +167,7 @@ for (const width of [320, 390]) test(`phone destinations are named, separate 44p
     const label = node.querySelector('.app-shell-nav-label'), box = node.getBoundingClientRect(), text = label.getBoundingClientRect();
     return { name: node.getAttribute('aria-label'), shown: label.innerText.trim(), labelVisible: text.width > 8 && text.height > 8 && getComputedStyle(label).clipPath === 'none', left: box.left, right: box.right, width: box.width, height: box.height, bottom: box.bottom };
   }));
-  assert.deepEqual(bar.map(item => item.shown), ['Home', 'Leads', 'Tours', 'Deals', 'More']);
+  assert.deepEqual(bar.map(item => item.shown), ['Deals', 'Home', 'Leads', 'Tours', 'More']);
   assert.ok(bar.every(item => item.labelVisible), 'every phone destination shows its name');
   assert.ok(bar.every(item => item.width >= 44 && item.height >= 44), 'each target is at least 44px');
   for (const [i, item] of bar.entries()) if (i) assert.ok(item.left >= bar[i - 1].right, `${item.name} does not overlap ${bar[i - 1].name}`);
@@ -178,7 +178,7 @@ for (const width of [320, 390]) test(`phone destinations are named, separate 44p
   await page.locator('.app-shell-navigation > a').first().focus();
   const order = [await page.evaluate(() => document.activeElement.getAttribute('aria-label'))];
   for (let i = 0; i < 4; i++) { await page.keyboard.press('Tab'); order.push(await page.evaluate(() => document.activeElement.getAttribute('aria-label'))); }
-  assert.deepEqual(order, ['Home', 'Leads', 'Tours', 'Local Deals', 'More'], 'keyboard order follows the visible order');
+  assert.deepEqual(order, ['Local Deals', 'Home', 'Leads', 'Tours', 'More'], 'keyboard order follows the visible order');
 });
 
 // 200% browser zoom on a 1280x960 window is a 640x480 CSS-pixel viewport.

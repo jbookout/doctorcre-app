@@ -629,3 +629,19 @@ test('every production writer obeys successful exact-SHA completion admission', 
   checkProductionWorkflow(Object.fromEntries(readdirSync(directory).filter(name => /\.ya?ml$/.test(name))
     .map(name => [name, readFileSync(new URL(name, directory), 'utf8')])));
 });
+
+
+test('live restores and saves verified zsh archives before installing the producer', () => {
+  const steps = workflowDocument(ci).jobs.live.steps;
+  const cacheIndex = steps.findIndex(step => step.name === 'Restore zsh package archives');
+  const installIndex = steps.findIndex(step => step.env?.ZSH_ARCHIVE_DIR);
+  assert.ok(cacheIndex >= 0 && cacheIndex < installIndex);
+  const cache = steps[cacheIndex];
+  assert.equal(cache.uses, 'actions/cache@5a3ec84eff668545956fd18022155c47e93e2684');
+  assert.equal(cache.with.path, steps[installIndex].env.ZSH_ARCHIVE_DIR + '/*.deb');
+  assert.equal(cache.with.key, "zsh-ubuntu24-${{ runner.arch }}-${{ steps.zsh-image.outputs.version }}-${{ hashFiles('carr-producer/ops/ci-zsh.sh', 'carr-producer/ops/ci_zsh.py') }}");
+  assert.equal(cache.with['restore-keys'], undefined);
+  const imageIndex = steps.findIndex(step => step.id === 'zsh-image');
+  assert.ok(imageIndex >= 0 && imageIndex < cacheIndex);
+  assert.match(steps[imageIndex].run, /version=\$ImageVersion/);
+});
