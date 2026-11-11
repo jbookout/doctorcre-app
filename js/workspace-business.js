@@ -1110,7 +1110,14 @@ function closeRecord() {
   // from, so it always lands on the list and never reopens whichever record
   // happened to be behind this one. Back is the other way out, and it closes
   // the panel by returning to the entry that existed before it opened.
-  navigate(viewHref(view.query), { replace: true });
+  const url = new URL(viewHref(view.query), location.origin);
+  if (view.dataset === 'vendors') {
+    const current = new URL(location.href);
+    for (const key of ['vendorView', 'vendorMarket']) {
+      if (current.searchParams.has(key)) url.searchParams.set(key, current.searchParams.get(key));
+    }
+  }
+  navigate(`${url.pathname}${url.search}`, { replace: true });
 }
 
 // ------------------------------------------------------------------ events

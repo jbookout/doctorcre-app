@@ -5,6 +5,7 @@ type MarketPerson = {
 };
 type MarketVendor = {
   id: string;
+  ref: string;
   name: string | null;
   category: string | null;
   market_slugs: string[];
@@ -101,6 +102,7 @@ export function parseVendorMarkets(value: unknown): VendorMarkets {
     const v = object(value);
     return {
       id: text(v.id),
+      ref: text(v.ref),
       name: nullable(v.name),
       category: nullable(v.category),
       market_slugs: strings(v.market_slugs),

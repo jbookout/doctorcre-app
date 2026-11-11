@@ -43,7 +43,16 @@ async function fixture(t: import("node:test").TestContext, mode = "ready", sourc
             const body = await request.json();
             const payload =
               body.params.name === "read-vendor-markets-v1"
-                ? { ...recordings, selected_market: body.params.arguments.market ?? null }
+                ? mode === "empty"
+                  ? {
+                      ok: true,
+                      schema_version: "vendor-markets.v1",
+                      state: "empty",
+                      selected_market: null,
+                      markets: [],
+                      vendors: [],
+                    }
+                  : { ...recordings, selected_market: body.params.arguments.market ?? null }
                 : {};
             return Response.json({
               jsonrpc: "2.0",
@@ -194,4 +203,14 @@ test("real CDP deadline closes delayed page and preserves the original tab", asy
   t.diagnostic(
     `exit 78; tabs before ${before}; tabs after ${context.pages().length}; delayed tab closed; original tab usable`,
   );
+});
+
+test("empty registry observes its UI but cannot prove positive comparison coverage", async (t) => {
+  const server = await fixture(t, "empty");
+  await assert.rejects(prove({ origin: server.origin, expectedCommit: commit, fixture: true }), (error) => {
+    assert.ok(error instanceof Error && "exitCode" in error);
+    assert.equal(error.exitCode, 78);
+    assert.match(error.message, /empty behavior observed/);
+    return true;
+  });
 });

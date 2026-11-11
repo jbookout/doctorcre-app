@@ -65,6 +65,81 @@ function Members({ market, page, href }: { market: VendorMarket; page: VendorMar
     </section>
   );
 }
+function Comparison({
+  page,
+  href,
+  select,
+}: {
+  page: VendorMarkets;
+  href: Options["href"];
+  select: (slug: string) => void;
+}) {
+  const vendors = new Map(page.vendors.map((vendor) => [vendor.id, vendor]));
+  return (
+    <section aria-label="All-market comparison">
+      <h3>Compare the reviewed network</h3>
+      <p>Distinct vendors in each declared market. The same vendor reference identifies a partner across markets.</p>
+      {(["market", "regional"] as const).map((kind) => (
+        <section key={kind} aria-label={kind === "market" ? "Local markets" : "Regional network"}>
+          <h3>{kind === "market" ? "Local markets" : "Regional network"}</h3>
+          {kind === "regional" && <p>Regional references are separate from local market counts.</p>}
+          <div className="market-comparison-grid">
+            {page.markets
+              .filter((market) => market.kind === kind)
+              .map((market) => (
+                <article className="market-comparison-card" key={market.slug} data-comparison-market={market.slug}>
+                  <h4>
+                    {market.name}
+                    {kind === "regional" ? " · Regional" : ""}
+                  </h4>
+                  <dl className="market-comparison-stats">
+                    <div>
+                      <dt>Distinct {kind === "market" ? "local" : "Regional"} vendors</dt>
+                      <dd data-comparison-count>{market.vendor_count}</dd>
+                    </div>
+                    <div>
+                      <dt>With declared office presence</dt>
+                      <dd data-comparison-offices>
+                        {market.memberships.filter((member) => member.office_presence).length}
+                      </dd>
+                    </div>
+                  </dl>
+                  <button type="button" onClick={() => select(market.slug)}>
+                    Open {market.name}
+                  </button>
+                  <ul className="market-comparison-members">
+                    {market.memberships.map((member) => {
+                      const vendor = vendors.get(member.vendor_id);
+                      if (!vendor) return null;
+                      return (
+                        <li key={vendor.id} data-comparison-vendor={vendor.id}>
+                          <a href={href(vendor.id)}>{vendor.name || "Vendor name not recorded"}</a>
+                          <p data-vendor-ref>{vendor.ref}</p>
+                          <p>Office presence declared: {member.office_presence ? "Yes" : "No"}</p>
+                          <p data-service-coverage>Service coverage: {member.service_coverage || "Not recorded"}</p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {market.memberships.length === 0 && <p>No declared vendors in this market.</p>}
+                  {market.regional_references.length > 0 && (
+                    <div className="market-comparison-references">
+                      <p>Regional references · excluded from local count</p>
+                      {market.regional_references.map((ref) => (
+                        <button key={ref.regional_slug} type="button" onClick={() => select(ref.regional_slug)}>
+                          Open {page.markets.find((m) => m.slug === ref.regional_slug)?.name} · Regional
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              ))}
+          </div>
+        </section>
+      ))}
+    </section>
+  );
+}
 function replaceVendorUrl(view: "category" | "market", market: string | null) {
   const url = new URL(location.href);
   if (view === "market") url.searchParams.set("vendorView", "market");
@@ -118,6 +193,12 @@ function VendorMarketsView({ options }: { options: Options }) {
   }, [view, request, selection, options]);
   const page = read.kind === "ready" ? read.page : null;
   const market = page?.markets.find((m) => m.slug === page.selected_market);
+  const detailHref = (id: string) => {
+    const url = new URL(options.href(id), location.href);
+    url.searchParams.set("vendorView", "market");
+    if (selection) url.searchParams.set("vendorMarket", selection);
+    return `${url.pathname}${url.search}`;
+  };
   return (
     <section className="vendor-markets" aria-label="Vendor directory view">
       <div className="market-toolbar">
@@ -163,7 +244,7 @@ function VendorMarketsView({ options }: { options: Options }) {
                   value={page.selected_market ?? ""}
                   onChange={(e) => setSelection(e.currentTarget.value || null)}
                 >
-                  <option value="">Choose a reviewed market</option>
+                  <option value="">All reviewed markets</option>
                   {page.markets.map((m) => (
                     <option key={m.slug} value={m.slug}>
                       {m.name}
@@ -172,9 +253,13 @@ function VendorMarketsView({ options }: { options: Options }) {
                   ))}
                 </select>
               </label>
+              {!market && <Comparison page={page} href={detailHref} select={setSelection} />}
               {market && (
                 <>
-                  <Members market={market} page={page} href={options.href} />
+                  <button className="market-compare-return" type="button" onClick={() => setSelection(null)}>
+                    Compare all markets
+                  </button>
+                  <Members market={market} page={page} href={detailHref} />
                   {market.kind === "market" && (
                     <section aria-label="Regional coverage references">
                       <h2>Regional coverage references</h2>
@@ -185,7 +270,7 @@ function VendorMarketsView({ options }: { options: Options }) {
                         return regional ? (
                           <div key={regional.slug}>
                             <p>{ref.note}</p>
-                            <Members market={regional} page={page} href={options.href} />
+                            <Members market={regional} page={page} href={detailHref} />
                           </div>
                         ) : null;
                       })}
