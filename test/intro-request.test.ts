@@ -16,6 +16,12 @@ function fixture() {
   const value: ReturnType<typeof relationshipNetworkFixture> = structuredClone(recorded.snapshot);
   value.observed_at = new Date().toISOString();
   value.valid_until = new Date(Date.now() + 120_000).toISOString();
+  const roleIds = [
+    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  ];
+  for (const [index, node] of value.nodes.entries()) node.record_id = roleIds[index] || node.record_id;
   assert.equal(validNetwork(value), true);
   return value;
 }
