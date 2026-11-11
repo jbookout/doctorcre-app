@@ -961,7 +961,6 @@
     "src/ui/answer-block-model.ts": "a6bda87a3d4c548faa8b6a36dbf6ae7e772928ebacb1972e858a9e691d5ca38f",
     "src/ui/answer-blocks.tsx": "ad5a5bd334aefeb047c2d30fcfc7982d140541dc376b39bef356f34dd61e9535",
     "src/ui/answer-table-csv.ts": "031a364824a2cc663a69ce881feeeff859085f52f79dc553872a3069bcbe536e",
-    "src/ui/calendar-panels.tsx": "3894fb935838c3e048893ef0f35c2ecfd69a8347a24bf57e99cebc28dcbad135",
     "src/ui/client-anniversaries.tsx": "7071fa7a1dd598b2d8eef3e4ec6168f4192a2a4f8d5fd8f2f9bab2bf20dee78c",
     "src/ui/contact-reasons.tsx": "a4c4a36d0c1f451540f73240c7d6e2a3fa6da7be2affff06821e9805b96ab6ab",
     "src/ui/deal-checklist.tsx": "6467803ff261501e3d5ae44407261bd82ae7dc63977c8aad39a4efebd8bcd3b7",
