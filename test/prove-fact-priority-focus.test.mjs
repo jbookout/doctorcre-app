@@ -15,7 +15,7 @@ import { prove, requireContainingRelease, signedInEngine } from '../scripts/prov
 async function fixture(t, mode = 'healthy', revision = '1'.repeat(40)) {
   const assets = await proofAssetSnapshot();
   if (mode === 'protected') for (const key of assets.keys()) assets.set(key,{status:403});
-  if (mode === 'broken' || mode === 'stall') assets.set('/js/ui-facts.js',{contentType:'text/javascript',
+  if (mode === 'broken' || mode === 'stall') assets.set('/js/ui-facts.generated.js',{contentType:'text/javascript',
     body:mode === 'broken' ? 'export function mountFactReview(){throw Error("broken module")}' : 'await new Promise(()=>{});'});
   const release = await handleDoctorcreRequest(new Request('https://app.example/app-release'),{APP_ENV:'production',GIT_SHA:revision});
   const server = await startFixture({assets,routes:new Map([['/app-release',{body:await release.text(),contentType:'application/json'}]])});
@@ -150,7 +150,7 @@ test('late CDP page is drained before disconnect and preserves existing tabs', a
 
 test('near-miss matching count fails the exact CLI assertion', async t => {
   const assets = await proofAssetSnapshot();
-  const asset = assets.get('/js/ui-facts.js');
+  const asset = assets.get('/js/ui-facts.generated.js');
   const original = Buffer.from(asset.body).toString();
   assert.ok(original.includes(' matching of '));
   asset.body = original.replace(' matching of ', '1 matching of ');

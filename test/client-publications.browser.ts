@@ -27,7 +27,7 @@ test("Client view renders server-only content at 390 and 1440 in light and dark"
         await page.goto(`${server.origin}/client-view-test.html`);
         await page.evaluate(async (theme) => {
           document.documentElement.dataset.theme = theme;
-          const ui = await import("/js/ui-client-publications.js");
+          const ui = await import("/js/ui-client-publications.generated.js");
           const element = document.querySelector("#view");
           if (!element) throw Error("Missing host");
           const fixture = ui.createPublicationFixture();

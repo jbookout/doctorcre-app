@@ -60,7 +60,7 @@ async function fixture(t: TestContext, mode: string) {
       {
         ...value,
         body:
-          mode === "failure" && path === "/js/ui-lead-research.js"
+          mode === "failure" && path === "/js/ui-lead-research.generated.js"
             ? value.body.toString().replaceAll("data-flag-id", "data-wrong-id")
             : value.body,
       },

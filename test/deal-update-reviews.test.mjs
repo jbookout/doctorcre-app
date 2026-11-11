@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { mountDealUpdateReviews as mount } from '../js/ui-deal-reviews.js';
+import { mountDealUpdateReviews as mount } from '../js/ui-deal-reviews.generated.js';
 import { sourceTime } from '../js/email-source-line.js';
 import { readWithDeadline } from '../js/current-read.mjs';
 import { uuidv4 } from '../js/uuid.js';

@@ -174,7 +174,7 @@ export async function prove({ origin, commit, ref, proposalId, foreignRef, timeo
     stage = "independent resolve";
     const independent: unknown = await page.evaluate(async (ref: string) => {
       const { createMcpRequests } = await import(String("/js/mcp-requests.mjs"));
-      const { parseDraft } = await import(String("/js/ui-action.js"));
+      const { parseDraft } = await import(String("/js/ui-action.generated.js"));
       const response = await createMcpRequests()(
         "resolve-action-link",
         { ref },

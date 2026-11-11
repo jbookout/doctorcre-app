@@ -37,18 +37,18 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
   async function run(mode: string, timeout = 30000, commit = release.source_commit) {
     const selected = new Map(assets);
     if (mode === "near-miss") {
-      const original = selected.get("js/ui-call.js");
+      const original = selected.get("js/ui-call.generated.js");
       assert.ok(original);
       const body = original.toString();
       assert.ok(body.includes("No longer pending"));
       selected.set(
-        "js/ui-call.js",
+        "js/ui-call.generated.js",
         Buffer.from(body.replaceAll("No longer pending", "Still pending. No longer pending is false")),
       );
     }
     if (mode === "assertion")
       selected.set(
-        "js/ui-call.js",
+        "js/ui-call.generated.js",
         Buffer.from("export function mountCallReview() { return { refresh: async () => {}, dispose() {} }; }"),
       );
     const routes = new Map<
@@ -107,7 +107,7 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
     assert.ok(receipt.assertions.includes(resolver + ":exact-original-decision-replay"));
     assert.ok(receipt.assertions.includes(resolver + ":authoritative-resolution"));
   }
-  assert.ok(receipt.assets["/js/ui-call.js"]);
+  assert.ok(receipt.assets["/js/ui-call.generated.js"]);
   const adapter = assets.get("js/live-client.js");
   assert.ok(adapter);
   assert.equal(receipt.assets["/js/live-client.js"], createHash("sha256").update(adapter).digest("hex"));

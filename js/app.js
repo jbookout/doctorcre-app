@@ -1,7 +1,7 @@
-import { isTextEntry } from './ui-keyboard-input.js';
-import { mountDealRoomForm } from './deal-room-forms.generated.js';
-import { mountDealRoomBoard } from './ui-board.js';
-import { mountDealRoomAgenda } from './ui-agenda.js';
+import { isTextEntry } from './ui-keyboard-input.generated.js';
+import { mountDealRoomForm } from './ui-deal-room-forms.generated.js';
+import { mountDealRoomBoard } from './ui-board.generated.js';
+import { mountDealRoomAgenda } from './ui-agenda.generated.js';
 import { renderDealSummary, renderDealItems } from './deal-items.js';
 import { requireReviewReceipt } from './deal-review-model.js';
 import { showToast } from './toast.js';

@@ -19,7 +19,7 @@ test('Documents cap preserves validation, final pages and refresh', async t => {
       await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main></main></body></html>' }));
       await page.goto(`${server.url}/documents-harness`);
       await page.evaluate(async scenario => {
-        const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+        const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
         let offset = 0, calls = 0;
         window.requests = [];
         window.panel = mountDealDocuments(document.querySelector('main'), {

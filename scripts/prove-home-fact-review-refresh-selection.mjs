@@ -146,7 +146,7 @@ export async function prove({ origin, timeoutMs }) {
       try {
         const request = route.request(), url = new URL(request.url());
         if (url.origin !== origin || request.method() !== 'GET') throw Error('Business network refused');
-        if (url.pathname === '/inbox') return await route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Synthetic fact review</title><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script>' });
+        if (url.pathname === '/inbox') return await route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Synthetic fact review</title><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.generated.js"></script>' });
         if (url.pathname === '/__disposed-proof') return await route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Disposed</title>' });
         if (!/^\/js\/[A-Za-z0-9._-]+\.(?:js|mjs)$/.test(url.pathname) || url.search || url.hash) throw Error('Business network refused');
         if (!assets.has(url.href)) {

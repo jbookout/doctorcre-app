@@ -9,10 +9,10 @@ import { handleDoctorcreRequest } from '../src/worker.js';
 const snapshot = await proofAssetSnapshot();
 async function fixture(t, mode) {
   const responses = new Map(snapshot);
-  if (mode === 'budget') for (let n = -1; n < 20; n++) responses.set(n === -1 ? '/js/ui-inbox.js' : `/js/budget-${n}.js`,
+  if (mode === 'budget') for (let n = -1; n < 20; n++) responses.set(n === -1 ? '/js/ui-inbox.generated.js' : `/js/budget-${n}.js`,
     { contentType: 'text/javascript', body: `import './budget-${n + 1}.js';` });
   if (mode === 'unavailable') for (const path of responses.keys()) responses.set(path, { status: 404 });
-  if (mode === 'broken' || mode === 'network') responses.set('/js/ui-inbox.js', { contentType: 'text/javascript',
+  if (mode === 'broken' || mode === 'network') responses.set('/js/ui-inbox.generated.js', { contentType: 'text/javascript',
     body: mode === 'broken' ? 'throw Error("contradictory fixture")' : 'await fetch("/api/business", {method:"POST"})' });
   const identity = async sha => ({ contentType: 'application/json', body: mode === 'identity' ? '{}' : await (await handleDoctorcreRequest(
     new Request('https://app.doctorcre.com/app-release'), { APP_ENV: 'production', GIT_SHA: sha.repeat(40) })).text() });

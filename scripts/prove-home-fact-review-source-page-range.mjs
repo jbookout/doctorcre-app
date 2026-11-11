@@ -105,7 +105,7 @@ export async function prove({ origin, timeoutMs }) {
       };
       receipt.release = await readAppRelease(origin, get);
       const assets = new Map();
-      const pending = ['/js/ui-inbox.js', '/js/boot-mode.js', '/js/private-session.js', '/js/mcp-requests.mjs'].map(p => new URL(p, origin).href);
+      const pending = ['/js/ui-inbox.generated.js', '/js/boot-mode.js', '/js/private-session.js', '/js/mcp-requests.mjs'].map(p => new URL(p, origin).href);
       await init;
       while (pending.length) {
         if (assets.size >= 20) throw unavailable('twenty asset fetch cap exceeded');
@@ -131,7 +131,7 @@ export async function prove({ origin, timeoutMs }) {
       context.setDefaultTimeout(Math.max(1, Math.min(5000, end - Date.now())));
       await context.route('**/*', route => {
         const url = new URL(route.request().url());
-        if (url.origin === origin && url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script></body>' });
+        if (url.origin === origin && url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.generated.js"></script></body>' });
         const body = assets.get(url.href);
         return body ? route.fulfill({ contentType: 'text/javascript', body }) : route.abort();
       });

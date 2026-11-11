@@ -9,7 +9,7 @@ import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { temporaryDirectory } from './temp-directory.mjs';
 
 export async function observe({ origin, recordings, document = globalThis.document }) {
-  const { mountFactReview } = await import('/js/ui-facts.js');
+  const { mountFactReview } = await import('/js/ui-facts.generated.js');
   const { createLiveClient } = await import('/js/live-client.js');
   const { FACT_TERMS } = await import('/js/client.js');
   const assertions = [];

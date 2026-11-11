@@ -15,7 +15,7 @@ async function fixture(t) {
   const secured = await handleDoctorcreRequest(new Request(`${server.origin}/ideas-events`), { ASSETS: { fetch: async () => new Response('') } });
   await componentDocument(page, server.origin, { headers: { 'content-security-policy': secured.headers.get('content-security-policy') }, dispose: page => page.evaluate(() => window.zoomFixture?.shell.unmount()) });
   await page.evaluate(async () => {
-    const { mountZoomableWorkspace } = await import('/js/ui-zoom.js');
+    const { mountZoomableWorkspace } = await import('/js/ui-zoom.generated.js');
     document.body.innerHTML = '<main id="original"><section id="deals"><label>Draft<input id="draft"></label><button id="act">Act</button></section><section id="today">Today content<button id="today-action">Today action</button></section></main><div id="workspace"></div>';
     document.getElementById('workspace').style.height = '600px';
     const tabs = (id, panels) => ({ kind: 'tabs', id, panels, active: panels[0] });

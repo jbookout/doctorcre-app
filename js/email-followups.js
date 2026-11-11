@@ -1,6 +1,6 @@
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { createPageBudget } from './read-budget.mjs';
-import { homeListLimit } from './ui-limit.js';
+import { homeListLimit } from './ui-limit.generated.js';
 import { workCard } from './work-card.js';
 import { validEmailDraftAddresses } from './email-draft.js';
 import { PHASE_BY_SLUG } from './client.js';
@@ -176,7 +176,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     retryCursor = pageCursor;
     loadState = 'loading'; render();
     try {
-      if (!actionModule) actionModule = await import('./ui-email-actions.js');
+      if (!actionModule) actionModule = await import('./ui-email-actions.generated.js');
       if (disposed || ticket !== epoch) return;
       let next = pageCursor ? [...rows] : [], nextRejected = pageCursor ? rejectedRows : false, currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;

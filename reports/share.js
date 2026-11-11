@@ -1,5 +1,5 @@
 import { UnsupportedPublicTourPacketError, parsePublicTourPacket, packetMapPoints, appendPublicTourFacts } from "../src/ui/public-tour-packet.ts";
-import { mountTourClientDownload } from "../js/ui-tour-client-download.js";
+import { mountTourClientDownload } from "../js/ui-tour-client-download.generated.js";
 import { mountNavigation } from "../js/navigation.js";
 
 mountNavigation(document, location.pathname, { report: true });

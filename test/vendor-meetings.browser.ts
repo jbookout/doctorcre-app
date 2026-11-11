@@ -198,7 +198,7 @@ test("query changes retire successful and failed late reads even when the adapte
     await readFile(new URL("./fixtures/vendor-meetings/recordings.json", import.meta.url), "utf8"),
   );
   await page.evaluate(async (recording) => {
-    const path = "/js/ui-vendor-meetings.js";
+    const path = "/js/ui-vendor-meetings.generated.js";
     const { mountVendorMeetings } = await import(path);
     const host = document.createElement("div");
     document.body.replaceChildren(host);

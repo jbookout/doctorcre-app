@@ -37,7 +37,7 @@ export async function prove({ origin, timeoutMs }) {
     if (error.message.startsWith('asset HTTP')) throw protectedAsset('Missing release identity');
     throw error;
   });
-  const assetUrl = new URL('/js/ui-calendar-panels.js', base).href;
+  const assetUrl = new URL('/js/ui-calendar-panels.generated.js', base).href;
   await read(assetUrl);
   const timer = setTimeout(() => { failure = new Error('Entire proof timed out'); void browser?.close(); }, remaining());
   try {

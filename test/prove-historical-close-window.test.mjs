@@ -63,7 +63,7 @@ async function fixture(t, mode='equal') {
   const recorded = JSON.parse(await readFile(new URL('./fixtures/historical-close-window/recordings.json',import.meta.url)));
   if (mode === 'padded-label') recorded.full.profiles[0].evidence[0].deal_name = '  Dental lease 1  ';
   const snapshot = new Map([...(await appAssetSnapshot()), ...[...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}])]);
-  if(mode==='assertion') snapshot.set('/js/ui-ideal-client-profile.js',{body:assets.get('js/ui-ideal-client-profile.js').toString().replaceAll('Full-history wins','Wrong heading'),contentType:'text/javascript'});
+  if(mode==='assertion') snapshot.set('/js/ui-ideal-client-profile.generated.js',{body:assets.get('js/ui-ideal-client-profile.generated.js').toString().replaceAll('Full-history wins','Wrong heading'),contentType:'text/javascript'});
   const mutations = {
     'date-text': ['{entry.closed_on}</time>', '1{entry.closed_on}</time>'],
     'date-value': ['dateTime={entry.closed_on}', 'dateTime={`1${entry.closed_on}`}'],
@@ -74,10 +74,10 @@ async function fixture(t, mode='equal') {
     const [before, after] = mutations[mode];
     assert.ok(source.includes(before));
     const output = await build({ stdin: { contents: source.replace(before, after), loader: 'tsx', resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
-    snapshot.set('/js/ui-ideal-client-profile.js', { body: output.outputFiles[0].contents, contentType: 'text/javascript' });
+    snapshot.set('/js/ui-ideal-client-profile.generated.js', { body: output.outputFiles[0].contents, contentType: 'text/javascript' });
   }
   const routes = new Map([['/',{contentType:'text/html',body:`<!doctype html><title>Natural fixture</title><main></main><script type="module">
-    import { mountIdealClientProfile } from '/js/ui-ideal-client-profile.js';
+    import { mountIdealClientProfile } from '/js/ui-ideal-client-profile.generated.js';
     mountIdealClientProfile(document.querySelector('main'),{ async getIdealClientProfile(){
       const response=await fetch('/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'ideal-client-profile',arguments:{}}})});
       return JSON.parse((await response.json()).result.content[0].text);

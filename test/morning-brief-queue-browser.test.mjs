@@ -89,7 +89,7 @@ test('a failed queue chunk leaves the classic brief readable and retry reloads t
  const page=await browser.newPage();
  t.after(()=>browser.close());
  let blockChunk=true;
- await page.route(url=>url.pathname==='/js/ui-queue.js',route=>blockChunk?route.abort():route.continue());
+ await page.route(url=>url.pathname==='/js/ui-queue.generated.js',route=>blockChunk?route.abort():route.continue());
  await page.route('**/chunk-brief-fixture',route=>route.fulfill({contentType:'text/html',body:'<html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/morning-brief.css"></head><body><button id="docOpen">Doc</button><button id="docMorning">Morning brief</button></body></html>'}));
  await page.goto(`${server.origin}/chunk-brief-fixture`);
  await page.evaluate(async()=>{

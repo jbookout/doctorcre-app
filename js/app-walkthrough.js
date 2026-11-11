@@ -1,4 +1,4 @@
-import { isTextEntry } from './ui-keyboard-input.js';
+import { isTextEntry } from './ui-keyboard-input.generated.js';
 const allSteps = [
   { target: '[data-app-nav-item][href="/"]', text: 'Start with your agenda. Home brings together upcoming work and deals that need attention.' },
   { target: '[data-app-nav-item][href="/deals"]', text: 'Follow each deal through its phase, next step, and next date. Open a deal to review its details.' },

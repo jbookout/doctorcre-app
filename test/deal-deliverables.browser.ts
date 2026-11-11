@@ -31,7 +31,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
   assets.set("/js/deliverable-fixture.js", {
     contentType: "text/javascript",
     body: Buffer.from(
-      `import {mountDealDocuments} from '/js/ui-deal-documents.js';window.deliverablesHandle=mountDealDocuments(document.querySelector('#panel'),{dealId:'${deal}',client:{listDealDocuments:async()=>({ok:true,schema_version:'deal-documents.v1',documents:[],has_more:false,next_cursor:null})}});`,
+      `import {mountDealDocuments} from '/js/ui-deal-documents.generated.js';window.deliverablesHandle=mountDealDocuments(document.querySelector('#panel'),{dealId:'${deal}',client:{listDealDocuments:async()=>({ok:true,schema_version:'deal-documents.v1',documents:[],has_more:false,next_cursor:null})}});`,
     ),
   });
   assets.set("/css/deliverable-fixture.css", {

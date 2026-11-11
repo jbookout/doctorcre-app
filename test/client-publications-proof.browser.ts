@@ -41,7 +41,7 @@ test("proof CLI passes exact projections, fails near misses and refuses missing 
     published: true,
     version: 2,
   };
-  const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><button role="tab">Client view</button><main id="view"></main><script type="module">import {mountClientPublications} from '/js/ui-client-publications.js';mountClientPublications(document.querySelector('#view'),{dealId:'${deal}',request:async(name,args)=>{const response=await fetch('/mcp',{method:'POST',body:JSON.stringify({params:{name,arguments:args}})});const value=await response.json();return JSON.parse(value.result.content[0].text);}});</script>`;
+  const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><button role="tab">Client view</button><main id="view"></main><script type="module">import {mountClientPublications} from '/js/ui-client-publications.generated.js';mountClientPublications(document.querySelector('#view'),{dealId:'${deal}',request:async(name,args)=>{const response=await fetch('/mcp',{method:'POST',body:JSON.stringify({params:{name,arguments:args}})});const value=await response.json();return JSON.parse(value.result.content[0].text);}});</script>`;
   await context.route("**/deals?*", (route) => route.fulfill({ contentType: "text/html", body: html }));
   await context.route("**/mcp", (route) => {
     const name = route.request().postDataJSON().params.name;

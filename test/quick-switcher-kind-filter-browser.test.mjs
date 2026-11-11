@@ -29,7 +29,7 @@ test('partial retry, removal, close, recents and late session disposal', async (
     await page.goto(server.url);
     const fixture = contractFixture();
     await page.evaluate(async fixture => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       window.payload = { ...fixture, network: null };
       window.reads = 0;
       window.openFixture = () => openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Fixture Page', href: '/calendar' }], read: () => { window.reads++; return window.held ? new Promise(resolve => window.resolveRead = resolve) : Promise.resolve(window.payload); } });
@@ -70,7 +70,7 @@ for (const mode of ['empty', 'contacts only', 'reject']) test(`${mode} keeps loc
     if (mode === 'empty') { payload.board.deals = []; payload.network.nodes = []; }
     if (mode === 'contacts only') payload.board = null;
     await page.evaluate(async ({ payload, mode }) => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [], read: () => mode === 'reject' ? Promise.reject(Error('Unavailable')) : Promise.resolve(payload) });
     }, { payload, mode });
     const group = page.getByRole('group', { name: 'Destination kind' });
@@ -96,7 +96,7 @@ for (const theme of ['light', 'dark']) for (const width of [390, 1440]) test(`ta
       await page.goto(server.url);
       await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
       await page.evaluate(async payload => {
-        const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+        const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
         openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [], read: async () => payload });
       }, payload);
       await page.getByRole('group', { name: 'Destination kind' }).getByRole('button', { name: 'Tasks', exact: true }).click();
@@ -150,7 +150,7 @@ for (const theme of ['light', 'dark']) for (const width of [390, 1440]) for (con
     for (const [index, action] of actions.entries()) {
       await page.goto(server.url);
       await page.evaluate(async payload => {
-        const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+        const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
         openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [], read: async () => payload });
       }, payload);
       await page.getByRole('combobox', { name: 'Jump to', exact: true }).fill(action.description);

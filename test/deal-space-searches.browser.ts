@@ -35,7 +35,7 @@ test("saved search panel save, reopen, rerun, rollback, conflict, archive, resto
         await page.evaluate(
           async ({ fixture, theme }) => {
             document.documentElement.dataset.theme = theme;
-            const { mountSavedSearches } = await import("/js/ui-deal-space-searches.js");
+            const { mountSavedSearches } = await import("/js/ui-deal-space-searches.generated.js");
             const element = document.querySelector("#view");
             if (!element) throw Error("No host");
             let current = structuredClone(fixture.saved.search);

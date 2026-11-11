@@ -26,7 +26,7 @@ async function fixture(t: import("node:test").TestContext, mode = "ready", sourc
       {
         ...value,
         body:
-          mode === "near-miss" && path === "/js/ui-vendor-meetings.js"
+          mode === "near-miss" && path === "/js/ui-vendor-meetings.generated.js"
             ? Buffer.from(
                 value.body
                   .toString()

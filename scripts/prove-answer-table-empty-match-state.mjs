@@ -10,7 +10,7 @@ import { readFile } from 'node:fs/promises';
 const recordings = JSON.parse(await readFile(new URL('../test/fixtures/answer-table-empty-match-state/recordings.json', import.meta.url)));
 
 export async function assertAnswerTables(recordings) {
-  const api = await import('/js/ui-answers.js');
+  const api = await import('/js/ui-answers.generated.js');
   const assertions = [];
   const check = (name, ok) => {
     assertions.push({name, passed:Boolean(ok)});
@@ -137,7 +137,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
       };
       receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.href) }));
       const assets = new Map();
-      const pending = [`${origin}/js/ui-answers.js`];
+      const pending = [`${origin}/js/ui-answers.generated.js`];
       await init;
       while (pending.length) {
         const url = pending.shift();

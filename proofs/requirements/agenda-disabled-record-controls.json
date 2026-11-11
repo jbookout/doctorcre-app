@@ -4,7 +4,7 @@
   "targets": ["app"],
   "assertions": [{
     "id": "deployed-agenda-disabled-native-activation",
-    "predicate": "Resolve /release and load deployed /js/ui-agenda.js and its real imported chunks. In an isolated browser with synthetic agenda targets and delegated listener, disabled pending and access states produce zero record actions by pointer, Enter or Space. Re-enabling restores exactly one action per activation and preserves position, confirm chips, visibility and title focus. Run node scripts/prove-agenda-disabled-record-controls.mjs --origin https://app.doctorcre.com --timeout-ms 30000. This is deployed synthetic resilience; natural private-data coverage remains unproven.",
+    "predicate": "Resolve /release and load deployed /js/ui-agenda.generated.js and its real imported chunks. In an isolated browser with synthetic agenda targets and delegated listener, disabled pending and access states produce zero record actions by pointer, Enter or Space. Re-enabling restores exactly one action per activation and preserves position, confirm chips, visibility and title focus. Run node scripts/prove-agenda-disabled-record-controls.mjs --origin https://app.doctorcre.com --timeout-ms 30000. This is deployed synthetic resilience; natural private-data coverage remains unproven.",
     "runner": "app-release-live-walk.v1",
     "expected_result": "Exit 0 with release identity, loaded asset URLs and SHA-256 hashes, assertion count and six activations per record control. Exit 78 for protected assets or missing identity, nonzero for failed assertions. Coordinator runs after merge and deploy; builder makes no production calls.",
     "input_class": "read-only deployed release and JavaScript assets with synthetic browser state",

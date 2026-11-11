@@ -18,7 +18,7 @@ test('loaded search proof executes admitted assets, fails assertions and refuses
   async function snapshot(mode) {
     const responses = new Map(assets);
     responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
-    if (mode !== 'pass') responses.set('/js/ui-deal-documents.js', { contentType: 'text/javascript', body: mode === 'broken'
+    if (mode !== 'pass') responses.set('/js/ui-deal-documents.generated.js', { contentType: 'text/javascript', body: mode === 'broken'
       ? 'export function mountDealDocuments(){throw Error("Synthetic assertion failure")}' : 'await new Promise(()=>{});' });
     const fixture = await startFixture({ routes: responses });
     t.after(() => fixture.close());

@@ -21,8 +21,8 @@ test('lead guidance loads without unrelated page UI and shares the React runtime
     }
     return found;
   }
-  const leads = dependencies('js/ui-lead.js');
-  const forms = dependencies('js/deal-room-forms.generated.js');
+  const leads = dependencies('js/ui-lead.generated.js');
+  const forms = dependencies('js/ui-deal-room-forms.generated.js');
   const source = [...leads].map(path => assets.get(path).toString()).join('\n');
   assert.ok(!source.includes('Research for the new organization or sub-client'));
   assert.ok(!source.includes('Record term'));
@@ -33,11 +33,11 @@ test('lead guidance loads without unrelated page UI and shares the React runtime
 
 test('only emitted UI entries and shared chunks bypass source checks', async () => {
   const assets = await uiAssets(readSource);
-  assert.ok(assets.has('js/ui-facts.js'));
-  assert.ok(assets.has('js/ui-checklist.js'));
-  assert.ok(assets.has('js/ui-activity-attribution.js'));
-  assert.ok(assets.has('js/ui-relationship-kind-filter.js'));
-  assert.ok(assets.has('js/ui-ideal-client-profile.js'));
+  assert.ok(assets.has('js/ui-facts.generated.js'));
+  assert.ok(assets.has('js/ui-checklist.generated.js'));
+  assert.ok(assets.has('js/ui-activity-attribution.generated.js'));
+  assert.ok(assets.has('js/ui-relationship-kind-filter.generated.js'));
+  assert.ok(assets.has('js/ui-ideal-client-profile.generated.js'));
   assert.ok(!assets.has('js/ui-workspace.js'));
   const lint = new ClientLint();
   const paths = [...assets.keys(), 'js/ui-handwritten.js', 'js/other.generated.js', 'js/ui.generated.js', 'js/ui-workspace.js'];
@@ -66,8 +66,8 @@ test('Home critical imports keep preparation rendering behind the lazy boundary'
     }
   }
   await visit('js/app-shell.js');
-  await visit('js/ui-inbox.js');
-  const lifetime = 'js/ui-meeting-preparation-lifetime.js';
+  await visit('js/ui-inbox.generated.js');
+  const lifetime = 'js/ui-meeting-preparation-lifetime.generated.js';
   assert.ok(found.has(lifetime), 'Home and preparation share the emitted lifetime');
   assert.equal(parse((await readSource('src/ui/meeting-preparation-lifetime.ts')).toString())[0].length, 0, 'lifetime source has no runtime imports');
   for (const path of ['js/meeting-preparation.js', 'js/home-dashboard-model.js', 'js/home-call-tasks.js']) {

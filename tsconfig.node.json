@@ -8,9 +8,9 @@
       "DOM.Iterable"
     ],
     "paths": {
-      "/js/ui-client-publications.js": ["./src/ui/client-publications.tsx"],
-      "/js/ui-deal-space-searches.js": ["./src/ui/deal-space-searches.tsx"],
-      "/js/ui-phone-push.js": [
+      "/js/ui-client-publications.generated.js": ["./src/ui/client-publications.tsx"],
+      "/js/ui-deal-space-searches.generated.js": ["./src/ui/deal-space-searches.tsx"],
+      "/js/ui-phone-push.generated.js": [
         "./src/ui/phone-push.tsx"
       ],
       "/js/invoice-tracker-fixture.js": [
@@ -19,13 +19,13 @@
       "/js/invoice-tracker-model.js": [
         "./js/invoice-tracker-model.d.ts"
       ],
-      "/js/ui-quiet-vendors.js": [
+      "/js/ui-quiet-vendors.generated.js": [
         "./src/ui/quiet-vendors.tsx"
       ],
-      "/js/ui-deal-tours.js": [
+      "/js/ui-deal-tours.generated.js": [
         "./src/ui/deal-tours.tsx"
       ],
-      "/js/ui-queue.js": [
+      "/js/ui-queue.generated.js": [
         "./src/ui/brief-queues.tsx"
       ]
     },

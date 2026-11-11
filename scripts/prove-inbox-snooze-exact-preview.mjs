@@ -66,7 +66,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium }) {
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.origin !== origin || route.request().method() !== 'GET') return route.abort();
-      if (url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script>' });
+      if (url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.generated.js"></script>' });
       if (!url.pathname.startsWith('/js/') || !/\.m?js$/.test(url.pathname)) return route.abort();
       try {
         if (!assets.has(url.href)) {

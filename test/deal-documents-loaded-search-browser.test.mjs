@@ -40,7 +40,7 @@ test('loaded search behavior and retirement', async t => {
         await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/pipeline.css"></head><body><main></main></body></html>` }));
         await page.goto(`${server.url}/harness`);
         await page.evaluate(async recordings => {
-          const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+          const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
           window.requests = []; window.pending = [];
           window.panel = mountDealDocuments(document.querySelector('main'), { dealId: recordings.initial.request.deal_id, client: {
             listDealDocuments(args, { signal }) { window.requests.push(args); return new Promise((resolve, reject) => window.pending.push({ resolve, reject, signal })); },
@@ -110,7 +110,7 @@ test('loaded search behavior and retirement', async t => {
         await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/pipeline.css"></head><body><main></main></body></html>` }));
         await page.goto(`${server.url}/harness`);
         await page.evaluate(async recording => {
-          const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+          const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
           window.panel = mountDealDocuments(document.querySelector('main'), { dealId: recording.request.deal_id, client: { async listDealDocuments() { return recording.response; } } });
         }, recordings.empty);
         await page.getByText('No documents filed for this deal.', { exact: true }).waitFor();
@@ -126,7 +126,7 @@ test('loaded search behavior and retirement', async t => {
           await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><main></main></html>` }));
           await page.goto(`${server.url}/harness`);
           await page.evaluate(async recording => {
-            const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+            const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
             window.requests = [];
             window.panel = mountDealDocuments(document.querySelector('main'), {
               dealId: recording.request.deal_id,
@@ -163,7 +163,7 @@ test('loaded search behavior and retirement', async t => {
           await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/pipeline.css"></head><body><main></main></body></html>` }));
           await page.goto(`${server.url}/harness`);
           await page.evaluate(async ({ recordings, phase, retirement }) => {
-            const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+            const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
             const pending = [], requests = [], target = document.querySelector('main');
             const panel = mountDealDocuments(target, { dealId: recordings.initial.request.deal_id, client: { listDealDocuments(args, { signal }) { requests.push(args); return new Promise((resolve, reject) => pending.push({ resolve, reject, signal })); } } });
             const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -207,7 +207,7 @@ test('null type remains distinct through a chain of literal Unrecorded labels', 
   await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><main></main>' }));
   await page.goto(`${server.url}/harness`);
   await page.evaluate(async ({ response, dealId }) => {
-    const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+    const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
     window.panel = mountDealDocuments(document.querySelector('main'), { dealId, client: { async listDealDocuments() { return response; } } });
   }, { response, dealId: recordings.initial.request.deal_id });
   const type = page.getByRole('combobox', { name: 'Document type', exact: true });
