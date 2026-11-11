@@ -1,0 +1,33 @@
+stateDiagram-v2
+  [*] --> Comparing: Open existing stop evidence
+  Comparing --> Reading: Refresh evidence
+  Reading --> Comparing: Matching evidence arrives at strictly newer snapshot time
+  Reading --> Unavailable: Read fails
+  Unavailable --> Reading: Retry read
+  Comparing --> Reviewing: Submit human evidence
+  Reviewing --> Refused: Authority refused
+  Reviewing --> Unknown: Outcome unknown
+  Reviewing --> Reading: Receipt confirmed
+  Unknown --> Reviewing: Retry exact request
+  Refused --> Reviewing: Submit corrected evidence
+  Refused --> Reading: Refresh evidence
+  Comparing --> Comparing: Select property with its freshest retained snapshot
+  Reading --> Comparing: Select property with its freshest retained snapshot
+  Unavailable --> Comparing: Select property with its freshest retained snapshot
+  Refused --> Comparing: Select property with its freshest retained snapshot
+  Reading --> Retired: Session ends
+  Comparing --> Retired: Session ends
+  Reviewing --> Retired: Session ends
+  Unknown --> Retired: Session ends
+  Refused --> Retired: Session ends
+  Unavailable --> Retired: Session ends
+
+%% Each property retains its own producer as-of version for this binding.
+%% Refresh accepts only full-precision UTC instants strictly newer than the retained version.
+%% Selection displays that property's retained version, never its initial version.
+%% Equal, invalid and older responses take the read-failure edge and leave retained snapshots unchanged.
+%% never: Selection restores a snapshot older than the freshest accepted snapshot for that property.
+%% Freshness transition coverage in test/tour-coordinate-review.browser.ts:
+%% Matching strictly newer response, selection after refresh, older response -> Unavailable,
+%% Unavailable selection, and failed-read selection: both "coordinate refresh ... survives property selection and older reads" tests.
+%% Refused selection: "coordinate review selects exact property, compares, refuses authority and retires at four viewports".
