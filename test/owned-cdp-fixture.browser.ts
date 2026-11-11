@@ -170,11 +170,23 @@ test("live fixture acquires without profile file and closes idempotently", async
   const fixture = await ownedCdpFixture({
     launcher: async (options) => {
       const child = launch(options);
-      await child.waitForLineOutput(/^DevTools listening on (.*)$/, 30000);
-      const profile = options.args?.find((arg) => arg.startsWith("--user-data-dir="))?.slice("--user-data-dir=".length);
-      assert.ok(profile);
-      hideProfileMarker(profile);
-      return child;
+      try {
+        await child.waitForLineOutput(/^DevTools listening on (.*)$/, 30000);
+        const profile = options.args
+          ?.find((arg) => arg.startsWith("--user-data-dir="))
+          ?.slice("--user-data-dir=".length);
+        assert.ok(profile);
+        hideProfileMarker(profile);
+        return child;
+      } catch (error) {
+        const exited = new Promise<void>((resolve) => {
+          if (child.nodeProcess.exitCode !== null || child.nodeProcess.signalCode !== null) resolve();
+          else child.nodeProcess.once("close", () => resolve());
+        });
+        child.kill();
+        await exited;
+        throw error;
+      }
     },
   });
   const marker = hideProfileMarker(fixture.profile);

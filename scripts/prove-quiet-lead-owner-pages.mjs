@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { chromium } from './proof-browser.mjs';
 import { chromium as cdpChromium } from 'playwright';
-import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
+import { launchProofBrowser, readAppRelease, startProofFixtureAssets } from './app-release-reader.mjs';
 import { workspace, detail } from '../test/leads-workspace-fixture.mjs';
 
 const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
@@ -15,7 +14,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   if (!expectedCommit) throw unavailable('Expected merge commit required');
   assert.match(expectedCommit || '', /^[a-f0-9]{40}$/);
   assert.ok(!/^0+$/.test(expectedCommit), 'expected merge commit required');
-  const base = new URL(origin);
+  let base = new URL(origin);
   assert.ok(base.href === `${base.origin}/` && !base.username && !base.password && ['https:', 'http:'].includes(base.protocol), 'origin only');
   assert.ok(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 300000, 'bounded deadline');
   const controller = new AbortController(), deadline = Date.now() + timeoutMs;
@@ -25,7 +24,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   const timer = setTimeout(expire, timeoutMs);
   const bounded = promise => Promise.race([promise, expired]);
   const remaining = () => Math.max(1, deadline - Date.now());
-  let browser, page, pendingBrowser;
+  let browser, page, pendingBrowser, fixtureAssets;
   const pendingPages = [];
   const release = async () => fixture && readRelease === readAppRelease ? { source_commit: expectedCommit } : bounded(readRelease(base, { timeoutMs: remaining() }));
   async function contains(source) {
@@ -61,7 +60,8 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
       page = await bounded(acquisition);
     } catch (error) { throw unavailable(`Browser session unavailable: ${error.message}`); }
     if (fixture) {
-      const root = fileURLToPath(new URL('../', import.meta.url));
+      fixtureAssets = await bounded(startProofFixtureAssets(fileURLToPath(new URL('../', import.meta.url)), controller.signal));
+      base = new URL(fixtureAssets.origin);
       await bounded(page.route('**/*', async route => {
         const request = route.request(), url = new URL(request.url());
         if (url.origin !== base.origin) return route.abort();
@@ -75,11 +75,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
         }
         if (request.method() !== 'GET') return route.abort();
         if (url.pathname.startsWith('/api/') || url.pathname === '/auth/session') return route.fulfill({ json: { actor: { slug: 'example-partner' }, csrf_token: 'synthetic-test-token', items: [], counts: {} } });
-        try {
-          const path = resolve(root, '.' + decodeURIComponent(url.pathname === '/leads' ? '/leads.html' : url.pathname));
-          if (!path.startsWith(root.endsWith(sep) ? root : root + sep)) return route.abort();
-          return route.fulfill({ body: await readFile(path), contentType: /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.html') ? 'text/html' : path.endsWith('.css') ? 'text/css' : 'application/json' });
-        } catch { return route.abort(); }
+        return route.continue();
       }));
     }
     const observedVerbs = [];
@@ -176,6 +172,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     await page?.close().catch(() => {});
     await Promise.allSettled(pendingPages.map(pending => pending.then(acquired => acquired.close())));
     await browser?.close().catch(() => {});
+    await fixtureAssets?.close();
     if (!browser && pendingBrowser) void pendingBrowser.then(acquired => acquired.close()).catch(() => {});
   }
 }

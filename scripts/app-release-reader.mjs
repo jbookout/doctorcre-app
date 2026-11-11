@@ -1,4 +1,13 @@
 export const APP_RELEASE_PATH = '/app-release';
+
+export async function startProofFixtureAssets(sourceRoot, signal) {
+  signal.throwIfAborted();
+  const { appAssetSnapshot } = await import('./fixture-app-assets.mjs');
+  const { startWorkerFixture } = await import('./fixture-http.mjs');
+  const assets = await appAssetSnapshot(undefined, sourceRoot);
+  signal.throwIfAborted();
+  return startWorkerFixture({ assets, signal, env: { APP_ENV: 'fixture', CARR: { fetch: async () => new Response(null, { status: 200 }) } } });
+}
 const unavailable = message => Object.assign(new Error(message), { exitCode: 78 });
 
 function parseRelease(response) {
