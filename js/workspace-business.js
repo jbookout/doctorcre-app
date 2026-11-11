@@ -103,6 +103,8 @@ view.evidence = { id: null, sequence: 0, result: null };
 view.sessionGeneration = 0;
 view.panelState = null;
 view.trustOperation = null;
+let vendorMarkets = null;
+let vendorMarketsHost = null;
 let vendorMeetings = null;
 let vendorMeetingsHost = null;
 let quietVendors = null;
@@ -110,6 +112,10 @@ let quietVendorsHost = null;
 let quietVendorsGeneration = 0;
 
 function clearQuietVendors() {
+  vendorMarkets?.dispose();
+  vendorMarkets = null;
+  vendorMarketsHost?.remove();
+  vendorMarketsHost = null;
   vendorMeetings?.dispose();
   vendorMeetings = null;
   vendorMeetingsHost?.remove();
@@ -153,6 +159,19 @@ async function syncQuietVendors() {
         const url = new URL(href, window.location.href);
         navigate(`${url.pathname}${url.search}`);
       },
+    });
+    const { mountVendorMarkets } = await import('./ui-vendor-markets.js');
+    if (generation !== quietVendorsGeneration) return;
+    vendorMarketsHost = document.createElement('div');
+    document.querySelector('.result-heading').append(vendorMarketsHost);
+    vendorMarkets = mountVendorMarkets(vendorMarketsHost, {
+      category: [...document.querySelectorAll('.business-controls, .result-column, .search-dock, .result-heading > h1, .result-heading > p')],
+      load: async (market, signal) => {
+        const result = await requestMeetings('read-vendor-markets-v1', market ? { market } : {}, { signal, timeoutMs: 15000 });
+        if (result.kind !== 'payload' || result.isError) throw new Error('Vendor markets unavailable');
+        return result.payload;
+      },
+      href: id => viewHref(view.query, id),
     });
     quietVendors = mountQuietVendors(host, {
       load: async () => {
@@ -1007,7 +1026,14 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   // form is what stops a bookmarked `?scope=everyone&owner=dell&page=0` from
   // living on in the address bar beside an empty chip bar. It rewrites within
   // the route it was already on and never invents a destination.
-  const wantedHref = viewHref(parsed.query, parsed.recordId);
+  const wantedUrl = new URL(viewHref(parsed.query, parsed.recordId), window.location.origin);
+  if (parsed.dataset === 'vendors') {
+    const current = new URL(window.location.href);
+    for (const key of ['vendorView', 'vendorMarket']) {
+      if (current.searchParams.has(key)) wantedUrl.searchParams.set(key, current.searchParams.get(key));
+    }
+  }
+  const wantedHref = `${wantedUrl.pathname}${wantedUrl.search}`;
   if (wantedHref !== currentHref()) {
     window.history.replaceState({ ...(window.history.state || {}) }, "", wantedHref);
   }
@@ -1084,7 +1110,14 @@ function closeRecord() {
   // from, so it always lands on the list and never reopens whichever record
   // happened to be behind this one. Back is the other way out, and it closes
   // the panel by returning to the entry that existed before it opened.
-  navigate(viewHref(view.query), { replace: true });
+  const url = new URL(viewHref(view.query), location.origin);
+  if (view.dataset === 'vendors') {
+    const current = new URL(location.href);
+    for (const key of ['vendorView', 'vendorMarket']) {
+      if (current.searchParams.has(key)) url.searchParams.set(key, current.searchParams.get(key));
+    }
+  }
+  navigate(`${url.pathname}${url.search}`, { replace: true });
 }
 
 // ------------------------------------------------------------------ events

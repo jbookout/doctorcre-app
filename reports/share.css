@@ -98,3 +98,31 @@ button:focus-visible, .download-link:focus-visible, select:focus-visible, textar
 }
 
 [hidden] { display: none !important; }
+
+.packet-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin: var(--space-5) 0 0; }
+.packet-facts div { min-width: 0; }
+.packet-facts dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.packet-facts dd { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
+.packet-notes, .packet-overview { display: none; }
+@media (max-width: 560px) {
+  .packet-facts { grid-template-columns: 1fr; gap: var(--space-3); }
+}
+@page { size: letter; margin: .6in; }
+@media print {
+  html, body, body.report-shell { background: white !important; color: black !important; margin: 0 !important; padding: 0 !important; }
+  #appShell, nav, .tour-flow, .report-footer, button, .feedback-controls, #feedback-status, #status, .skip-link, #map-note { display: none !important; }
+  body.report-shell .shell, .shell { width: 100% !important; margin: 0 !important; padding: 0 !important; }
+  h1, h2, h3, h4, .report-item p, .packet-facts dt, .packet-facts dd, .summary { color: black !important; }
+  .packet-overview { display: block; }
+  button.maplibregl-marker { display: grid !important; color: black; background: white; border: 1px solid black; }
+  .maplibregl-control-container { display: none; }
+  .masthead { border-bottom: 1px solid Gray; }
+  #map-section { padding: 0; border: 0; background: white; break-inside: avoid; }
+  #tour-map { height: 3in; border: 1px solid Gray; }
+  .report-list { display: block; }
+  .report-item { break-before: page; break-inside: avoid; border: 0; border-radius: 0; background: white; padding: 0; }
+  .packet-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .packet-notes { display: block; margin-top: .4in; height: 3in; }
+  .packet-notes div { height: .4in; border-bottom: 1px solid Silver; }
+  .packet-notes h4 { background: white; margin: 0; padding: 0 0 12px; }
+}

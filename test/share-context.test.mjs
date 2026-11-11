@@ -1,3 +1,4 @@
+import { presentedPacket } from "./packet-presentation.fixture.ts";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -23,7 +24,8 @@ async function open(t,{token='',state=null,flip=false,sameProjection=false,missi
    const target=cookie;reads++;
    if(path === missingScope) return {ok:false,status:404,json:async()=>({error:'not_found'})};
    if(flip && path==='/api/share/map')cookie='B';
-   const data=path==='/api/share/report'?{stops:[{property_ref:`property:public:synthetic_property_${target}`,name:`Private projection ${target}`}]}:path==='/api/share/map'?{points:[]}:{projection_ref:`projection:public:synthetic_projection_${sameProjection?'common':target}`,permission_scopes:[],items:[]};
+   if(path==='/api/share/map' && missingScope !== '/api/share/report') return {ok:false,status:404,json:async()=>({error:'not_found'})};
+   const data=path==='/api/share/report'?presentedPacket([{property_ref:`property:public:synthetic_property_${target}`,name:`Private projection ${target}`,address:"100 Example Street",route_sequence:1,route_label:"A"}]):path==='/api/share/map'?{points:[]}:{projection_ref:`projection:public:synthetic_projection_${sameProjection?'common':target}`,permission_scopes:[],items:[]};
    return {ok:true,json:async()=>({data})};
  };
  win.eval(bundle.outputFiles[0].text);

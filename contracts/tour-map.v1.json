@@ -19,10 +19,21 @@
     "equal_appointment_instants": "Producer-legal equal ISO UTC instants retain their exact start/end strings and fixed state. All other appointment validation remains in the unchanged pinned canonical module.",
     "optional_geometry": "Unusable optional stop coordinates become unknown non-navigable locations; route identity and order still require canonical validation."
   },
-  "navigation_requirements": "Approved access coordinate, exact-route complete promotion receipt and authenticated user_ref. No receipt is synthesized. Receipt retrieval seam remains upstream-owed in PR 1443.",
+  "navigation_requirements": "Approved entrance evidence from the pinned authenticated Tour detail contract, exact-route complete promotion receipt, current rendered component version and authenticated user_ref. Navigation is hidden on missing, mismatched or expired evidence.",
   "maplibre": {
     "version": "6.4.1",
     "source": "existing reports/vendor/maplibre-gl-6.4.1 vendored distribution",
     "style": "ordered-stop fallback until a basemap style is configured; no paid key or external tiles"
+  },
+  "navigation_evidence": {
+    "schema": "tour-navigation-evidence.v1",
+    "producer_repository": "DoctorCRE/carr-system",
+    "producer_commit": "838237d3cef0c4e783ccc26aff180759890b3818",
+    "producer_contract": "mcp-server/src/tour-navigation-contract.ts",
+    "producer_fixture": "mcp-server/test/fixtures/tour-navigation-evidence.ts",
+    "consumer": "src/ui/tour-navigation.ts",
+    "component_registry_version": "maplibre-6.4.1",
+    "max_age_ms": 300000,
+    "return_binding": "user, session, tour, route UUID and version, projection version/digest, promotion receipt UUID/digest"
   }
 }

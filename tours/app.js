@@ -1,4 +1,7 @@
+import { navigationFromEvidence } from "../js/ui-tour-navigation.js";
 import { mountStopDrag, reorderFlexibleStops } from "/js/ui-tour-stop-drag.js";
+import { mountSavedSearches } from "/js/ui-deal-space-searches.js";
+import { createMcpRequests } from "../js/mcp-requests.mjs";
 import { prepareClientGrant, grantReceipt, renderClientGrants } from '../js/ui-tour-client-grants.js';
 import { generatedSheet, sheetHistory, appendSheetSections } from "../js/ui-broker-cheat-sheet.js";
 import { createPageBudget } from '../js/read-budget.mjs';
@@ -16,6 +19,37 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   const state = { csrf: "", sessionGeneration: 0, sessionInvalidated: false, tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "", cheatDraftRevision: null,
     searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
   let sheetGenerated = "", sheetRegenerating = false;
+  let savedSearchPanel = null;
+  const savedSearchRequest = createMcpRequests();
+  async function callSavedSearch(verb, args) {
+    if (state.sessionInvalidated || !state.csrf) throw new Error("session_changed");
+    const generation = state.sessionGeneration;
+    const result = await savedSearchRequest(verb, args, { timeoutMs: 15000, headers: { "x-carr-csrf": state.csrf } });
+    if (generation !== state.sessionGeneration || state.sessionInvalidated) throw new Error("session_changed");
+    if (result.kind === "authorization") { invalidateTourSession(); throw new Error("session_changed"); }
+    if (result.kind !== "payload") throw new Error("unconfirmed");
+    if (result.isError || result.payload?.error) throw new Error(result.payload?.error || "unconfirmed");
+    return result.payload;
+  }
+  function openSavedSearches() {
+    if (!dealContext || state.sessionInvalidated) return;
+    if (savedSearchPanel) { savedSearchPanel.refresh(); return; }
+    const host = $("#saved-space-searches"); host.hidden = false;
+    savedSearchPanel = mountSavedSearches(host, {
+      dealId: dealContext, call: callSavedSearch,
+      describe: propertyId => { const item = knownProperty(propertyId); return item ? `${text(item.name, item.address)} · ${text(item.address, "Address unknown")}` : null; },
+      hydrate: ids => hydrateSelectedProperties(state.tour?.id, ids),
+      handoff: ids => {
+        if (!state.tour || state.tour.deal_id !== dealContext || state.selectionSave || state.sessionInvalidated) return false;
+        const merged = [...new Set([...state.selectedIds, ...ids])];
+        if (merged.length > 100) { $("#selection-state").textContent = "The Tour cart holds up to 100 properties. Remove some choices first."; return false; }
+        state.undoSelectionIds = [...state.selectedIds]; state.selectedIds = merged;
+        state.selectionDirty = true; state.pendingSelection = null; renderSearchResults();
+        $("#selection-state").textContent = "Saved search choices added to the cart draft. Save selection to keep them.";
+        return true;
+      },
+    });
+  }
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
   const text = (value, fallback = "") => typeof value === "string" && value ? value : fallback;
@@ -72,6 +106,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       if (state.sessionInvalidated || generation !== state.sessionGeneration) throw new Error("session_changed");
       if (sessionBinding && sessionBinding !== binding) { invalidateTourSession(); throw new Error("session_changed"); }
       state.csrf = payload.csrf_token; sessionBinding = binding;
+      if (payload.actor?.slug) state.userRef = payload.actor.slug;
     }
     return payload?.data || {};
   }
@@ -223,6 +258,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   function invalidateTourSession() {
     if (state.sessionInvalidated) return;
     state.sessionInvalidated = true; state.sessionGeneration++; sessionBinding = ""; state.csrf = "";
+    savedSearchPanel?.retire();
     notify({ type: 'deal-tour-invalidated' });
     ++tourLoadSeq; ++state.feedbackSeq; ++state.hydrationSeq; ++state.searchSeq;
     cancelSheetAutosave(); sheetComposing = false; createPending = null; createPhase = "ready"; restoredTourId = "";
@@ -463,9 +499,9 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       return false;
     }
   }
-  async function hydrateSelectedProperties(tourId) {
+  async function hydrateSelectedProperties(tourId, propertyIds = state.selectedIds) {
     const seq = ++state.hydrationSeq;
-    const missing = new Set(state.selectedIds.filter(propertyId => !knownProperty(propertyId)));
+    const missing = new Set(propertyIds.filter(propertyId => !knownProperty(propertyId)));
     if (!missing.size) return;
     let cursor = null;
     const takePage = createPageBudget();
@@ -536,12 +572,10 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   let composer = null, itineraryView = null, stopDrag = null;
   function renderAcceptedItinerary() {
     const root = $("#accepted-itinerary");
-    const route = acceptedRouteFromDetail(state.tour);
-    const options = { route, scope: sessionBinding };
+    const route = acceptedRouteFromDetail(state.tour, navigationFromEvidence);
+    const options = { route, scope: sessionBinding, user_ref: state.userRef, promotion_receipt: route?.navigation?.promotion_receipt ?? null };
     $("#tour-day-link").hidden = !route;
     $("#tour-day-link").href = `/tours/day.html?tour=${encodeURIComponent(state.tour.id)}`;
-    // PR 1443 deliberately does not authenticate or retrieve promotion receipts.
-    // This surface withholds navigation until that upstream seam supplies one.
     if (!route) { itineraryView?.destroy(); itineraryView = null; root.hidden = true; return; }
     try {
       if (itineraryView) itineraryView.update(options);
@@ -899,6 +933,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     renderAcceptedItinerary();
   }
   async function loadLibrary() {
+    try { await request('/api/system-work/session'); } catch { state.userRef = null; }
     if (state.sessionInvalidated) return;
     status("Loading tours…");
     let data;
@@ -935,6 +970,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       }
     }
     renderCreate();
+    openSavedSearches();
   }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
@@ -1358,7 +1394,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     latest => latest.pdf_render_job_id === job && latest.pdf_qc_run_digest === qc);
   }));
   window.addEventListener('beforeunload', event => {
-    if (state.selectionDirty || state.cheatDirty || sheetBusy || sheetPending || sheetConflict || tourAction ||
+    if (savedSearchPanel?.dirty() || state.selectionDirty || state.cheatDirty || sheetBusy || sheetPending || sheetConflict || tourAction ||
         composer?.dirty || composer?.plan || composer?.busy || createBusy || createPending || state.shareBusy ||
         (embedded && !state.tour && [...$('#create-tour-form').querySelectorAll('input')].some(input => input.value && !['create-subject-id', 'create-subject-type'].includes(input.id)))) {
       event.preventDefault(); event.returnValue = '';

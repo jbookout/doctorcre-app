@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { startFixture } from "../scripts/fixture-http.mjs";
-import { parseEvidence, prove } from "../scripts/prove-client-links.ts";
+import { packetSummary, parseEvidence, prove } from "../scripts/prove-client-links.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 
 test("client proof gates equal descendant older unrelated and unknown releases before browser work", async (t) => {
@@ -40,7 +41,7 @@ test("client proof gates equal descendant older unrelated and unknown releases b
           error.message,
           [commit, descendant].includes(observed)
             ? "Client link evidence required"
-            : "Containing release evidence unavailable",
+            : `${observed === older ? "older" : observed === unrelated ? "unrelated" : "unknown"} release evidence unavailable`,
         );
         return true;
       });
@@ -67,4 +68,21 @@ test("client proof accepts both displayed link formats and rejects duplicate tok
   });
   for (const hash of ["#token=short", "#token=" + "a".repeat(43) + "&extra=x", "#" + "a".repeat(44)])
     assert.throws(() => parseEvidence({ ...value, active: origin + "/share" + hash }, origin), { exitCode: 78 });
+});
+
+const recorded = JSON.parse(readFileSync(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"));
+const legacy = JSON.parse(
+  readFileSync(new URL("./fixtures/client-links/legacy-producer.json", import.meta.url), "utf8"),
+);
+
+test("client proof refuses recorded production 1.x through the production parser", () => {
+  assert.throws(() => packetSummary(legacy.responses.packet, 1), { name: "UnsupportedPublicTourPacketError" });
+});
+
+test("client proof derives the summary from the recorded 2.0.0 packet", () => {
+  assert.equal(packetSummary(recorded.responses.packet, 1), "1 property in tour order.");
+});
+
+test("client proof checks packet membership count against independent rows", () => {
+  assert.throws(() => packetSummary(recorded.responses.packet, 2), assert.AssertionError);
 });

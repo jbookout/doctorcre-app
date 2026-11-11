@@ -5,6 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import test, { after } from "node:test";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { PDFDocument } from "pdf-lib";
 import { chromium } from "playwright";
 import { buildArtifact } from "../scripts/artifact.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
@@ -13,10 +14,20 @@ import { parseEvidence, prove } from "../scripts/prove-client-links.ts";
 
 const commit = "1".repeat(40);
 const recorded = JSON.parse(await readFile(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"));
-const pdf = Buffer.from("%PDF-1.4 synthetic reviewed packet");
+const legacy = JSON.parse(
+  await readFile(new URL("./fixtures/client-links/legacy-producer.json", import.meta.url), "utf8"),
+);
+async function storedPdf(template = "2.0.0", renderer = "2.0.0") {
+  const document = await PDFDocument.create();
+  document.setSubject(`Tour template ${template}`);
+  document.setProducer(`CARR deterministic PDF renderer ${renderer}`);
+  document.addPage();
+  return Buffer.from(await document.save());
+}
+const pdf = await storedPdf();
 const row = {
   propertyRef: "property:public:synthetic_property_01",
-  label: "A",
+  label: "Stop A",
   name: "Synthetic clinic",
   detail: "6 Medical Drive",
 };
@@ -25,7 +36,15 @@ const outDir = temporaryDirectory("client-links-proof-");
 after(() => rm(outDir, { recursive: true, force: true }));
 await buildArtifact({ root: new URL("../", import.meta.url).pathname, outDir, commit });
 
-async function fixture(t: test.TestContext, nearMiss = false) {
+async function fixture(
+  t: test.TestContext,
+  nearMiss = false,
+  badSummary = false,
+  interrupted = false,
+  legacyPacket = false,
+  pdfBytes = pdf,
+) {
+  const pdf = pdfBytes;
   const html = await readFile(outDir + "/site/reports/share.html", "utf8");
   const share = await readFile(outDir + "/site/reports/share.js", "utf8");
   const css = await readFile(outDir + "/site/reports/share.css", "utf8");
@@ -91,12 +110,26 @@ async function fixture(t: test.TestContext, nearMiss = false) {
             return route.fulfill(
               token.startsWith("a") ? { contentType: "application/pdf", body: pdf } : { status: 403, body: "" },
             );
-          if (path === "/api/share/report")
+          if (path === "/api/share/report") {
+            if (interrupted) await new Promise((resolve) => setTimeout(resolve, 2000));
             return route.fulfill({
               json: {
-                data: nearMiss ? recorded.responses.nearMiss : recorded.responses.packet,
+                data: badSummary
+                  ? {
+                      ...recorded.responses.packet,
+                      presentation: {
+                        ...recorded.responses.packet.presentation,
+                        summary: "2 properties in tour order.",
+                      },
+                    }
+                  : nearMiss
+                    ? recorded.responses.nearMiss
+                    : legacyPacket
+                      ? legacy.responses.packet
+                      : recorded.responses.packet,
               },
             });
+          }
           if (path === "/api/share/map") return route.fulfill({ status: 404, json: recorded.responses.mapUnavailable });
           return route.fulfill({
             json: {
@@ -104,6 +137,18 @@ async function fixture(t: test.TestContext, nearMiss = false) {
             },
           });
         });
+        if (interrupted) {
+          const newPage = context.newPage.bind(context);
+          context.newPage = async () => {
+            const page = await newPage();
+            page.waitForFunction = new Proxy(page.waitForFunction, {
+              apply(wait, receiver, [fn, arg, options]) {
+                return Reflect.apply(wait, receiver, [fn, arg, { ...options, timeout: 100 }]);
+              },
+            });
+            return page;
+          };
+        }
         return context;
       };
       return browser;
@@ -114,6 +159,36 @@ async function fixture(t: test.TestContext, nearMiss = false) {
 
 test("client proof opens real report and enforces revoked and download scopes in all layouts", async (t) => {
   assert.equal((await prove(await fixture(t))).status, "passed");
+});
+
+test("recorded production 1.x is clearly refused without report or download controls in every layout", async (t) => {
+  const options = await fixture(t, false, false, false, true);
+  const browser = await options.engine.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  try {
+    for (const width of [1440, 390])
+      for (const colorScheme of ["light", "dark"] as const) {
+        const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
+        try {
+          const page = await context.newPage();
+          await page.goto(options.evidence.active);
+          await page.getByRole("button", { name: "Open tour", exact: true }).click();
+          await page.waitForFunction(
+            () => document.querySelector("#status")?.textContent === "This shared report is unavailable.",
+          );
+          assert.equal(
+            await page.locator("#report-summary").textContent(),
+            "This report uses an older packet format (1.x). Please reopen the shared link after the report service is updated.",
+          );
+          assert.equal(await page.locator("#report-list > li").count(), 0);
+          assert.equal(await page.getByRole("button", { name: "Download PDF", exact: true }).count(), 0);
+          assert.equal(await page.getByRole("button", { name: "Print or save PDF", exact: true }).isVisible(), false);
+        } finally {
+          await context.close();
+        }
+      }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("client download controls follow projected capability before open and after refusal in every layout", async (t) => {
@@ -166,6 +241,15 @@ test("client proof rejects the near-miss displayed 16 Medical Drive for expected
   });
 });
 
+test("client proof rejects a packet summary that disagrees with its own stop count", async (t) => {
+  await assert.rejects(prove(await fixture(t, false, true)), (error: unknown) => {
+    assert.ok(error instanceof assert.AssertionError);
+    assert.equal(error.actual, "2 properties");
+    assert.equal(error.expected, "1 property");
+    return true;
+  });
+});
+
 test("client proof classifies unavailable browser as insufficient evidence", async (t) => {
   const options = await fixture(t);
   await assert.rejects(
@@ -181,11 +265,28 @@ test("client proof classifies unavailable browser as insufficient evidence", asy
   );
 });
 
-for (const mode of ["pass", "near miss", "late launch", "stalled evaluation"])
+for (const mode of [
+  "pass",
+  "legacy packet",
+  "legacy PDF template",
+  "legacy PDF renderer",
+  "near miss",
+  "summary mismatch",
+  "late launch",
+  "stalled evaluation",
+  "interrupted observation",
+])
   test(`client proof CLI ${mode}`, async (t) => {
     const nearMiss = mode === "near miss";
-    const timeout = mode === "late launch" || mode === "stalled evaluation";
-    const options = await fixture(t, nearMiss);
+    const interrupted = mode === "interrupted observation";
+    const timeout = mode === "late launch" || mode === "stalled evaluation" || interrupted;
+    const badSummary = mode === "summary mismatch";
+    const legacyPdf = mode.startsWith("legacy PDF");
+    const pdf = await storedPdf(
+      mode === "legacy PDF template" ? "1.1.0" : "2.0.0",
+      mode === "legacy PDF renderer" ? "1.1.0" : "2.0.0",
+    );
+    const options = await fixture(t, nearMiss, badSummary, interrupted, mode === "legacy packet", pdf);
     const root = temporaryDirectory("client-proof-cli-", t);
     const evidenceFile = `${root}/evidence.json`;
     const preload = `${root}/browser.mjs`;
@@ -200,8 +301,12 @@ import { chromium } from ${JSON.stringify(import.meta.resolve("playwright"))};
 import { CHROMIUM_SAFETY_ARGS } from ${JSON.stringify(new URL("../scripts/chromium-safety-args.mjs", import.meta.url).href)};
 const chromiumDriver = { launch: chromium.launch.bind(chromium) };
 const recorded = ${JSON.stringify(recorded)};
-const pdf = Buffer.from(${JSON.stringify(pdf.toString())});
+const legacy = ${JSON.stringify(legacy)};
+const legacyPacket = ${mode === "legacy packet"};
+const pdf = Buffer.from(${JSON.stringify(pdf.toString("base64"))}, "base64");
 const nearMiss = ${nearMiss};
+const badSummary = ${badSummary};
+const interrupted = ${interrupted};
 const engine = { ${options.engine.launch.toString().replaceAll("chromium.launch", "chromiumDriver.launch")} };
 chromium.launch = async options => {
   const browser = await engine.launch({ args: [...CHROMIUM_SAFETY_ARGS, ...(options?.args || [])], ...options });
@@ -241,11 +346,28 @@ chromium.launch = async options => {
       ],
       { timeout: 40000 },
     );
-    if (nearMiss || timeout)
+    if (nearMiss || badSummary || timeout || mode === "legacy packet" || legacyPdf)
       await assert.rejects(execution, (error: unknown) => {
         assert.ok(error && typeof error === "object" && "code" in error && "stdout" in error);
-        assert.equal(error.code, timeout ? 78 : 1, "stderr" in error ? String(error.stderr) : "no stderr");
-        assert.equal(JSON.parse(String(error.stdout)).status, timeout ? "insufficient_evidence" : "failed");
+        assert.equal(
+          error.code,
+          timeout || mode === "legacy packet" || legacyPdf ? 78 : 1,
+          "stderr" in error ? String(error.stderr) : "no stderr",
+        );
+        assert.equal(
+          JSON.parse(String(error.stdout)).status,
+          timeout || mode === "legacy packet" || legacyPdf ? "insufficient_evidence" : "failed",
+        );
+        if (mode === "legacy packet")
+          assert.equal(
+            JSON.parse(String(error.stdout)).error,
+            "This report uses an older packet format (1.x). Please reopen the shared link after the report service is updated.",
+          );
+        if (legacyPdf)
+          assert.match(
+            JSON.parse(String(error.stdout)).error,
+            new RegExp(`${mode === "legacy PDF template" ? "template" : "renderer"} \\(1\\.1\\.0\\)`),
+          );
         return true;
       });
     else assert.equal(JSON.parse((await execution).stdout).status, "passed");

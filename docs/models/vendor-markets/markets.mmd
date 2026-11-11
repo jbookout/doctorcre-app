@@ -1,0 +1,35 @@
+stateDiagram-v2
+state Browser {
+ state View {
+ [*] --> Category
+ Category --> Market: open Market
+ Market --> Category: open Category
+ Market --> Market: refresh
+ }
+ --
+ state Selection {
+ [*] --> Unselected
+ Unselected --> Canonical: producer resolves selection
+ Canonical --> Canonical: select market
+ Canonical --> Canonical: refresh
+ Canonical --> Unselected: registry empty
+ }
+ --
+ state Read {
+ [*] --> Idle
+ Idle --> Loading: open Market
+ Loading --> Ready: producer resolves selection
+ Loading --> Empty: registry empty
+ Loading --> Unavailable: read fails
+ Ready --> Loading: select market
+ Ready --> Loading: refresh
+ Empty --> Loading: refresh
+ Unavailable --> Loading: refresh
+ }
+ --
+ state Session {
+ [*] --> Active
+ Active --> Retired: session ends
+ }
+}
+%% never EmptySelected: Empty & Canonical -- Empty registry cannot show a selected market.

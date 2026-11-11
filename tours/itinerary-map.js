@@ -4,14 +4,18 @@ import { buildRouteVersionState, projectRoute, reduceMapEvent, buildNativeNavLin
 
 // Presentation adapter only: the accepted record owns order and identity.
 // access_coordinate_status alone never supplies coordinates or human approval.
-export function acceptedRouteFromDetail(detail) {
+export function acceptedRouteFromDetail(detail, navigationFromEvidence = () => null) {
   const accepted = detail?.routes?.find(route => route.accepted === true);
   if (!accepted) return null;
+  let navigation = navigationFromEvidence(detail.id, accepted, accepted.navigation);
+  if (navigation && ["projection_id", "canonical_dataset_version", "component_registry_version"]
+    .some(field => detail[field] != null && detail[field] !== navigation[field])) navigation = null;
   return {
+    navigation,
     tour_id: detail.id, route_version: accepted.route_version, route_version_id: accepted.id,
-    projection_id: detail.projection_id || `unprojected:${accepted.id}`,
-    canonical_dataset_version: detail.canonical_dataset_version ?? null,
-    component_registry_version: detail.component_registry_version ?? null,
+    projection_id: navigation?.projection_id || detail.projection_id || `unprojected:${accepted.id}`,
+    canonical_dataset_version: navigation?.canonical_dataset_version ?? detail.canonical_dataset_version ?? null,
+    component_registry_version: navigation?.component_registry_version ?? detail.component_registry_version ?? null,
     start_point: accepted.start_point ?? null, end_point: accepted.end_point ?? null,
     stops: (accepted.stops || []).filter(stop => stop.stop_state === "active").map(stop => ({
       route_stop_id: stop.id, property_id: stop.property_id, route_sequence: stop.route_sequence,
@@ -19,7 +23,7 @@ export function acceptedRouteFromDetail(detail) {
       appointment_start: stop.appointment_start, appointment_end: stop.appointment_end,
       dwell_minutes: stop.dwell_minutes, buffer_minutes: stop.buffer_minutes,
       title: stop.property_name || stop.name || "Saved property", address_line: stop.property_address || stop.address || "",
-      position: stop.position ?? null, source_ref: stop.source_ref ?? null,
+      position: navigation?.positions.get(stop.id) ?? stop.position ?? null, source_ref: navigation?.positions.get(stop.id)?.source_ref ?? stop.source_ref ?? null,
     })),
   };
 }
@@ -54,7 +58,7 @@ export function buildAcceptedRouteState(route, options) {
 export function mountAcceptedItinerary(root, initial) {
   const doc = root.ownerDocument, win = doc.defaultView;
   const make = (tag, text, className) => { const el = doc.createElement(tag); if (text) el.textContent = text; if (className) el.className = className; return el; };
-  let options, state, projection, routeInput, map = null, gl = null, destroyed = false, shell = null, mapFailure = "", returnNotice = "", storageNotice = "";
+  let options, state, projection, routeInput, expiryTimer, map = null, gl = null, destroyed = false, shell = null, mapFailure = "", returnNotice = "", storageNotice = "";
   const markers = new Map();
   const motion = win.matchMedia?.("(prefers-reduced-motion: reduce)");
   let reducedMotion = initial.prefersReducedMotion ?? motion?.matches ?? false;
@@ -81,12 +85,12 @@ export function mountAcceptedItinerary(root, initial) {
   } else root.replaceChildren(header, notice, grid, stage, legend);
 
   function key() {
-    return `doctorcre-current-stop-v1:${JSON.stringify([options.scope, state.tour_id, state.route_version_id, state.route_version, state.projection_id])}`;
+    return `doctorcre-current-stop-v1:${JSON.stringify([options.scope, options.user_ref, state.tour_id, state.route_version_id, state.route_version, state.projection_id])}`;
   }
   function persist(handoff = null) {
     if (!options.scope || !state?.current_route_stop_id) return;
     try {
-      win.sessionStorage.setItem(key(), JSON.stringify({ stop: state.current_route_stop_id, return_state: handoff ? buildReturnState(handoff) : null }));
+      win.sessionStorage.setItem(key(), JSON.stringify({ stop: state.current_route_stop_id, evidence_binding: routeInput.navigation?.evidence_binding ?? null, return_state: handoff ? buildReturnState(handoff) : null }));
       win.sessionStorage.setItem("doctorcre-itinerary-tour-v1", JSON.stringify({ scope: options.scope, tour_id: state.tour_id }));
       storageNotice = "";
     } catch { storageNotice = "Storage unavailable; navigation return cannot be restored after reload. Current stop stays in this tab's memory; keep this tab open."; renderStatus(); }
@@ -96,6 +100,7 @@ export function mountAcceptedItinerary(root, initial) {
     try {
       const saved = JSON.parse(win.sessionStorage.getItem(key()) || "null");
       if (saved?.return_state) {
+        if (saved.evidence_binding !== (routeInput.navigation?.evidence_binding ?? null)) return;
         const returned = resolveReturn(state, saved.return_state, { now: new Date().toISOString(), user_ref: options.user_ref });
         if (returned.ok) { state = returned.state; return; }
         // A refused handoff marker must not be restored as an ordinary selection.
@@ -220,6 +225,7 @@ export function mountAcceptedItinerary(root, initial) {
         link.setAttribute("aria-label", `Navigate with ${label}`);
         link.href = handoff.link; link.rel = "noopener noreferrer";
         link.addEventListener("click", event => {
+          if (routeInput.navigation && routeInput.navigation.expires_at <= Date.now()) options.promotion_receipt = null;
           const freshHandoff = buildNativeNavLink(state, { route_stop_id: selected.route_stop_id, platform, travel_mode: "driving", now: new Date().toISOString(), promotion_receipt: options.promotion_receipt, user_ref: options.user_ref });
           if (!freshHandoff.available) { event.preventDefault(); render(); return; }
           link.href = freshHandoff.link;
@@ -235,8 +241,14 @@ export function mountAcceptedItinerary(root, initial) {
     renderMarkers(); renderStatus();
   }
   function update(next) {
-    const previousScope = options?.scope;
+    const previousScope = options?.scope, previousUser = options?.user_ref;
     options = { ...initial, ...next }; routeInput = options.route;
+    win.clearTimeout(expiryTimer);
+    if (routeInput?.navigation) {
+      options.promotion_receipt = routeInput.navigation.expires_at > Date.now() ? routeInput.navigation.promotion_receipt : null;
+      // eslint-disable-next-line no-restricted-syntax -- One evidence lease timer is capped at 5 minutes and cleared on every update and destroy; it performs no reads.
+      expiryTimer = win.setTimeout(() => { options.promotion_receipt = null; render(); }, Math.min(300000, Math.max(0, routeInput.navigation.expires_at - Date.now())));
+    }
     if (!routeInput) { state = projection = null; root.hidden = true; return; }
     // Geometry is optional; identity, order and appointment validation remain canonical.
     if (Array.isArray(routeInput.stops)) routeInput = { ...routeInput, stops: routeInput.stops.map(stop => {
@@ -247,7 +259,7 @@ export function mountAcceptedItinerary(root, initial) {
     }) };
     root.hidden = false;
     const same = state && state.tour_id === routeInput.tour_id && state.route_version_id === routeInput.route_version_id
-      && state.route_version === routeInput.route_version && state.projection_id === routeInput.projection_id && options.scope === previousScope;
+      && state.route_version === routeInput.route_version && state.projection_id === routeInput.projection_id && options.scope === previousScope && options.user_ref === previousUser;
     const refreshed = buildAcceptedRouteState(routeInput, {
       mode: same ? state.mode : "tour", selected_property_id: same ? state.selected_property_id : null,
     });
@@ -293,6 +305,6 @@ export function mountAcceptedItinerary(root, initial) {
   return {
     ready, update, dispatch, get projection() { return projection; },
     navigationLinks() { return [...card.querySelectorAll(".itinerary-navigation a")]; },
-    destroy() { destroyed = true; win.removeEventListener("offline", offline); reconnect.dispose(); motion?.removeEventListener("change", onMotion); for (const marker of markers.values()) marker.remove(); shell?.destroy(); root.replaceChildren(); },
+    destroy() { destroyed = true; win.clearTimeout(expiryTimer); win.removeEventListener("offline", offline); reconnect.dispose(); motion?.removeEventListener("change", onMotion); for (const marker of markers.values()) marker.remove(); shell?.destroy(); root.replaceChildren(); },
   };
 }

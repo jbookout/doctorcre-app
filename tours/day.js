@@ -62,7 +62,7 @@ export function boundClientId(tour) {
   return typeof id === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id) ? id : null;
 }
 
-export function mountTourDay({ document, window, api = createDayClient(), store = createDayStore(window.indexedDB), mapFactory = mountAcceptedItinerary, prepareOffline = prepareOfflineShell }) {
+export function mountTourDay({ document, window, api = createDayClient(), store = createDayStore(window.indexedDB), mapFactory = mountAcceptedItinerary, prepareOffline = prepareOfflineShell, navigationFromEvidence = () => null }) {
   const $ = selector => document.querySelector(selector);
   const make = (tag, text, className) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (className) e.className = className; return e; };
   const tourId = new URL(window.location.href).searchParams.get("tour");
@@ -273,9 +273,10 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   async function present() {
     const stops = orderedDayStops(tour);
     if (!stops.some(s => s.id === selected)) selected = stops[0]?.id || null;
-    const route = acceptedRouteFromDetail(tour);
+    const route = acceptedRouteFromDetail(tour, navigationFromEvidence);
+    if (offline && route) route.navigation = null;
     if (route) {
-      const options = { route, scope, user_ref: userRef, presentation: "day", canSelect: () => !recorder.active, promotion_receipt: tour.map_promotion_receipt || null, onSelect: id => { if (!recorder.active) { selected = id; render(); } } };
+      const options = { route, scope, user_ref: userRef, presentation: "day", canSelect: () => !recorder.active, promotion_receipt: !offline ? route.navigation?.promotion_receipt ?? null : null, onSelect: id => { if (!recorder.active) { selected = id; render(); } } };
       try { if (map) map.update(options); else { $("#day-map").replaceChildren(); map = mapFactory($("#day-map"), options); } selected = map.projection?.card?.route_stop_id || selected; }
       catch { map?.destroy(); map = null; $("#day-map").replaceChildren(make("p", "Map unavailable", "day-map-state")); }
     } else {
@@ -322,5 +323,6 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   return { ready, refresh, get notes() { return notes; }, get recorder() { return recorder; }, dispose() { disposed = true; ++epoch; updates.dispose(); recorder.dispose(); map?.destroy(); document.removeEventListener("visibilitychange", hide); window.removeEventListener("pagehide", leave); window.removeEventListener("doctorcre-offline-session-revoked", revoked); window.removeEventListener("storage", storageRevoked); close(); } };
 }
 if (typeof document !== "undefined" && document.querySelector("#tour-day")) {
-  mountTourDay({ document, window });
+  const { navigationFromEvidence } = await import("../js/ui-tour-navigation.js");
+  mountTourDay({ document, window, navigationFromEvidence });
 }
