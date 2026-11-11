@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import type { Page } from "playwright";
 import { uiBundle } from "../scripts/ui-bundle.mjs";
 import type { mountDealTours as MountDealTours } from "../src/ui/deal-tours.tsx";
-import { chromium } from "./browser-harness.mjs";
+import { chromium, WAIT_MS } from "./browser-harness.mjs";
 
 test("retired tour workspace refuses UI re-entry after session invalidation", async (t) => {
   const bundle = await uiBundle((path) => readFile(new URL("../" + path, import.meta.url), "utf8"));
@@ -46,6 +47,19 @@ test("retired tour workspace refuses UI re-entry after session invalidation", as
   assert.deepEqual(result.after, result.before);
 });
 
+async function savedEditorReady(page: Page) {
+  const deadline = performance.now() + WAIT_MS;
+  const remaining = () => Math.max(1, deadline - performance.now());
+  await page
+    .frameLocator("iframe")
+    .locator("#sheet-state")
+    .filter({ hasText: /save confirmed/ })
+    .waitFor({ timeout: remaining() });
+  await page.waitForFunction(() => !window.editorRetirementPanel.hasUnsavedChanges(), undefined, {
+    timeout: remaining(),
+  });
+}
+
 const deal = "11111111-1111-4111-8111-111111111111";
 const tour = "33333333-3333-4333-8333-333333333333";
 const receipt = "44444444-4444-4444-8444-444444444444";
@@ -82,7 +96,10 @@ test("packet editor retirement transitions in the parent workspace", async (t) =
     for (const reason of ["session", "scope"]) {
       await t.test(`${state} to Retired on ${reason}`, async () => {
         const page = await browser.newPage();
-        let release!: () => void, finished!: () => void;
+        let release!: () => void, finished!: () => void, releaseReadback!: () => void;
+        const readbackGate = new Promise<void>((resolve) => {
+          releaseReadback = resolve;
+        });
         const gate = new Promise<void>((resolve) => {
           release = resolve;
         });
@@ -102,6 +119,7 @@ test("packet editor retirement transitions in the parent workspace", async (t) =
           await page.route("**/api/tours/**", async (route) => {
             const path = new URL(route.request().url()).pathname;
             if (route.request().method() === "GET") ++reads;
+            if (path === "/api/tours/selection-cart" && state === "Saved" && revision > 0) await readbackGate;
             if (path === "/api/tours/library")
               return route.fulfill({ json: { data: { tours: [row] }, csrf_token: scope } });
             if (path === "/api/tours/detail")
@@ -178,6 +196,21 @@ test("packet editor retirement transitions in the parent workspace", async (t) =
                 .locator("#sheet-state")
                 .filter({ hasText: /save confirmed/ })
                 .waitFor();
+              assert.equal(
+                await page.evaluate(() => window.editorRetirementPanel.hasUnsavedChanges()),
+                true,
+                "Visible save confirmation precedes the parent leave acknowledgement while readback is held",
+              );
+              let ready = false;
+              const acquisition = savedEditorReady(page).then(() => {
+                ready = true;
+              });
+              await page.evaluate(
+                () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+              );
+              assert.equal(ready, false, "Do not retire Saved until the parent acknowledges the completed save");
+              releaseReadback();
+              await acquisition;
               assert.equal(await page.evaluate(() => window.editorRetirementPanel.hasUnsavedChanges()), false);
             } else {
               await editor.locator("#sheet-state").filter({ hasText: "Saving…" }).waitFor();
@@ -253,6 +286,7 @@ test("packet editor retirement transitions in the parent workspace", async (t) =
           throw error;
         } finally {
           release();
+          releaseReadback();
           await page.close();
         }
       });

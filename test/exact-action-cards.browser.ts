@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { Ajv } from "ajv";
-import { chromium } from "playwright";
+import { chromium, type Page } from "playwright";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
@@ -84,6 +84,55 @@ async function fixture() {
   });
   return { ...server, calls };
 }
+async function gotoEndedSession(page: Page, url: string) {
+  await page.goto(url);
+  await page.waitForURL("**/public-shell/session-ended.html?**");
+}
+
+test("session refusal replaces initial navigation before its pending load and discloses no private card", async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const events: string[] = [];
+  try {
+    const page = await browser.newPage();
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) events.push(new URL(frame.url()).pathname);
+    });
+    await page.route("**/a/**", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        body: (await response.text()).replace("</body>", '<img src="/held-initial-load"></body>'),
+      });
+    });
+    await page.route("**/held-initial-load", async (route) => {
+      await gate;
+      await route.fulfill({ body: "" });
+    });
+    await page.route("**/auth/session", async (route) => {
+      events.push("session 401");
+      await route.fulfill({ status: 401, json: { error: "not_authenticated" } });
+    });
+    await gotoEndedSession(page, `${server.origin}/a/${call.ref}?mode=live`);
+    assert.deepEqual(events.slice(0, 3), [`/a/${call.ref}`, "session 401", "/public-shell/session-ended.html"]);
+    assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
+    const login = page.locator("a[href*=return_to]");
+    await login.waitFor();
+    assert.equal(
+      new URL((await login.getAttribute("href")) || "", server.origin).searchParams.get("return_to"),
+      `/a/${call.ref}`,
+    );
+  } finally {
+    release();
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("cold navigation and existing tab show all three exact cards without inbox reads at phone and desktop sizes", async () => {
   const server = await fixture(),
     browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
