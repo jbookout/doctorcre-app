@@ -21,3 +21,18 @@ Transition coverage uses these named tests.
 | Retired to Reading | F4 suspended brief clears detail and fences late reads before dell recovery |
 
 The chart abstracts source contents, DOM layout and transport timing. Browser tests cover layout and preserved inbox selection, waiting-person draft and priority focus. The shared-read model bounds session change to one retirement and does not model transport cancellation, which uses the existing current-read lifetime tests. A partial result returning from detail may remain partial; Ready in the chart means the brief list is visible, with its coverage still explicit.
+
+
+Explicit rail refresh uses SharedRead's existing Read action even when shown is current. Ordinary cached reads and in-flight coalescing do not change the modeled state. The transition set and invariants are unchanged. The test "explicit refresh bypasses a recent brief while ordinary readers coalesce" covers this read-owner contract. "Preparation close preserves the unrelated layout board and triage refresh" covers the rail caller.
+
+Phone presentation is an independent disclosure state. The mounted brief remains intact in both states, so refresh and detail return do not change disclosure state.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Compact: Open Home on phone
+  Compact --> Expanded: Open brief or Doc entry
+  Expanded --> Compact: Collapse
+  Expanded --> Expanded: Refresh or return from detail
+```
+
+"Home brief stays inline with inbox and restores priority focus in both themes and widths" covers compact inbox visibility, expansion and retained state. Desktop always shows the brief; the disclosure control is phone-only. Direct #homeBrief entry starts expanded.

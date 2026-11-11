@@ -98,6 +98,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const remember = () => { if (preferences && view) preferences.save({ day:localDay(now()), lastShownAt:now().toISOString(), since }); cue(); };
   const close = () => { queues.reset(); ++detailEpoch; selected = null; panel.hidden = true; (opener?.isConnected ? opener : $('docOpen'))?.focus(); };
   const open = async () => {
+    root.dispatchEvent(new win.Event('doctorcre:open-home-brief'));
     opener = root.activeElement;
     const doc = $('docDetail'); if (doc?.open) doc.close();
     const pending = auto.revalidate();

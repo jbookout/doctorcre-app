@@ -249,7 +249,7 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     const [board, triage, meetings] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(async () => {
-        const brief = await readMorningBrief(root, () => client.morningBrief({ signal }), { signal });
+        const brief = await readMorningBrief(root, () => client.morningBrief({ signal, fresh: true }), { signal, fresh: true });
         if (signal.aborted) return null;
         if (!brief) return client.todayTriage();
         owners.setViewer(brief.sponsor);
