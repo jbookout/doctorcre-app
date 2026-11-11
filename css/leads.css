@@ -177,6 +177,7 @@ dialog::backdrop { background: var(--scrim); }
   .detail-overview { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 1023px) {
+  .lead-card .work-card-actions { grid-column: 2; grid-row: 2; align-self: start; }
   .leads-workspace { padding: var(--space-3) var(--space-4) calc(var(--tabbar-height) + var(--space-6)); }
   .has-app-layout .leads-workspace { --leads-header-offset: calc(var(--touch) + 2 * var(--space-2) + var(--hairline-width)); }
   .stage-nav { width: 100%; position: sticky; top: var(--leads-header-offset, 0px); z-index: 2; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2); background: var(--surface-1); border-bottom: var(--hairline-width) solid var(--hairline); }
@@ -272,6 +273,13 @@ dialog::backdrop { background: var(--scrim); }
   .territory-evidence td:last-child { grid-column: 1 / -1; }
 }
 
+.lead-timing { min-width: 0; overflow-wrap: anywhere; }
+.lead-timing p { font-size: .85rem; }
+.lead-timing.detail-panel p { margin: .3rem 0; }
+.lead-card .lead-timing { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+.lead-timing details { margin-top: .6rem; }
+.lead-timing dd { min-width: 0; margin-inline-start: 0; }
+.lead-timing li + li { margin-top: 1rem; }
 .reachability-summary { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); }
 .reachability-summary output { padding: 0; }
 .lead-reachability { overflow-wrap: anywhere; font-size: var(--font-size-1); }

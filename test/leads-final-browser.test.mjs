@@ -53,8 +53,17 @@ for (const width of [390, 768, 1280, 1440]) for (const theme of ['dark', 'light'
     await page.goto('http://localhost/leads');
     await page.locator('.lead-card').first().waitFor();
     const claim = await page.locator('#leadBoard [data-claim]').first().boundingBox();
+    await capture(page, `${width}-${theme}-board`, {
+      claim,
+      card: await page.locator('.lead-card').first().boundingBox(),
+      timing: await page.locator('.lead-timing').first().boundingBox(),
+      reachability: await page.locator('.lead-reachability').first().boundingBox(),
+    });
     assert.ok(claim.y >= 0 && claim.y + claim.height < 900, `Claim is visible without scrolling ${JSON.stringify(claim)}`);
-    await capture(page, `${width}-${theme}-board`, { claim });
+    assert.equal(await page.locator('#leadBoard [data-claim]').first().evaluate(button => {
+      const box = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+    }), true, 'Claim is not covered by the fixed phone chrome');
     await page.locator('#stageFilter').selectOption('qualified');
     const layout = await page.evaluate(() => {
       const board = document.querySelector('#leadBoard').getBoundingClientRect();
