@@ -25,23 +25,35 @@ const cases = [
     false,
     '<section style="content-visibility:hidden"><button>Content visibility</button></section>',
   ],
-  ["aria-hidden", false, '<section aria-hidden="true"><button>ARIA hidden</button></section>'],
+  ["aria-hidden", true, '<section aria-hidden="true"><button>ARIA hidden</button></section>'],
   ["opacity", true, '<button style="opacity:0">Opacity</button>'],
   ["above", true, '<button style="position:absolute;top:-100px">Above</button>'],
   ["below", true, '<button style="position:absolute;top:2000px">Below</button>'],
   ["open-details", true, "<details open><summary>Summary</summary><button>Open details</button></details>"],
   ["open-dialog", true, "<dialog open><button>Open dialog</button></dialog>"],
   ["tour-day-link", true, '<a href="#tour" style="position:absolute;top:-200px">Navigate tour</a>'],
+  ["onclick-div", true, '<div onclick="window.tapped=1" style="width:20px;height:20px">Tap</div>'],
+  [
+    "open-shadow",
+    true,
+    `<div id="shadow-host" style="width:100px;height:100px"></div><script>document.getElementById("shadow-host").attachShadow({mode:"open"}).innerHTML='<button id="open-shadow" style="width:20px;height:20px;padding:0">Tap</button>'</script>`,
+  ],
+  [
+    "delegated",
+    false,
+    '<ul onclick="window.tapped=1" style="width:20px;height:20px"><li><button id="delegated-button">Tap</button></li></ul>',
+  ],
+  ["disabled", false, "<button disabled>Disabled</button>"],
 ] as const;
 
-test("Browser authority determines phone target membership across 18 reachability cases", async (t) => {
+test("Browser authority determines phone target membership across 22 reachability cases", async (t) => {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
   await page.route("http://reachability.test/**", (route) =>
     route.fulfill({
       contentType: "text/html",
-      body: `<!doctype html><html lang="en"><head><title>Reachability matrix</title><style>button,summary,a{width:20px;height:20px;min-width:0;min-height:0;padding:0}</style></head><body><main><h1>Reachability</h1>${cases.map(([id, , html]) => html.replace(/<(button|a)\b/, `<$1 id="${id}"`)).join("")}</main></body></html>`,
+      body: `<!doctype html><html lang="en"><head><title>Reachability matrix</title><style>button,summary,a{width:20px;height:20px;min-width:0;min-height:0;padding:0}</style></head><body><main><h1>Reachability</h1>${cases.map(([id, , html]) => (id === "open-shadow" ? html : html.replace(/<(button|a|div|ul)\b/, `<$1 id="${id}"`))).join("")}</main></body></html>`,
     }),
   );
   await page.goto("http://reachability.test/");
@@ -54,6 +66,10 @@ test("Browser authority determines phone target membership across 18 reachabilit
         `${id} membership`,
       );
     });
+  await t.test("delegated button is counted without its list", () => {
+    assert.ok(audit.small.some((target) => target.id === "delegated-button"));
+    assert.ok(!audit.small.some((target) => target.tag === "UL"));
+  });
   await t.test("closed-details summary remains reachable", () => {
     assert.ok(audit.small.some((target) => target.id === "closed-summary"));
   });
