@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { startFixtureServer } from "../scripts/fixture-server.mjs";
 import { chromium } from "./browser-harness.mjs";
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { directoryFixture } from "./fixtures/vendor-directory.synthetic.mjs";
 
 const paginated = JSON.parse(await readFile(new URL("./fixtures/vendor-meetings/page.json", import.meta.url), "utf8"));

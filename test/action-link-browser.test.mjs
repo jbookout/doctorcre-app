@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 const ref='al1_bGQ6MTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTEx';
 const id='11111111-1111-4111-8111-111111111111';
 const payload={schema_version:'action-link-resolve.v1',ref,card:{kind:'lead_draft',id,lead_id:'22222222-2222-4222-8222-222222222222',state:'pending_approval',revision:3,subject:'Introduction to Synthetic Bayside Clinic',body:'Hello Synthetic Bayside team,\n\nI would like to introduce our practice space search.\n\nThank you.',scheduled_for:'2026-11-04T15:00:00Z',time_zone:'America/Chicago',actions:[{action:'approve',verb:'approve-lead-draft',args:{draft_id:id,revision:3}}]}};

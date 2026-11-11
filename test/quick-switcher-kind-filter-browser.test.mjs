@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { contractFixture, observeKindFilter } from '../scripts/prove-quick-switcher-kind-filter.mjs';
 const server = await startFixtureServer();
 test.after(server.stop);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer, WAIT_MS } from './browser-harness.mjs';
+import { chromium, WAIT_MS } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 async function accountFixture(t, options, engine = chromium, serve = fixtureServer) {
   const server = await serve();

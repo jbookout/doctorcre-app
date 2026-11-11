@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { readFileSync } from 'node:fs';
 import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { createLiveClient } from '../js/live-client.js';

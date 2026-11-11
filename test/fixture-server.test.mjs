@@ -5,7 +5,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { fixtureProbe } from './fixture-probe.ts';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from './fixture-probe.ts';
 
 test('a server that exits during startup rejects promptly instead of hanging cleanup', { timeout: 60000 }, async () => {
   await assert.rejects(startFixtureServer({ args: ['-e', 'process.exit(1)'] }), /fixture server exited 1/);

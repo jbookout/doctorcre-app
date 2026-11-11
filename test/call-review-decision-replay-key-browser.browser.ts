@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { exercise, resolverFixture } from "../scripts/prove-call-review-decision-replay-key.ts";
-import { chromium, fixtureServer } from "./browser-harness.mjs";
+import { chromium } from "./browser-harness.mjs";
+import { ownedFixtureServer as fixtureServer } from "./fixture-probe.ts";
 
 for (const width of [390, 1440])
   test(`explicit decision recovery through public mount at ${width}px`, async () => {

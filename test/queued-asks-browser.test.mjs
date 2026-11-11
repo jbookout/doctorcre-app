@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { readFile } from 'node:fs/promises';
 const conversation='0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c01';
 for (const width of [390,1280]) for (const theme of ['light','dark']) test(`corrupt neighbors survive reload at ${width} ${theme}`,async t=>{

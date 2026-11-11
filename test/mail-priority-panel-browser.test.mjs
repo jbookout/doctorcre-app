@@ -109,7 +109,7 @@ for (const phase of ['collapsed', 'empty', 'unavailable']) for (const end of ['r
 for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`published Home transport and layout ${width} ${theme}`, async t => {
   const { buildArtifact } = await import('../scripts/artifact.mjs');
   const { temporaryDirectory } = await import('../scripts/temp-directory.mjs');
-  const { fixtureServer } = await import('./browser-harness.mjs');
+  const { ownedFixtureServer: fixtureServer } = await import("./fixture-probe.ts");
   const { join } = await import('node:path');
   const outDir = temporaryDirectory('mail-priority-home-', t);
   await buildArtifact({ root: process.cwd(), outDir });

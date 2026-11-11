@@ -4,10 +4,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { buildArtifact } from "../scripts/artifact.mjs";
-import { startFixtureServer } from "../scripts/fixture-server.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import type { TextRequest } from "../src/ui/deal-document-text.ts";
 import { chromium, componentDocument } from "./browser-harness.mjs";
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const read = async (name: string) =>

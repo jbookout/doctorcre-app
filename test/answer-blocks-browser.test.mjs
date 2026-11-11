@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 const privateId = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c01';
 test('conversation answers sort, filter, chart, preserve refresh and dispose at phone widths',async t=>{
  const server=await fixtureServer();t.after(()=>server.close());

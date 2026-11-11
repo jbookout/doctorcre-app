@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Doc Activity keeps timestamps clear of undo controls at ${width}px in ${theme}`, async t => {

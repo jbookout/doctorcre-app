@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { labelAssertions } from '../scripts/prove-historical-win-readable-labels.mjs';
 for (const width of [390, 1280]) for (const colorScheme of ['light', 'dark']) {
   test(`recorded names, legacy fallback, validation and retirement at ${width} ${colorScheme}`, async t => {

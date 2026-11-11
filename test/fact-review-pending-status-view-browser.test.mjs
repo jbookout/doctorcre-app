@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { readFile } from 'node:fs/promises';
 import { observeOnPage } from '../scripts/prove-fact-review-pending-status-view.mjs';
 const recordings = JSON.parse(await readFile(new URL('./fixtures/fact-review-pending-status-view/recordings.json', import.meta.url), 'utf8'));

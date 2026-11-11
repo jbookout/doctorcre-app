@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { componentDocument, chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { calendarAssertions } from '../scripts/prove-historical-fit-calendar-date-integrity.mjs';
 

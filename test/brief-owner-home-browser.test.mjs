@@ -5,7 +5,8 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
-import { chromium, fixtureServer, animationsSettled } from './browser-harness.mjs';
+import { chromium, animationsSettled } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 let outDir, server;
 before(async () => {

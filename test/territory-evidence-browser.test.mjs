@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { workspace } from './leads-workspace-fixture.mjs';
 const evidence = (condition, current = true) => ({ flag_id: condition, condition, source: `Synthetic ${condition} source`, observed_at: '2028-01-01T12:00:00Z', expires_on: '2028-04-01', expired: !current, current });
 const snapshot = () => ({ schema_version: 'territory-state-board.v1', coverage: 'recorded_geographies_only', submarkets: [

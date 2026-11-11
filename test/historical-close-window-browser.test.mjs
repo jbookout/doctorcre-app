@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 
 for (const width of [390,1280]) for (const colorScheme of ['light','dark']) {
   test(`inclusive window selection validation refresh and lifecycle ${width} ${colorScheme}`, async t => {

@@ -1,4 +1,20 @@
-import { spawn } from "node:child_process";
+import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
+import { startFixtureServer } from "../scripts/fixture-server.mjs";
+
+const capability = Symbol("fixture probe owner");
+export class FixtureOwnershipError extends Error {
+  readonly code = "FIXTURE_OWNER_REQUIRED";
+  constructor() {
+    super("Use ownedFixtureServer or fixtureProbe from test/fixture-probe.ts");
+    this.name = "FixtureOwnershipError";
+  }
+}
+export function requireFixtureCapability(value: unknown): void {
+  if (value !== capability) throw new FixtureOwnershipError();
+}
 
 export class ExerciseClock {
   private stop: (() => void) | undefined;
@@ -49,6 +65,7 @@ function parseStatus(message: unknown): Status {
 }
 type Phase = "Starting" | "Ready" | "Exercising" | "Closing" | "Closed";
 type Options = {
+  server?: Parameters<typeof startFixtureServer>[0];
   root?: string;
   expected?: string | null;
   env?: NodeJS.ProcessEnv;
@@ -65,8 +82,9 @@ export function fixtureProbe(options: Options = {}) {
   const child = spawn(
     process.execPath,
     [
-      new URL("./fixture-probe-child.ts", import.meta.url).pathname,
+      new URL(import.meta.url).pathname,
       JSON.stringify({
+        server: options.server,
         root: options.root,
         expected: options.expected,
         delayMs: options.delayMs,
@@ -218,3 +236,108 @@ export function fixtureProbe(options: Options = {}) {
     },
   };
 }
+
+export async function ownedFixtureServer(options: Options = {}) {
+  const probe = fixtureProbe(options);
+  try {
+    const { origin } = await probe.ready;
+    return { origin, close: () => probe.close() };
+  } catch (error) {
+    await probe.close();
+    throw error;
+  }
+}
+export async function ownedServer(options: Parameters<typeof startFixtureServer>[0] = {}) {
+  const server = await ownedFixtureServer({ server: options, ...(options.env ? { env: options.env } : {}) });
+  return { url: server.origin, stop: server.close };
+}
+
+async function runFixtureChild() {
+  if (!process.connected || !process.send) throw new FixtureOwnershipError();
+  const input: unknown = JSON.parse(process.argv[2] ?? "{}");
+  assert.ok(typeof input === "object" && input !== null);
+  const options = {
+    root: "root" in input && typeof input.root === "string" ? input.root : undefined,
+    expected:
+      "expected" in input && (typeof input.expected === "string" || input.expected === null)
+        ? input.expected
+        : undefined,
+    delayMs: "delayMs" in input && typeof input.delayMs === "number" ? input.delayMs : 0,
+    scenario: "scenario" in input && typeof input.scenario === "string" ? input.scenario : undefined,
+  };
+  let closing = false;
+  let server: { origin: string; close: () => Promise<void> } | undefined;
+  let acquisition: Promise<void>;
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const close = async () => {
+    closing = true;
+    await acquisition;
+    clearInterval(interval);
+    await server?.close();
+    if (process.connected) process.disconnect?.();
+  };
+  process.on("SIGTERM", () => {
+    if (options.scenario !== "ignore-close") void close();
+  });
+  process.on("disconnect", () => {
+    void close();
+  });
+  process.send?.({ started: true });
+  acquisition = (async () => {
+    if (options.scenario === "early-exit") process.exit(2);
+    if (options.scenario === "never-ready") {
+      interval = setInterval(() => {}, 1000);
+      return;
+    }
+    if (options.delayMs) await delay(options.delayMs);
+    if (options.scenario === "late-ready") await delay(100);
+    if (options.scenario === "early-ready" || options.scenario === "ignore-close") {
+      process.send?.({ origin: "http://127.0.0.1:1", fixturePid: process.pid });
+      return;
+    }
+    const config = "server" in input && typeof input.server === "object" && input.server !== null ? input.server : {};
+    const fixture = await startFixtureServer(
+      { ...config, env: options.root ? { DOCTORCRE_FIXTURE_ROOT: options.root } : {} },
+      capability,
+    );
+    server = { origin: fixture.url, close: fixture.stop };
+    const fixturePid = Number(execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).trim());
+    assert.ok(Number.isSafeInteger(fixturePid) && fixturePid > 0, "one owned fixture child");
+    if (!closing || options.scenario === "late-ready") process.send?.({ origin: server.origin, fixturePid });
+  })();
+  await acquisition;
+  process.on("message", async (message: unknown) => {
+    if (
+      closing ||
+      typeof message !== "object" ||
+      message === null ||
+      !("command" in message) ||
+      message.command !== "assert"
+    )
+      return;
+    try {
+      assert.ok(server);
+      assert.equal((await fetch(`${server.origin}/unadmitted.txt`)).status, 404);
+      const response = await fetch(`${server.origin}/fixture-root-probe.txt`);
+      if (options.expected === null) {
+        assert.equal(response.status, 404);
+        assert.equal((await fetch(`${server.origin}/`)).status, 200);
+      } else {
+        assert.equal(response.status, 200);
+        assert.equal(await response.text(), options.expected);
+      }
+      const stopped = server.close();
+      assert.equal(typeof stopped.then, "function");
+      await stopped;
+      await assert.rejects(fetch(server.origin));
+      await server.close();
+      process.send?.({ completed: true });
+      await close();
+    } catch (error) {
+      console.error(error);
+      process.exitCode = 1;
+      await close();
+    }
+  });
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await runFixtureChild();

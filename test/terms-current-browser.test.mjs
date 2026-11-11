@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 const base = JSON.parse(readFileSync(new URL('./fixtures/market-terms/recordings.json', import.meta.url)));
 const source = readFileSync(new URL('./fixtures/market-terms/producer.ts.txt', import.meta.url), 'utf8');

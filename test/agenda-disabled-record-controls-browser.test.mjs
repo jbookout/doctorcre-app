@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { exerciseAgenda } from '../scripts/prove-agenda-disabled-record-controls.mjs';
 
 for (const width of [390, 1440]) {

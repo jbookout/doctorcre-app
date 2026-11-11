@@ -3,11 +3,11 @@ import { mkdir, readFile } from "node:fs/promises";
 import test, { type TestContext } from "node:test";
 import { Ajv } from "ajv";
 import { buildArtifact } from "../scripts/artifact.mjs";
-import { startFixtureServer } from "../scripts/fixture-server.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { uiAssets } from "../scripts/ui-bundle.mjs";
 import { parseWatch, type Watch } from "../src/ui/watches/model.ts";
 import { chromium, componentDocument } from "./browser-harness.mjs";
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { subjectWatchV2ResponseSchema } from "./fixtures/watches/producer-schema.ts";
 
 const recordedValue: unknown = JSON.parse(

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { exerciseEvidenceHistory, territoryResponse } from '../scripts/prove-territory-evidence-current-history-view.mjs';
 
 const assets = await uiAssets(path => readFile(path, 'utf8'));
