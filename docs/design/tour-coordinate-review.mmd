@@ -1,0 +1,23 @@
+stateDiagram-v2
+  [*] --> Comparing: Open existing stop evidence
+  Comparing --> Reading: Refresh evidence
+  Reading --> Comparing: Matching evidence arrives
+  Reading --> Unavailable: Read fails
+  Unavailable --> Reading: Retry read
+  Comparing --> Reviewing: Submit human evidence
+  Reviewing --> Refused: Authority refused
+  Reviewing --> Unknown: Outcome unknown
+  Reviewing --> Reading: Receipt confirmed
+  Unknown --> Reviewing: Retry exact request
+  Refused --> Reviewing: Submit corrected evidence
+  Refused --> Reading: Refresh evidence
+  Comparing --> Comparing: Select another property
+  Reading --> Comparing: Select another property
+  Unavailable --> Comparing: Select another property
+  Refused --> Comparing: Select another property
+  Reading --> Retired: Session ends
+  Comparing --> Retired: Session ends
+  Reviewing --> Retired: Session ends
+  Unknown --> Retired: Session ends
+  Refused --> Retired: Session ends
+  Unavailable --> Retired: Session ends

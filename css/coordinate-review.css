@@ -1,0 +1,12 @@
+.coordinate-review { padding: 1.25rem; border: 1px solid var(--hairline); border-radius: 12px; margin-block: 1rem; }
+.coordinate-review h2 { margin-top: 0; }
+.coordinate-review label { display: grid; gap: .4rem; margin-block: .8rem; }
+.coordinate-review select, .coordinate-review input:not([type=checkbox]) { width: 100%; min-height: 44px; box-sizing: border-box; }
+.coordinate-review button, .coordinate-review summary { min-height: 44px; cursor: pointer; }
+.coordinate-candidates { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 1rem; margin-top: 1rem; }
+.coordinate-candidates article { min-width: 0; padding: 1rem; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); }
+.coordinate-candidates h4 { font-size: 1.1rem; margin: 0; text-transform: capitalize; }
+.coordinate-candidates dl { font-size: .85rem; }
+.coordinate-candidates dt { margin-top: .7rem; color: var(--fg-muted); }
+.coordinate-candidates dd { margin: .15rem 0 0; overflow-wrap: anywhere; }
+.coordinate-candidates details { border-top: 1px solid var(--hairline); padding-top: .7rem; }

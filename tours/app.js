@@ -19,7 +19,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   const state = { csrf: "", sessionGeneration: 0, sessionInvalidated: false, tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "", cheatDraftRevision: null,
     searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
   let sheetGenerated = "", sheetRegenerating = false;
-  let savedSearchPanel = null;
+  let savedSearchPanel = null, coordinatePanel = null, coordinatePanelSeq = 0, coordinatePanelBinding = "";
   const savedSearchRequest = createMcpRequests();
   async function callSavedSearch(verb, args) {
     if (state.sessionInvalidated || !state.csrf) throw new Error("session_changed");
@@ -258,7 +258,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   function invalidateTourSession() {
     if (state.sessionInvalidated) return;
     state.sessionInvalidated = true; state.sessionGeneration++; sessionBinding = ""; state.csrf = "";
-    savedSearchPanel?.retire();
+    savedSearchPanel?.retire(); coordinatePanel?.retire(); ++coordinatePanelSeq;
     notify({ type: 'deal-tour-invalidated' });
     ++tourLoadSeq; ++state.feedbackSeq; ++state.hydrationSeq; ++state.searchSeq;
     cancelSheetAutosave(); sheetComposing = false; createPending = null; createPhase = "ready"; restoredTourId = "";
@@ -570,6 +570,36 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   }
   function stops() { return Array.isArray(state.tour?.stops) ? state.tour.stops : []; }
   let composer = null, itineraryView = null, stopDrag = null;
+  async function renderCoordinateReview() {
+    const tour = state.tour, binding = sessionBinding;
+    const stamp = JSON.stringify([binding, tour?.id, tour?.route_version_id, stops().map(stop => stop.property_id)]);
+    if (coordinatePanel && stamp === coordinatePanelBinding && !state.sessionInvalidated) return;
+    coordinatePanelBinding = stamp;
+    const seq = ++coordinatePanelSeq;
+    coordinatePanel?.retire(); coordinatePanel = null;
+    const root = $("#coordinate-review"); root.replaceChildren();
+    if (!tour || !binding || state.sessionInvalidated) return;
+    const { mountCoordinateReview, entranceReceiptResult } = await import("../js/ui-tour-coordinate-review.js");
+    if (seq !== coordinatePanelSeq || binding !== sessionBinding || state.tour?.id !== tour.id) return;
+    const routeId = tour.route_version_id;
+    coordinatePanel = mountCoordinateReview(root, {
+      binding: { session: binding, tour: tour.id, route: routeId }, stops: stops(),
+      read: async propertyId => {
+        const latest = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tour.id)}`);
+        if (binding !== sessionBinding || state.tour?.id !== tour.id || latest.id !== tour.id || latest.route_version_id !== routeId) throw new Error("session_changed");
+        return latest.stops?.find(stop => stop.property_id === propertyId)?.coordinate_review;
+      },
+      write: async args => {
+        if (binding !== sessionBinding || state.tour?.id !== tour.id || state.sessionInvalidated) return "refused";
+        const result = await savedSearchRequest("append-tour-entrance-verification-receipt", args, { timeoutMs: 15000, headers: { "x-carr-csrf": state.csrf } });
+        if (binding !== sessionBinding || state.tour?.id !== tour.id) return "unknown";
+        if (result.kind === "authorization") return "refused";
+        if (result.kind !== "payload") return "unknown";
+        return entranceReceiptResult(result.payload, result.isError);
+      },
+    });
+  }
+  window.addEventListener("pagehide", () => { ++coordinatePanelSeq; coordinatePanel?.retire(); });
   function renderAcceptedItinerary() {
     const root = $("#accepted-itinerary");
     const route = acceptedRouteFromDetail(state.tour, navigationFromEvidence);
@@ -931,6 +961,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     mountPropertyPanel({ tour, request });
     if (composer && tour.routes?.length) renderComposer();
     renderAcceptedItinerary();
+    void renderCoordinateReview();
   }
   async function loadLibrary() {
     try { await request('/api/system-work/session'); } catch { state.userRef = null; }
