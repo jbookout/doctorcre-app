@@ -77,3 +77,5 @@ mobile-a11y-evidence/
 /public-shell/sw.js
 
 /tsconfig.*.generated.json
+
+/js/ui-broker-cheat-sheet.js

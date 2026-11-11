@@ -34,7 +34,7 @@ export function cheatSheetText(content) {
   if (!content || typeof content !== "object") return "";
   const keys = Object.keys(content);
   if (keys.length === 0) return "";
-  if (keys.length === 1 && keys[0] === "notes" && typeof content.notes === "string") return content.notes;
+  if (keys.every(key => key === "notes" || key === "generated_itinerary") && typeof content.notes === "string") return content.notes;
   return JSON.stringify(content, null, 2);
 }
 
