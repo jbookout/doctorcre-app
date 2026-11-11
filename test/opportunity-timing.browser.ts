@@ -8,8 +8,8 @@ import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-lead-opportunity-timing.ts";
 import { chromium } from "./browser-harness.mjs";
-import { cdpEndpoint } from "./cdp-fixture.ts";
 import { timingFixture } from "./opportunity-timing-fixture.ts";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 
 test("Retirement clears each timing view and fences late detail responses", async (t) => {
   const { server } = await setup(t);
@@ -206,16 +206,14 @@ test("Proof deadline closes a late browser launch and a stalled evaluation", asy
 
 test("Late borrowed CDP page closes before disconnect and preserves existing tabs", async (t) => {
   const { server } = await setup(t);
-  const browser = await rawChromium.launch({
-    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
-  });
-  t.after(() => browser.close());
-  const cdpUrl = await cdpEndpoint(browser);
+  const owned = await ownedCdpFixture();
+  t.after(() => owned.close());
+  const { browser, endpoint: cdpUrl } = owned;
   const connection = await rawChromium.connectOverCDP(cdpUrl);
   t.after(() => connection.close());
   const context = connection.contexts()[0];
   assert.ok(context);
-  const existing = await context.newPage();
+  const existing = owned.page;
   await existing.goto("about:blank#existing");
   const newPage = context.newPage.bind(context);
   let acquired = 0;
