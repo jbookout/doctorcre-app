@@ -1027,7 +1027,7 @@ async function copyRequirementDraft() {
     form.elements.message.focus(); form.elements.message.select();
   }
 }
-const workspaceTabs = [
+export const workspaceTabs = [
   {id:'overview', label:'Overview'},
   {id:'market-terms', label:'Compare terms'},
   {id:'timeline', label:'Timeline'},
