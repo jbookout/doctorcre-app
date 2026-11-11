@@ -28,7 +28,7 @@ test("Home audit rejects a new unreachable target at 390px", async (t) => {
   const observe = async () =>
     phoneBaselineRows([{ ...(await inspectPhoneAccessibility(page)), name: "Home", width: 390, theme: "light" }]);
   const baseline = JSON.parse(await readFile("contracts/phone-target-baseline.json", "utf8")).filter(
-    (x) => x.surface === "Home" && x.theme === "light",
+    (x: { surface: string; theme: string }) => x.surface === "Home" && x.theme === "light",
   );
   assert.deepEqual(comparePhoneBaseline(await observe(), baseline), []);
   await page.evaluate(() => {
@@ -52,8 +52,63 @@ test("Home audit rejects a new unreachable target at 390px", async (t) => {
     box: document.getElementById("review-blocked")?.getBoundingClientRect().toJSON(),
   }));
   const failures = comparePhoneBaseline(await observe(), baseline);
-  console.log(JSON.stringify({ actual, failures }));
   assert.equal(actual.tapped, 0);
   assert.equal(actual.hit, "review-cover");
-  assert.ok(failures.length, "The phone audit must fail for a new unreachable Home button");
+  assert.match(failures.join("\n"), /New covered target.*#review-blocked/);
+  const coveredBaseline = await observe();
+  assert.deepEqual(comparePhoneBaseline(coveredBaseline, coveredBaseline), []);
+  await page.locator("#review-cover").evaluate((node) => node.remove());
+  assert.match(comparePhoneBaseline(await observe(), coveredBaseline).join("\n"), /Remove fixed.*#review-blocked/);
+  assert.deepEqual(comparePhoneBaseline(await observe(), baseline), []);
+  await page.touchscreen.tap(50, 230);
+  assert.equal(await page.evaluate(() => Reflect.get(window, "reviewTapped")), 1);
+});
+
+test("Hit testing uses the visible clipped center and the handler owner's descendants", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await page.setContent(`<main>
+    <div id="delegated" onclick="void 0" style="width:60px;height:60px"><span style="display:block;width:60px;height:60px">Tap</span></div>
+    <section style="overflow:hidden;width:20px;height:60px"><button id="clipped" style="width:60px;height:60px">Clip</button></section>
+    <button id="below" style="position:absolute;top:2000px;width:60px;height:60px">Below</button>
+    <button id="covered" style="position:fixed;left:200px;top:200px;width:60px;height:60px">Covered</button>
+    <div style="position:fixed;left:200px;top:200px;width:60px;height:60px;background:white"></div>
+    <button id="no-pointer" style="pointer-events:none;width:60px;height:60px">No pointer</button>
+    <div id="shadow"></div>
+  </main>`);
+  await page.locator("#shadow").evaluate((node) => {
+    node.attachShadow({ mode: "open" }).innerHTML =
+      '<button id="shadow-button" style="width:60px;height:60px">Shadow</button>';
+  });
+  const audit = await inspectPhoneAccessibility(page);
+  assert.deepEqual(audit.covered.map((target) => target.id).sort(), ["covered", "no-pointer"]);
+  assert.equal(audit.small.find((target) => target.id === "clipped")?.width, 20);
+  assert.equal(await page.evaluate(() => scrollY), 0, "Inspection restores the initial scroll position");
+});
+
+test("Scroll-triggered list replacement retains the current logical target", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await page.setContent(
+    '<button id="replaced" style="position:absolute;top:2000px;width:60px;height:60px">Open</button>',
+  );
+  await page.evaluate(() => {
+    window.addEventListener(
+      "scroll",
+      () => {
+        const node = document.getElementById("replaced");
+        const replacement = node?.cloneNode(true);
+        if (node && replacement instanceof HTMLElement) {
+          replacement.dataset.replaced = "true";
+          node.replaceWith(replacement);
+        }
+      },
+      { once: true },
+    );
+  });
+  const audit = await inspectPhoneAccessibility(page);
+  assert.equal(await page.locator("#replaced").getAttribute("data-replaced"), "true");
+  assert.deepEqual(audit.covered, []);
 });

@@ -89,6 +89,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       node.checkVisibility({ checkVisibilityCSS: true, visibilityProperty: true, contentVisibilityAuto: true }) &&
       !hasInertAncestor(node) &&
       !node.matches(":disabled");
+    const activationAreas = new Map<Element, Element>();
     for (const candidate of candidates) {
       const node = candidate.element;
       const box = visible(node) ? clippedBox(node) : { width: 0, height: 0 };
@@ -102,6 +103,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
             })
           : null;
       candidate.box = label ? clippedBox(label) : box;
+      activationAreas.set(node, label || node);
     }
     const targets = candidates.filter(
       (candidate) =>
@@ -111,9 +113,12 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
             (other) => other.reachable && other !== candidate && contains(candidate.element, other.element),
           )),
     );
-    const undersized = (candidate: TapCandidate) => candidate.box.width < 44 || candidate.box.height < 44;
     const selector = (node: Element): string => {
-      if (node.id) return `#${CSS.escape(node.id)}`;
+      if (node.id) {
+        const root = node.getRootNode();
+        const id = `#${CSS.escape(node.id)}`;
+        return root instanceof ShadowRoot ? `${selector(root.host)} >>> ${id}` : id;
+      }
       const parent = node.parentElement;
       const position = parent
         ? [...parent.children].filter((child) => child.tagName === node.tagName).indexOf(node) + 1
@@ -134,7 +139,53 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       class: node.getAttribute("class") || "",
       text: (node.getAttribute("aria-label") || node.textContent || "").trim().slice(0, 80),
     });
-    const small = targets.filter(undersized).map(({ element, box }) => ({ ...describeTarget(element), ...box }));
+    const measured = targets.map(({ element, box }) => ({
+      description: { ...describeTarget(element), ...box },
+      areaSelector: selector(activationAreas.get(element) || element),
+    }));
+    const findArea = (path: string): Element => {
+      let root: Document | ShadowRoot = document;
+      const parts = path.split(" >>> ");
+      for (const [index, part] of parts.entries()) {
+        const node: Element | null = root.querySelector(part);
+        if (!node) throw Error(`Phone target changed during inspection: ${path}`);
+        if (index === parts.length - 1) return node;
+        if (!node.shadowRoot) throw Error(`Phone target shadow root changed: ${path}`);
+        root = node.shadowRoot;
+      }
+      throw Error(`Empty phone target selector: ${path}`);
+    };
+    const scrollPositions = [...document.querySelectorAll("*")].map((node) => ({
+      node,
+      left: node.scrollLeft,
+      top: node.scrollTop,
+    }));
+    const covered: ReturnType<typeof describeTarget>[] = [];
+    try {
+      for (const { description, areaSelector } of measured) {
+        findArea(areaSelector).scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        const area = findArea(areaSelector);
+        const rect = await new Promise<DOMRectReadOnly>((resolve) => {
+          const observer = new IntersectionObserver(([entry]) => {
+            if (!entry) return;
+            observer.disconnect();
+            resolve(entry.intersectionRect);
+          });
+          observer.observe(area);
+        });
+        let hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        while (hit?.shadowRoot) {
+          const inner = hit.shadowRoot.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          if (!inner || inner === hit) break;
+          hit = inner;
+        }
+        if (!rect.width || !rect.height || !hit || (hit !== area && !contains(area, hit))) covered.push(description);
+      }
+    } finally {
+      for (const { node, left, top } of scrollPositions) node.scrollTo({ left, top, behavior: "instant" });
+    }
+    const small = measured.map(({ description }) => description).filter((box) => box.width < 44 || box.height < 44);
     const clipped = targets
       .map(({ element }) => element)
       .filter(
@@ -152,6 +203,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
     return {
       overflow: document.documentElement.scrollWidth > innerWidth,
       small,
+      covered,
       clipped,
       positiveTabindex,
       violations: result.violations.map((v) => ({
