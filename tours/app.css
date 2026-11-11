@@ -13,6 +13,7 @@
 [hidden] { display: none !important; }
 body { margin: 0; min-width: 320px; background: var(--ground); color: var(--fg); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
 body.tour-embedded { min-width: 0; padding: 0; }
+body.tour-embedded #appShell:empty { display: none; }
 body.tour-embedded .layout { display: block; min-height: 0; }
 body.tour-embedded .tours-heading { padding: var(--space-3) 0; }
 body.tour-embedded .workspace { min-width: 0; }
