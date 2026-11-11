@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 import { launchProofBrowser, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
+import { installDragReadGuard } from "./drag-read-guard.ts";
 
 export async function observeStopDrag(page: Page) {
   const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
@@ -80,17 +81,7 @@ export async function prove(options: {
     } catch (error) {
       throw Object.assign(insufficient(), { cause: error });
     }
-    let writes = 0,
-      requests = 0;
-    await context.route("**/*", (route) => {
-      const request = route.request();
-      if (++requests > 300 || new URL(request.url()).origin !== options.origin) return route.abort();
-      if (!["GET", "HEAD"].includes(request.method())) {
-        writes++;
-        return route.abort();
-      }
-      return route.continue();
-    });
+    const guard = await installDragReadGuard(context, options.origin, remaining());
     page.setDefaultTimeout(remaining());
     const observations = [];
     for (const width of [1440, 390])
@@ -122,10 +113,10 @@ export async function prove(options: {
             .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-property-id"))),
           before,
         );
-        assert.equal(writes, 0);
+        assert.equal(guard.writes, 0, "no writes during drag");
         observations.push({ width, theme, orderRestored: true, canonicalReadbackUnchanged: true });
       }
-    return { release, observations, writes };
+    return { release, observations, writes: guard.writes };
   } catch (error) {
     if (controller.signal.aborted || (error instanceof Error && error.name === "TimeoutError")) throw insufficient();
     throw error;
