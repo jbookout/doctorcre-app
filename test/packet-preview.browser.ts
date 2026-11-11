@@ -6,6 +6,7 @@ import { packetFixturePdf } from "../scripts/packet-fixture.ts";
 import { observePacketPreview } from "../scripts/prove-packet-facts.ts";
 import { chromium } from "./browser-harness.mjs";
 import packet from "./fixtures/packet-parity/share.json" with { type: "json" };
+import recording from "./fixtures/packet-parity/text-recording.json" with { type: "json" };
 
 const html = await readFile(new URL("../tours/packet-preview.html", import.meta.url), "utf8");
 const css = await readFile(new URL("../tours/packet-preview.css", import.meta.url), "utf8");
@@ -16,7 +17,7 @@ const code = sourceAssets.get("/js/ui-packet-preview.js")?.body;
 const workerCode = sourceAssets.get("/js/ui-packet-worker.js")?.body;
 assert.ok(code && workerCode);
 const job = "55555555-5555-4555-8555-555555555555";
-test("preview embeds the approved download bytes at desktop and phone widths", async () => {
+test("preview embeds the approved download bytes at desktop and phone widths", async (t) => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
@@ -80,10 +81,82 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
             "Phone page text starts readable without opening a disclosure",
           );
           assert.ok(
-            await text.locator("p").evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize) >= 16),
+            await text
+              .locator("p")
+              .evaluateAll(
+                (nodes) =>
+                  nodes.length > 0 && nodes.every((node) => Number.parseFloat(getComputedStyle(node).fontSize) >= 16),
+              ),
           );
           assert.ok(
             await text.evaluate((node) => {
+              const canvas = node.parentElement?.querySelector("canvas");
+              return !!canvas && node.getBoundingClientRect().bottom <= canvas.getBoundingClientRect().top;
+            }),
+          );
+        }
+        for (const [index, draws] of recording.pages.entries()) {
+          const visible = await page.locator("details").nth(index).locator("summary + *").textContent();
+          assert.equal(visible?.replace(/\s+/g, " ").trim(), draws.map((draw) => draw.text).join(" "));
+        }
+        const property = page.locator("details").nth(1);
+        assert.equal(
+          await property
+            .getByRole("heading", { name: "Alpha Health Center", exact: true, includeHidden: true })
+            .count(),
+          1,
+        );
+        assert.deepEqual(
+          await property
+            .locator("dt")
+            .allTextContents()
+            .then((texts) => texts.map((text) => text.trim())),
+          ["Suite", "Property type", "Size", "Asking economics", "Availability", "Parking"],
+        );
+        assert.ok(
+          await property.evaluate((node) => {
+            const appointment = node.querySelector(".packet-appointment");
+            const fields = node.querySelector("dl");
+            return (
+              !!appointment &&
+              !!fields &&
+              !!(appointment.compareDocumentPosition(fields) & Node.DOCUMENT_POSITION_FOLLOWING)
+            );
+          }),
+        );
+        if (width === 390) {
+          const height = await property.evaluate((node) => node.getBoundingClientRect().height);
+          t.diagnostic(`First property text at ${width} ${theme}: ${height}px`);
+          assert.ok(
+            await page.locator("details").evaluateAll((nodes) =>
+              nodes.every((node) => {
+                const canvas = node.parentElement?.querySelector("canvas");
+                return !!canvas && node.getBoundingClientRect().bottom <= canvas.getBoundingClientRect().top;
+              }),
+            ),
+          );
+          assert.ok(
+            await property.evaluate((node) => {
+              const heading = node.querySelector("h2");
+              const appointment = node.querySelector(".packet-appointment");
+              const value = node.querySelector("dd");
+              return (
+                !!heading &&
+                !!appointment &&
+                !!value &&
+                Number.parseFloat(getComputedStyle(heading).fontSize) >
+                  Number.parseFloat(getComputedStyle(value).fontSize) &&
+                Number.parseInt(getComputedStyle(appointment).fontWeight, 10) >
+                  Number.parseInt(getComputedStyle(value).fontWeight, 10)
+              );
+            }),
+          );
+          assert.ok(
+            height < 755,
+            `Property text must fit the shared report's measured 754.125px height (755px rounded budget), observed ${height}`,
+          );
+          assert.ok(
+            await property.evaluate((node) => {
               const canvas = node.parentElement?.querySelector("canvas");
               return !!canvas && node.getBoundingClientRect().bottom <= canvas.getBoundingClientRect().top;
             }),
@@ -105,6 +178,10 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
         await page.getByRole("button", { name: "Fit page", exact: true }).first().click();
         if (process.env.PACKET_PARITY_SHOTS) {
           await mkdir(process.env.PACKET_PARITY_SHOTS, { recursive: true });
+          if (width === 390)
+            await property.screenshot({ path: `${process.env.PACKET_PARITY_SHOTS}/property-${width}-${theme}.png` });
+          await page.locator("canvas").first().scrollIntoViewIfNeeded();
+          await page.screenshot({ path: `${process.env.PACKET_PARITY_SHOTS}/viewport-${width}-${theme}.png` });
           await page.screenshot({
             path: `${process.env.PACKET_PARITY_SHOTS}/preview-${width}-${theme}.png`,
             fullPage: true,
@@ -140,7 +217,7 @@ test("a refused artifact shows unavailable without embedding a document", async 
   }
 });
 
-test("the public packet renders the same synthetic stop facts at both widths", async () => {
+test("the public packet renders the same synthetic stop facts at both widths", async (t) => {
   const { appAssetSnapshot } = await import("../scripts/fixture-app-assets.mjs");
   const { observePdf, comparePacketStops } = await import("../scripts/packet-pdf-observation.ts");
   const assets = await appAssetSnapshot();
@@ -214,6 +291,13 @@ test("the public packet renders the same synthetic stop facts at both widths", a
           );
           assert.doesNotMatch(await page.locator("#report-list").innerHTML(), /\bstyle\s*=/i);
         }
+        if (width === 390)
+          t.diagnostic(
+            `Shared first property at ${width} ${theme}: ${await page
+              .locator(".report-item")
+              .first()
+              .evaluate((node) => node.getBoundingClientRect().height)}px`,
+          );
         comparePacketStops(pdfStops, pdfStops, share);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         if (process.env.PACKET_PARITY_SHOTS)

@@ -73,13 +73,29 @@ export async function mountPacketPreview(root: HTMLElement, job: string): Promis
       if (disposed) break;
       const text = document.createElement("details"),
         summary = document.createElement("summary"),
-        body = document.createElement("p");
+        body = document.createElement("div");
       summary.textContent = `Read page ${n} text`;
       text.open = matchMedia("(max-width: 600px)").matches;
-      body.textContent = content.items
-        .filter((item) => "str" in item)
-        .map((item) => item.str)
-        .join("\n");
+      body.className = "packet-text";
+      const fields = document.createElement("dl");
+      for (const item of content.items) {
+        if (!("str" in item) || !item.str.trim()) continue;
+        const [x, y] = [item.transform[4], item.transform[5]];
+        const field = n > 1 && y >= 311 && y <= 570;
+        const appointment = n > 1 && y >= 580 && y <= 592;
+        const tag = field ? (x < 210 ? "dt" : "dd") : item.height >= 16 ? "h2" : "p";
+        const parent = field ? fields : body;
+        if (field && !fields.parentElement) body.append(fields);
+        const previous = parent.lastElementChild;
+        const line =
+          previous?.tagName.toLowerCase() === tag && tag !== "p" && (tag !== "h2" || n > 1)
+            ? previous
+            : document.createElement(tag);
+        if (appointment) line.className = "packet-appointment";
+        if (n > 1 && y === 741) line.className = "packet-stop";
+        line.append(document.createTextNode(`${item.str}\n`));
+        if (line !== previous) parent.append(line);
+      }
       text.append(summary, body);
       section.append(text);
     }

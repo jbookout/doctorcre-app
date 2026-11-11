@@ -12,15 +12,26 @@ canvas { display: block; width: 100%; height: auto; margin: 12px 0; border: 1px 
 .packet-page[data-zoom="2"] canvas { width: 200%; }
 button { background: var(--surface-1); color: var(--fg); border: 1px solid var(--hairline-strong); }
 button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button, summary { font: inherit; padding: 12px; min-height: 44px; cursor: pointer; }
+button, summary { box-sizing: border-box; font: inherit; padding: 12px; min-height: 44px; cursor: pointer; }
 section { margin-bottom: 24px; }
-details p { white-space: pre-wrap; line-height: 1.6; }
+.packet-text { padding-block: var(--space-3); font-size: var(--font-size-2); line-height: var(--line-height-body); overflow-wrap: anywhere; }
+.packet-text h2 { margin: 0; font-size: var(--font-size-3); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); }
+.packet-text p { margin: var(--space-2) 0 0; color: var(--fg-muted); white-space: pre-wrap; }
+.packet-text .packet-stop { font-size: var(--font-size-1); }
+.packet-text .packet-appointment { color: var(--fg); font-weight: var(--font-weight-strong); }
+.packet-text dl { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr); gap: var(--space-3) var(--space-4); margin-block: var(--space-5); }
+.packet-text dt { color: var(--fg-muted); }
+.packet-text dd { margin: 0; color: var(--fg); }
+.packet-stop + h2 { margin-top: var(--space-2); }
 
 header, main { max-width: 1000px; margin-inline: auto; box-sizing: border-box; }
 
 @media (max-width: 600px) {
   details { padding: 12px; border: 1px solid var(--hairline); background: var(--surface-1); border-radius: var(--panel-radius); }
-  details p { font-size: 1rem; overflow-wrap: anywhere; }
+  .packet-text { padding-block: 0; font-size: 1rem; line-height: 1.6; }
+  .packet-text h2 { font-size: 1.375rem; }
+  .packet-text dl { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .packet-text dd { margin-bottom: var(--space-3); }
   #packet-preview > section { display: flex; flex-direction: column; gap: 12px; }
   #packet-preview details { order: -1; }
   #packet-preview button { align-self: flex-start; }
