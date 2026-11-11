@@ -180,6 +180,8 @@ jobs:
           ref: ${{ steps.producer.outputs.commit }}
           path: carr-producer
           persist-credentials: false
+      - run: npm ci
+      - run: node scripts/verify-ci-image.ts ../carr-producer
       - name: Install the CARR runtime the way its own CI does
         working-directory: carr-producer
         run: |
@@ -187,8 +189,6 @@ jobs:
           .venv/bin/pip install -r requirements.lock
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           npm --prefix mcp-server ci --no-audit
-      - run: npm ci
-      - run: node scripts/verify-ci-image.ts ../carr-producer
       - name: Install the pinned CARR checkout as the live test package
         run: node scripts/live-producer.mjs
         env:
@@ -235,8 +235,10 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26.12.1
       - run: npm ci
-      - run: node scripts/verify-ci-image.ts
       - run: npm run build
         env:
           DOCTORCRE_SOURCE_COMMIT: ${{ github.sha }}
