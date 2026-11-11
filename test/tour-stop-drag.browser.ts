@@ -129,6 +129,13 @@ for (const width of [390, 1440])
         await page.goto(`${server.origin}/deals`);
         const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
         assert.ok(editor);
+        await editor
+          .locator("#status")
+          .filter({ hasText: /^Tour (ready\.|loaded\. Client responses are unavailable\.)$/ })
+          .waitFor();
+        await editor.waitForFunction(
+          () => document.querySelector<HTMLButtonElement>("#saved-space-searches button")?.disabled === false,
+        );
         await editor.locator("#route-editing").evaluate((node) => {
           if (node instanceof HTMLDetailsElement) node.open = true;
         });
