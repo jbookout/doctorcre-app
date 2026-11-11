@@ -293,7 +293,7 @@ export function createIntroductionRequest({
         if (JSON.stringify(next) !== JSON.stringify(path)) throw Error("Offer changed");
       } catch {
         if (token === generation)
-          change("changed_source", "This offered path changed or expired. Refresh and review it again.");
+          change("changed_source", "This offered path could not be verified. Refresh and review it again.");
         return;
       }
     }

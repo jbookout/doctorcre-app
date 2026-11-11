@@ -326,3 +326,15 @@ test("a recorded request can return to review without duplicating its write", as
   assert.equal(h.model.view().status, "changed_source");
   assert.equal(h.calls.length, 1);
 });
+
+test("an unavailable fresh read blocks writing without claiming the source changed", async () => {
+  const h = harness();
+  h.model.open(h.network, offerId);
+  h.client.getRelationshipNetwork = async () => {
+    throw Object.assign(Error("Unavailable"), { status: 503 });
+  };
+  await h.model.submit("2026-11-10", "Note", true);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.model.view().status, "changed_source");
+  assert.equal(h.model.view().message, "This offered path could not be verified. Refresh and review it again.");
+});

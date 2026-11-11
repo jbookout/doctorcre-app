@@ -15,7 +15,7 @@ stateDiagram-v2
   refused --> changed_source: Offered path unavailable
   confirmed --> changed_source: Offered path unavailable
   reviewing --> submitting: Review and record
-  submitting --> changed_source: Fresh path differs
+  submitting --> changed_source: Source cannot be verified
   submitting --> refused: Server refuses
   submitting --> unknown: Response or readback unavailable
   submitting --> confirmed: Receipt and exact readback match
@@ -43,6 +43,7 @@ Transition-to-test mapping:
 | --- | --- |
 | Selected to reviewing, reviewing to submitting to confirmed | selected path requires explicit review and preserves exact party identities |
 | Submitting to changed source | fresh source refuses restricted/hold/stale/changed/removed/already-requested |
+| Submitting to changed source after a failed read | an unavailable fresh read blocks writing without claiming the source changed |
 | Changed source to reviewing | changed source requires reopening and explicitly reviewing its current identities |
 | Selected/reviewing/refused/confirmed/changed source to changed source on open | unavailable offered path stays unwritable from each review state |
 | Confirmed to reviewing | a recorded request can return to review without duplicating its write |
