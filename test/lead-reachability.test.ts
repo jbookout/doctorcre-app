@@ -24,6 +24,13 @@ const ajv = new Ajv({
 });
 const validate = ajv.compile(schema);
 
+test("invalid leap-second time is refused by both schema and parser", () => {
+  const value = structuredClone(recording.cases.reachable.reachability);
+  value.evaluated_at = "2026-11-11T12:00:60Z";
+  assert.equal(validate(value), false);
+  assert.throws(() => parseReachability(value), { code: "invalid_projection" });
+});
+
 test("producer recordings pass copied contract and production reachability parser", () => {
   const pin = JSON.parse(
     readFileSync(new URL("../contracts/lead-reachability.v2/source.json", import.meta.url), "utf8"),

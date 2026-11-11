@@ -28,12 +28,16 @@ const date: Check = (value) => {
 const timestamp: Check = (value) => {
   if (typeof value !== "string") return false;
   const match = /^(\d{4}-\d{2}-\d{2})[tT ](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[zZ]|[+-](\d{2}):(\d{2}))$/.exec(value);
+  if (!match) return false;
+  const beforeLeap = new Date(value.replace(/:60(?=[.zZ+-]|$)/, ":59"));
+  const validSecond =
+    Number(match[4]) < 60 ||
+    (Number(match[4]) === 60 && beforeLeap.getUTCHours() === 23 && beforeLeap.getUTCMinutes() === 59);
   return (
-    !!match &&
     date(match[1]) &&
     Number(match[2]) < 24 &&
     Number(match[3]) < 60 &&
-    Number(match[4]) <= 60 &&
+    validSecond &&
     Number(match[5] || 0) < 24 &&
     Number(match[6] || 0) < 60
   );
