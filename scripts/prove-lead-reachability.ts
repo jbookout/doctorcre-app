@@ -47,12 +47,9 @@ async function observe(page: Page, origin: string) {
         const reachable = cohort.filter(
           (lead) => parseReachability(lead.reachability)?.classification === "reachable",
         ).length;
-        const unknown = cohort.filter(
-          (lead) => !lead.reachability || parseReachability(lead.reachability)?.evidence_state === "unknown",
-        ).length;
         assert.equal(
           await page.locator("#reachabilitySummary").textContent(),
-          `${reachable} Reachable · ${cohort.length - reachable} Research · ${unknown} unknown`,
+          `${reachable} Reachable · ${cohort.length - reachable} Research`,
         );
         assert.equal(
           await page.locator("#filterSummary").textContent(),

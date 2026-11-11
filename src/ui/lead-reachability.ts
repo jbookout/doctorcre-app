@@ -67,7 +67,7 @@ export function parseReachability(value: unknown): Reachability | null {
 }
 export function reachabilityText(value: unknown): string {
   const read = parseReachability(value);
-  if (!read) return "Research · Unknown. Reachability evidence unavailable.";
+  if (!read) return "Research · Unknown reachability";
   if (read.classification === "reachable") return "Reachable · Successful contact and current verified route";
   return `Research · ${read.evidence_state === "unknown" ? "Unknown. " : ""}${read.missing_reasons.map((reason) => reasons[reason]).join(". ") || "Research needed"}`;
 }

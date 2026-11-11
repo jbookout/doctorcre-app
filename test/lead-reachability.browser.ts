@@ -96,7 +96,7 @@ test("views, keyboard selection, refresh, source change and retirement at both w
           document.documentElement.dataset.theme = theme;
         }, theme);
         await page.locator(".lead-card").waitFor();
-        assert.equal(await page.locator("#reachabilitySummary").textContent(), "1 Reachable · 0 Research · 0 unknown");
+        assert.equal(await page.locator("#reachabilitySummary").textContent(), "1 Reachable · 0 Research");
         await page.locator("#reachabilityFilter").focus();
         await page.keyboard.press("r");
         await page.keyboard.press("Enter");
@@ -109,6 +109,8 @@ test("views, keyboard selection, refresh, source change and retirement at both w
         await page.locator("#refreshBoard").click();
         await page.locator('#leadBoard[aria-busy="false"]').waitFor();
         assert.equal(await page.locator(".lead-card").getAttribute("data-selected"), "true");
+        await page.locator("#reachabilityFilter").scrollIntoViewIfNeeded();
+        await page.screenshot({ path: `/tmp/WR591.S12.J8-shots/${width}-${theme}.png` });
         await page.locator("#showTerritory").click();
         await page.locator(".lead-location").getByText("Market area only", { exact: true }).waitFor();
         const canvas = await page.locator("#territoryMap canvas").elementHandle();
@@ -134,7 +136,6 @@ test("views, keyboard selection, refresh, source change and retirement at both w
           assert.deepEqual([...markers, ...unlocated].sort(), boardIds);
         };
         await membership();
-        await page.screenshot({ path: `/tmp/WR591.S12.J8-shots/${width}-${theme}.png`, fullPage: true });
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         current = recording.cases.unknown;
         await page.locator("#refreshBoard").click();

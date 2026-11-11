@@ -92,9 +92,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if ($("reachabilityFilter")) {
       const cohort = visibleLeads(leads, {...state.filters, reachability: ""});
       const reachable = cohort.filter(lead => lead.reachability?.classification === "reachable").length;
-      const unknown = cohort.filter(lead => !lead.reachability || lead.reachability.evidence_state === "unknown").length;
       $("reachabilityFilter").value = state.filters.reachability;
-      $("reachabilitySummary").textContent = `${reachable} Reachable · ${cohort.length - reachable} Research · ${unknown} unknown`;
+      $("reachabilitySummary").textContent = `${reachable} Reachable · ${cohort.length - reachable} Research`;
     }
     setDocFilters(state.filters);
     if (state.board) publishDocRead("getWorkspace", { ...state.board, leads: shown });
