@@ -12,10 +12,11 @@ type ReadState =
   | { kind: "loading" }
   | { kind: "ready"; items: Destination[]; availability: Availability; inboxNotice: string }
   | { kind: "error" };
+type Sources = { board: unknown; network: unknown; inbox: unknown };
 type Options = {
   opener: HTMLElement;
   pages: { label: string; href: string }[];
-  read: () => Promise<{ board: unknown; network: unknown; inbox: unknown }>;
+  read: (publish: (sources: Sources) => void) => Promise<Sources>;
 };
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -113,13 +114,21 @@ function destinations({
         href: recordRoutes.card(item.item_id),
       }));
   });
-  if (tasks === null) inboxNotice = "Home tasks unavailable. Other accessible results are still available.";
+  if (inbox !== undefined && tasks === null)
+    inboxNotice = "Home tasks unavailable. Other accessible results are still available.";
   const items = new Map([...(deals ?? []), ...(contacts ?? []), ...(tasks ?? [])].map((item) => [item.id, item]));
   return {
     kind: "ready",
     inboxNotice,
     items: [...items.values()],
-    availability: deals !== null ? (contacts !== null ? "full" : "board") : contacts !== null ? "contacts" : "none",
+    availability:
+      deals !== null || board === undefined
+        ? contacts !== null || network === undefined
+          ? "full"
+          : "board"
+        : contacts !== null || network === undefined
+          ? "contacts"
+          : "none",
   };
 }
 
@@ -134,17 +143,26 @@ export async function readQuickSwitcherSources(
   readBoard: () => Promise<unknown>,
   readNetwork: () => Promise<unknown>,
   readInbox: () => Promise<unknown>,
-): Promise<{ board: unknown; network: unknown; inbox: unknown }> {
-  const [board, network, inbox] = await Promise.allSettled([
-    Promise.resolve().then(readBoard),
-    Promise.resolve().then(readNetwork),
-    Promise.resolve().then(readInbox),
-  ]);
-  return {
-    board: board.status === "fulfilled" ? board.value : null,
-    network: network.status === "fulfilled" ? network.value : null,
-    inbox: inbox.status === "fulfilled" ? inbox.value : null,
-  };
+  publish?: (sources: Sources) => void,
+): Promise<Sources> {
+  const sources: Sources = { board: undefined, network: undefined, inbox: undefined };
+  await Promise.all(
+    (
+      [
+        ["board", readBoard],
+        ["network", readNetwork],
+        ["inbox", readInbox],
+      ] as const
+    ).map(async ([source, read]) => {
+      try {
+        sources[source] = await Promise.resolve().then(read);
+      } catch {
+        sources[source] = null;
+      }
+      publish?.({ ...sources });
+    }),
+  );
+  return sources;
 }
 
 export function switcherInboxReader(
@@ -249,19 +267,19 @@ function Switcher({ pages, read, close }: Omit<Options, "opener"> & { close: () 
     let current = true;
     setState({ kind: "loading" });
     setActive(0);
+    const publish = (payload: Sources) => {
+      if (current) {
+        const admitted = destinations(payload);
+        const items = admitted.items;
+        const path = `${location.pathname}${location.search}`;
+        const opened = [...items, ...pageItems].find((item) => item.href === path);
+        if (opened) remember(opened.id);
+        setState(admitted);
+      }
+    };
     void request
-      .read()
-      .then((payload) => {
-        if (current) {
-          const admitted = destinations(payload);
-          const items = admitted.items;
-          const path = `${location.pathname}${location.search}`;
-          const opened = [...items, ...pageItems].find((item) => item.href === path);
-          if (opened) remember(opened.id);
-          setActive(0);
-          setState(admitted);
-        }
-      })
+      .read(publish)
+      .then(publish)
       .catch(() => {
         if (current) setState({ kind: "error" });
       });

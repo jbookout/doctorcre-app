@@ -235,7 +235,9 @@ for (const first of ['board', 'contacts']) test(`shell full source reads run in 
     const { reads, held } = await shell(page, { board: 'held', contacts: 'held' });
     assert.deepEqual(reads, { board: 1, contacts: 1 });
     await held[first]();
-    await status(page, 'Loading accessible items');
+    const firstLabel = first === 'board' ? 'Transport Deal Deal' : `${contact.name} Contact`;
+    await page.getByRole('combobox').fill(first === 'board' ? 'Transport Deal' : contact.name);
+    await page.getByRole('option', { name: firstLabel, exact: true }).waitFor();
     await held[first === 'board' ? 'contacts' : 'board']();
     await page.getByRole('button', { name: 'Retry', exact: true }).waitFor({ state: 'detached' });
     await page.getByRole('combobox').fill('Transport');
@@ -276,8 +278,8 @@ test('shell Retry replaces partial results with current results and removes inac
     const requested = page.waitForRequest('**/api/v1/business/relationships?contract=relationship-network.v1');
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
     await requested;
-    await status(page, 'Loading accessible items');
-    assert.equal(await page.getByRole('option').count(), 0);
+    await page.getByRole('option', { name: 'Transport Task · Transport Deal Task', exact: true }).waitFor();
+    assert.equal(await page.getByRole('option').count(), 1);
     assert.equal(await page.getByRole('combobox').inputValue(), 'Transport');
     assert.equal(await page.getByRole('button', { name: 'Tasks', exact: true }).getAttribute('aria-pressed'), 'true');
     await held.contacts();
@@ -309,7 +311,7 @@ for (const close of ['Escape', 'outside', 'invalidate', 'denied']) test(`shell c
     const page = await browser.newPage();
     const modes = { contacts: 'held', board: 'held' };
     const { held } = await shell(page, modes);
-    await status(page, 'Loading accessible items');
+    await page.getByRole('option', { name: 'Calendar Page', exact: true }).waitFor();
     if (close === 'Escape') await page.getByRole('combobox').press('Escape');
     else if (close === 'outside') await page.mouse.click(5, 5);
     else if (close === 'invalidate') await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));

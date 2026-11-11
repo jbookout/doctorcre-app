@@ -165,20 +165,31 @@ test("ready sources remain visible while inbox is pending, joins or fails, and l
   await page.goto(`${server.origin}/search?mode=fixture`);
   for (const outcome of ["join", "fail", "close", "retire"]) {
     await page.evaluate(async () => {
-      const { openQuickSwitcher, readQuickSwitcherSources, switcherInboxReader } = await import(String("/js/ui-quick-switcher.js"));
-      const inbox = await switcherInboxReader(async () => { throw Error("Fixture must not send"); }, true)();
+      const { openQuickSwitcher, readQuickSwitcherSources, switcherInboxReader } = await import(
+        String("/js/ui-quick-switcher.js")
+      );
+      const inbox = await switcherInboxReader(async () => {
+        throw Error("Fixture must not send");
+      }, true)();
       openQuickSwitcher({
         opener: document.querySelector(".quick-switcher-toggle"),
         pages: [],
-        read: (publish: (value: unknown) => void) => readQuickSwitcherSources(
-          async () => ({ deals: [{ id: "ready", name: "Ready Deal" }] }),
-          () => new Promise((resolve) => Reflect.set(window, "finishNetwork", () => resolve({ nodes: [{ id: "ready-contact", name: "Ready Contact", kind: "contact" }] }))),
-          () => new Promise((resolve, reject) => {
-            Reflect.set(window, "finishInbox", () => resolve(inbox));
-            Reflect.set(window, "failInbox", () => reject(Error("Unavailable")));
-          }),
-          publish,
-        ),
+        read: (publish: (value: unknown) => void) =>
+          readQuickSwitcherSources(
+            async () => ({ deals: [{ id: "ready", name: "Ready Deal" }] }),
+            () =>
+              new Promise((resolve) =>
+                Reflect.set(window, "finishNetwork", () =>
+                  resolve({ nodes: [{ id: "ready-contact", name: "Ready Contact", kind: "contact" }] }),
+                ),
+              ),
+            () =>
+              new Promise((resolve, reject) => {
+                Reflect.set(window, "finishInbox", () => resolve(inbox));
+                Reflect.set(window, "failInbox", () => reject(Error("Unavailable")));
+              }),
+            publish,
+          ),
       });
     });
     await page.getByRole("combobox").fill("Ready");
