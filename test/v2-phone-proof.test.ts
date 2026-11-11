@@ -2,8 +2,30 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import test from "node:test";
 import { promisify } from "node:util";
+import { inspectPhoneAccessibility } from "../scripts/phone-accessibility.ts";
+import { chromium } from "./browser-harness.mjs";
 
 const execute = promisify(execFile);
+test("Inspector measures the same-origin tour frame rather than only the parent", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.route("http://phone.test/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: route.request().url().endsWith("/frame")
+        ? '<!doctype html><html lang="en"><head><title>Tour</title></head><body><main><h1>Tour</h1><button style="height:20px">Small frame target</button></main></body></html>'
+        : '<!doctype html><iframe title="Tour" src="/frame"></iframe>',
+    }),
+  );
+  await page.goto("http://phone.test/");
+  await page.frameLocator("iframe").getByRole("button").waitFor();
+  const frame = page.frames().find((frame) => frame.url().endsWith("/frame"));
+  assert.ok(frame);
+  const result = await inspectPhoneAccessibility(page, frame);
+  assert.equal(result.small.length, 1);
+  assert.equal(result.small[0]?.text, "Small frame target");
+});
 for (const fixture of ["pass", "fail"])
   test(`V2 phone proof CLI ${fixture} fixture`, async () => {
     const command = [

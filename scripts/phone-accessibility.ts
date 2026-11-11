@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import type { AxeResults } from "axe-core";
-import type { Page } from "playwright";
+import type { Frame, Page } from "playwright";
 
-export async function inspectPhoneAccessibility(page: Page) {
-  await page.evaluate(async () => {
+export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.mainFrame()) {
+  await frame.evaluate(async () => {
     await Promise.all(
       document
         .getAnimations()
@@ -13,8 +13,8 @@ export async function inspectPhoneAccessibility(page: Page) {
   });
   const axeSource = await readFile(new URL("../node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
   await page.route("**/__phone-axe.js", (route) => route.fulfill({ contentType: "text/javascript", body: axeSource }));
-  await page.addScriptTag({ url: new URL("/__phone-axe.js", page.url()).href });
-  const measurements = await page.evaluate(async () => {
+  await frame.addScriptTag({ url: new URL("/__phone-axe.js", frame.url()).href });
+  const measurements = await frame.evaluate(async () => {
     const visible = (node: Element) => {
       const r = node.getBoundingClientRect();
       return (
@@ -69,14 +69,14 @@ export async function inspectPhoneAccessibility(page: Page) {
     };
   });
   const focusOrder = [];
-  await page.evaluate(() => {
+  await frame.evaluate(() => {
     document.body.tabIndex = -1;
     document.body.focus();
     document.body.removeAttribute("tabindex");
   });
   for (let index = 0; index < 24; index++) {
     await page.keyboard.press("Tab");
-    const focus = await page.evaluate(() => {
+    const focus = await frame.evaluate(() => {
       const node = document.activeElement;
       if (!(node instanceof HTMLElement) || node === document.body) return null;
       const style = getComputedStyle(node);

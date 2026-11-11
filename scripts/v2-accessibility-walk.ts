@@ -1,11 +1,11 @@
-import type { Page } from "playwright";
+import type { Frame, Page } from "playwright";
 import { inspectPhoneAccessibility } from "./phone-accessibility.ts";
 
 export async function walkV2Accessibility(page: Page, origin: string, capture: (name: string) => Promise<void>) {
   const results: ({ name: string } & Awaited<ReturnType<typeof inspectPhoneAccessibility>>)[] = [];
-  const inspect = async (name: string) => {
+  const inspect = async (name: string, frame?: Frame) => {
     await page.evaluate(() => document.fonts.ready);
-    const result = { name, ...(await inspectPhoneAccessibility(page)) };
+    const result = { name, ...(await inspectPhoneAccessibility(page, frame)) };
     await capture(name);
     results.push(result);
   };
@@ -39,19 +39,26 @@ export async function walkV2Accessibility(page: Page, origin: string, capture: (
       await inspect("Deal");
     }
     if (name === "Tours library") {
-      await page.goto(new URL("/tours/route-editor.html", origin).href);
-      await page.locator(".tour-button").first().click();
-      await page
-        .locator("#tour-panel")
-        .waitFor({ state: "visible", timeout: 5000 })
-        .catch(async (error) => {
-          throw new Error(`${error.message} ${await page.locator("#status").textContent()}`);
-        });
-      const sheet = page.locator("#internal-cheat-sheet");
+      const href = await page.locator(".tour-button").first().getAttribute("href");
+      let frame = page.mainFrame();
+      if (href?.startsWith("/deals?")) {
+        await page.goto(new URL(href, origin).href);
+        const editor = page.locator('iframe[title="Tour shortlist, route and packet"]');
+        await editor.waitFor({ state: "visible" });
+        const element = await editor.elementHandle();
+        const embedded = await element?.contentFrame();
+        if (!embedded) throw Error("Tour editor frame unavailable");
+        frame = embedded;
+      } else {
+        await page.goto(new URL("/tours/route-editor.html", origin).href);
+        await page.locator(".tour-button").first().click();
+      }
+      await frame.locator("#tour-panel").waitFor({ state: "visible", timeout: 10000 });
+      const sheet = frame.locator("#internal-cheat-sheet");
       if (!(await sheet.evaluate((node) => node instanceof HTMLDetailsElement && node.open)))
         await sheet.locator(":scope > summary").click();
-      await page.locator("#cheat-content").waitFor({ state: "visible" });
-      await inspect("Tour and cheat sheet");
+      await frame.locator("#cheat-content").waitFor({ state: "visible" });
+      await inspect("Tour and cheat sheet", frame);
     }
   }
   return results;
