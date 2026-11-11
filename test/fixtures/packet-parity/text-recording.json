@@ -1,0 +1,403 @@
+{
+  "schema": "doctorcre-carr-packet-text-recording.v2",
+  "as_of": "2026-08-27T12:00:00Z",
+  "creator": "CARR Tour Operations 2.0.0",
+  "property_refs": [
+    null,
+    "property:public:AlphaHealthCenter01",
+    "property:public:BetaMedicalPlaza0002"
+  ],
+  "pages": [
+    [
+      {
+        "text": "CARR Healthcare Real Estate",
+        "x": 42,
+        "y": 740,
+        "size": 11,
+        "bold": false
+      },
+      {
+        "text": "Your property tour",
+        "x": 42,
+        "y": 717,
+        "size": 24,
+        "bold": true
+      },
+      {
+        "text": "2 properties in tour order.",
+        "x": 42,
+        "y": 681,
+        "size": 11,
+        "bold": false
+      },
+      {
+        "text": "Tour day at a glance",
+        "x": 42,
+        "y": 658,
+        "size": 16,
+        "bold": true
+      },
+      {
+        "text": "1. A · Alpha Health Center · 100 Alpha Drive, Pensacola, FL · 2031-03-04T14:00:00.123456+00:00 to",
+        "x": 42,
+        "y": 630,
+        "size": 11,
+        "bold": false
+      },
+      {
+        "text": "2031-03-04T14:30:00.123456+00:00",
+        "x": 42,
+        "y": 615,
+        "size": 11,
+        "bold": false
+      },
+      {
+        "text": "2. B · Beta Medical Plaza · 200 Beta Lane, Pensacola, FL",
+        "x": 42,
+        "y": 592,
+        "size": 11,
+        "bold": false
+      },
+      {
+        "text": "Tour map",
+        "x": 42,
+        "y": 569,
+        "size": 16,
+        "bold": true
+      },
+      {
+        "text": "Properties",
+        "x": 42,
+        "y": 541,
+        "size": 16,
+        "bold": true
+      }
+    ],
+    [
+      {
+        "text": "Stop A",
+        "x": 42,
+        "y": 741,
+        "size": 11,
+        "bold": true
+      },
+      {
+        "text": "Alpha Health Center",
+        "x": 42,
+        "y": 687,
+        "size": 24,
+        "bold": true
+      },
+      {
+        "text": "100 Alpha Drive, Pensacola, FL",
+        "x": 42,
+        "y": 622,
+        "size": 11.5,
+        "bold": false
+      },
+      {
+        "text": "2031-03-04T14:00:00.123456+00:00 to 2031-03-04T14:30:00.123456+00:00",
+        "x": 42,
+        "y": 592,
+        "size": 9,
+        "bold": false
+      },
+      {
+        "text": "Suite",
+        "x": 42,
+        "y": 570,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 62.4525,
+        "y": 570,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "Suite 120",
+        "x": 210,
+        "y": 570,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Property type",
+        "x": 42,
+        "y": 521,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 97.6695,
+        "y": 521,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "Medical office",
+        "x": 210,
+        "y": 521,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Size",
+        "x": 42,
+        "y": 472,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 58.164,
+        "y": 472,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "1600 SF",
+        "x": 210,
+        "y": 472,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Asking economics",
+        "x": 42,
+        "y": 423,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 113.99549999999999,
+        "y": 423,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "USD 24.00 per NNN",
+        "x": 210,
+        "y": 423,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Availability",
+        "x": 42,
+        "y": 374,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 86.67150000000002,
+        "y": 374,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "Available",
+        "x": 210,
+        "y": 374,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Parking",
+        "x": 42,
+        "y": 325,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 72.42,
+        "y": 325,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "4.5/1,000 SF",
+        "x": 210,
+        "y": 325,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Please meet in the lobby",
+        "x": 42,
+        "y": 290,
+        "size": 10,
+        "bold": false
+      },
+      {
+        "text": "My Notes",
+        "x": 42,
+        "y": 267,
+        "size": 12,
+        "bold": true
+      }
+    ],
+    [
+      {
+        "text": "Stop B",
+        "x": 42,
+        "y": 741,
+        "size": 11,
+        "bold": true
+      },
+      {
+        "text": "Beta Medical Plaza",
+        "x": 42,
+        "y": 687,
+        "size": 24,
+        "bold": true
+      },
+      {
+        "text": "200 Beta Lane, Pensacola, FL",
+        "x": 42,
+        "y": 622,
+        "size": 11.5,
+        "bold": false
+      },
+      {
+        "text": "Suite",
+        "x": 42,
+        "y": 570,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 62.4525,
+        "y": 570,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "Suite 220",
+        "x": 210,
+        "y": 570,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Property type",
+        "x": 42,
+        "y": 521,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 97.6695,
+        "y": 521,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "Medical office",
+        "x": 210,
+        "y": 521,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Size",
+        "x": 42,
+        "y": 472,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 58.164,
+        "y": 472,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "2600 SF",
+        "x": 210,
+        "y": 472,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Asking economics",
+        "x": 42,
+        "y": 423,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 113.99549999999999,
+        "y": 423,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "USD 24.00 per NNN",
+        "x": 210,
+        "y": 423,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Availability",
+        "x": 42,
+        "y": 374,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 86.67150000000002,
+        "y": 374,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "Available",
+        "x": 210,
+        "y": 374,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "Parking",
+        "x": 42,
+        "y": 325,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": " ",
+        "x": 72.42,
+        "y": 325,
+        "size": 9,
+        "bold": true
+      },
+      {
+        "text": "5 spaces",
+        "x": 210,
+        "y": 325,
+        "size": 10.5,
+        "bold": false
+      },
+      {
+        "text": "My Notes",
+        "x": 42,
+        "y": 267,
+        "size": 12,
+        "bold": true
+      }
+    ]
+  ]
+}

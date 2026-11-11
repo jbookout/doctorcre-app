@@ -11,5 +11,7 @@
     "mcp-server/src/tour-packet-template.ts": "b15ce046fdeb64763fd00114442c12d36840075e8e5b09096064da015aa80365",
     "mcp-server/src/tour-sharing.js": "cd330e7e66285bf4bc2aa806f4095c85772a82a44c745fb01079fee378fbe7dd"
   },
-  "note": "Recorded synthetic renderTourPacket, renderTourPacketPdf and projectTourClientPacket output. No production data."
+  "note": "Synthetic actual 2.0.0 renderer text, coordinates, font weights and page identity recorded from PDF bytes. Tests replay Base14 fonts; exact embedded-font fidelity is not asserted. HTML and share are actual producer outputs.",
+  "output": "text-recording.json",
+  "pdf_sha256": "5aeb839d5c48534a5f3bb5adf0d5d54bc160c326e40f1d26736339fbef2f6242"
 }
