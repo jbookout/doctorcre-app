@@ -13,7 +13,7 @@ async function setup(t, count, holdInitial = false) {
   const page = await browser.newPage({viewport:{width:390,height:844}});
   await page.goto(server.origin);
   await page.evaluate(async response => {
-    const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.js');
+    const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.generated.js');
     window.calls=0; window.payload=response; window.failure=null; window.pending=null;
     const host=document.createElement('div'); document.body.append(host);
     window.view=mountTerritoryEvidence(host,{getTerritoryStateBoard:async()=>{window.calls++;if(window.failure)throw window.failure;return window.pending||window.payload;}},()=>{});

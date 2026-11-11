@@ -10,7 +10,7 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`corr
  await page.goto(server.origin+'/conversations');
  const mount=async seed=>page.evaluate(async({conversation,seed,theme})=>{
   document.documentElement.dataset.theme=theme;
-  const {mountAskComposer}=await import('/js/ui-host.js');
+  const {mountAskComposer}=await import('/js/ui-host.generated.js');
   const prefix=`doctorcre:asks:v1:isolated-browser:${conversation}:`,key='22222222-2222-4222-8222-222222222222';
   if(seed){
    localStorage.setItem(prefix+'before','{');
@@ -78,7 +78,7 @@ for (const width of [390,1280]) test(`recovery after repeated failed reconnects 
  await page.goto(`${server.origin}/conversations`);
  await page.locator('main').waitFor();
  await page.evaluate(async conversation=>{
-  const {mountAskComposer}=await import('/js/ui-host.js');
+  const {mountAskComposer}=await import('/js/ui-host.generated.js');
   const host=document.createElement('section');host.id='recoveryProbe';document.querySelector('main').append(host);
   let sessionCalls=0;const calls=[];
   window.askProbe={calls,get sessionCalls(){return sessionCalls;}};
@@ -122,7 +122,7 @@ test('session verification stays single-flight and closing prevents later startu
  const page=await browser.newPage();await page.goto(`${server.origin}/conversations`);
  await page.locator('main').waitFor();
  await page.evaluate(async conversation=>{
-  const {mountAskComposer}=await import('/js/ui-host.js');
+  const {mountAskComposer}=await import('/js/ui-host.generated.js');
   const host=document.createElement('section');host.id='sessionProbe';document.querySelector('main').append(host);
   let calls=0;
   window.sessionProbe={get calls(){return calls;}};
@@ -136,7 +136,7 @@ test('session verification stays single-flight and closing prevents later startu
  assert.equal(await host.textContent(),'');
  assert.equal(await page.evaluate(()=>window.sessionProbe.calls),1);
  await page.evaluate(async conversation=>{
-  const {mountAskComposer}=await import('/js/ui-host.js');
+  const {mountAskComposer}=await import('/js/ui-host.generated.js');
   const host=document.createElement('section');host.id='unavailableProbe';document.querySelector('main').append(host);
   let calls=0;const dispose=await mountAskComposer(host,{askSession:async()=>{calls++;throw Error('offline');},submitDocRequest:async()=>({})},conversation);
   window.unavailableProbe={get calls(){return calls;},dispose};
@@ -152,7 +152,7 @@ test('malformed draft reports recovery while typing and sending',async t=>{
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage();await page.goto(server.origin+'/conversations');
  await page.evaluate(async conversation=>{
-  const {mountAskComposer}=await import('/js/ui-host.js');
+  const {mountAskComposer}=await import('/js/ui-host.generated.js');
   const host=document.createElement('section');host.id='draftProbe';document.querySelector('main').append(host);
   window.draftProbe={key:`doctorcre:asks:v1:draft-probe:${conversation}:draft`,calls:0};
   localStorage.setItem(window.draftProbe.key,'{');
@@ -173,7 +173,7 @@ test('session invalidation during submission ignores held receipt and stops queu
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage();await page.goto(server.origin+'/conversations');
  await page.evaluate(async conversation=>{
-  const {mountAskComposer}=await import('/js/ui-host.js');
+  const {mountAskComposer}=await import('/js/ui-host.generated.js');
   const prefix=`doctorcre:asks:v1:retirement-probe:${conversation}:`;
   for(const key of ['22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333'])localStorage.setItem(prefix+key,JSON.stringify({kind:'queued',request:{body:'Saved '+key,idempotency_key:key,conversation_id:conversation}}));
   const host=document.createElement('section');host.id='retirementProbe';document.querySelector('main').append(host);
@@ -199,7 +199,7 @@ for (const corruption of ['conversation_id','idempotency_key']) test(`late accep
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage();await page.goto(server.origin+'/conversations');
  await page.evaluate(async conversation=>{
-  const {mountAskComposer}=await import('/js/ui-host.js');
+  const {mountAskComposer}=await import('/js/ui-host.generated.js');
   const host=document.createElement('section');host.id='receiptProbe';document.querySelector('main').append(host);
   const prefix=`doctorcre:asks:v1:receipt-probe:${conversation}:`;
   for(const [i,key] of ['22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333'].entries())localStorage.setItem(prefix+key,JSON.stringify({kind:'queued',request:{body:i?'Second':'First',idempotency_key:key,conversation_id:conversation}}));

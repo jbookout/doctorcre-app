@@ -23,7 +23,7 @@ for (const width of [390, 1280])
       }, theme);
       assert.ok((await page.evaluate(exerciseQueueMenu)).every((result) => result.passed));
       await page.evaluate(async () => {
-        const { createBriefQueueView } = await import("/js/ui-queue.js");
+        const { createBriefQueueView } = await import("/js/ui-queue.generated.js");
         const menu = document.querySelector<HTMLElement>("#morningQueueMenu");
         const content = document.querySelector("main");
         if (!menu || !content) throw Error("fixture hosts missing");

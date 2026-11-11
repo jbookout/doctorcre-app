@@ -4,7 +4,7 @@
   "targets": ["app"],
   "assertions": [{
     "id": "answer-source-positive-safe-version",
-    "predicate": "Run node scripts/prove-answer-source-safe-version.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. Observe /app-release and execute fetched /js/ui-answers.js and its same-origin generated chunks through mountAnswerBlocks. Positive safe fact versions and record sources render, unsafe JSON versions and zero, negative, fractional and nonfinite versions show Interactive answer unavailable, plain prose survives, and disposal clears the mount.",
+    "predicate": "Run node scripts/prove-answer-source-safe-version.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. Observe /app-release and execute fetched /js/ui-answers.generated.js and its same-origin generated chunks through mountAnswerBlocks. Positive safe fact versions and record sources render, unsafe JSON versions and zero, negative, fractional and nonfinite versions show Interactive answer unavailable, plain prose survives, and disposal clears the mount.",
     "runner": "app-release-live-walk.v1",
     "expected_result": "Exit 0 with release identity, exact fetched module SHA256 hashes and all named assertions passing. Exit 1 on contradiction or 78 when release or assets are unavailable.",
     "input_class": "read-only deployed asset observation with isolated synthetic browser props",

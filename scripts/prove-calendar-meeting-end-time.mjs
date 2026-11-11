@@ -28,7 +28,7 @@ export const calendarRecordings = {
 
 export async function observe(recordings) {
   const response = name => structuredClone(recordings.records.find(record => record.name === name).response);
-  const { mountCalendarPanels } = await import('/js/ui-calendar-panels.js');
+  const { mountCalendarPanels } = await import('/js/ui-calendar-panels.generated.js');
   const left = document.querySelector('#left'), right = document.querySelector('#right');
   const panel = await mountCalendarPanels(left, right);
   const labels = node => [...node.querySelectorAll('.calendar-panel-meeting time')].map(el => el.textContent);
@@ -140,7 +140,7 @@ export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com',
       } catch { throw unavailable('Release does not establish expected commit containment'); }
     }
     remaining();
-    await read('/js/ui-calendar-panels.js');
+    await read('/js/ui-calendar-panels.generated.js');
     browser = await launchProofBrowser(engine, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     const observations = [];
     for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {

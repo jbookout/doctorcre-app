@@ -24,7 +24,7 @@ const exec = promisify(execFile);
 async function run(t, mode, timeout = '30000') {
   const routes = new Map([...(disposalMutants.get(mode)||assets)].map(([key,body])=>['/'+key,
     mode==='unavailable'||mode==='chunk-missing'&&key.includes('ui-shared-')?{status:404}:{contentType:'text/javascript',body}]));
-  if(mode==='contradiction'||mode==='foreign-import')routes.set('/js/ui-territory-evidence.js',{contentType:'text/javascript',body:mode==='contradiction'?'export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}':'import "https://foreign.invalid/a.js";'});
+  if(mode==='contradiction'||mode==='foreign-import')routes.set('/js/ui-territory-evidence.generated.js',{contentType:'text/javascript',body:mode==='contradiction'?'export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}':'import "https://foreign.invalid/a.js";'});
   routes.set('/app-release',{contentType:'application/json',body:mode==='release-missing'?'{}':JSON.stringify({service:'doctorcre-app',source_commit:'a'.repeat(40),environment:'production'}),...(mode==='timeout'?{hold:'timeout'}:{})});
   const server=await startFixture({routes});
   t.after(()=>server.close());

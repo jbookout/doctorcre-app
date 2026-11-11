@@ -23,7 +23,7 @@ test('refresh retains last successful metadata and replaces scans', async t => {
           const recordings = structuredClone(refreshRecordings);
           recordings[recording].request.limit = 49;
           await assert.rejects(
-            page.evaluate(observeRefreshRetention, { assetUrl: '/js/ui-deal-documents.js', recordings }),
+            page.evaluate(observeRefreshRetention, { assetUrl: '/js/ui-deal-documents.generated.js', recordings }),
             new RegExp(`recorded ${recording} request matches production call`),
           );
         } finally { await page.close(); }
@@ -35,7 +35,7 @@ test('refresh retains last successful metadata and replaces scans', async t => {
         try {
           await componentDocument(page, server.url, {owner:'documents refresh', html: '<!doctype html><body><main></main></body>'});
           await page.evaluate(async ({ transition, response }) => {
-            const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+            const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
             const target = document.querySelector('main'), pending = [], requests = [];
             const panel = mountDealDocuments(target, { dealId: '11111111-1111-4111-8111-111111111111', client: {
               listDealDocuments(args, { signal }) {
@@ -89,7 +89,7 @@ test('refresh retains last successful metadata and replaces scans', async t => {
           const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
           try {
             await componentDocument(page, server.url, {owner:'documents refresh', html: '<!doctype html><body></body>'});
-            const result = await page.evaluate(observeRefreshRetention, { assetUrl: '/js/ui-deal-documents.js', recordings: refreshRecordings, failure, replacement });
+            const result = await page.evaluate(observeRefreshRetention, { assetUrl: '/js/ui-deal-documents.generated.js', recordings: refreshRecordings, failure, replacement });
             assert.ok(result.retained || result.authorizationCleared);
           } finally { await page.close(); }
         });

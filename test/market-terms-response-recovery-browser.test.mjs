@@ -15,7 +15,7 @@ test('malformed comparison retains workspace and recovers on explicit retry in b
       await page.locator('#detailUpdateForm').waitFor({ state: 'visible' });
       await page.evaluate(async theme => {
         document.documentElement.dataset.theme = theme;
-        const { mountMarketTerms } = await import('/js/ui-market.js');
+        const { mountMarketTerms } = await import('/js/ui-market.generated.js');
         const root = document.createElement('section'); root.id = 'recovery-proof';
         document.querySelector('#recordPanel').append(root);
         let reads = 0;

@@ -52,7 +52,7 @@ test('proof command uses served modules and fails closed on unavailable assets a
       if(mode==='protected-module')routes.set(key,{status:403});
       if(mode==='missing-export')routes.set(key,{contentType:'text/javascript',body:'export const missing = true;'});
     }
-    if(mode==='accepts-impossible-date')routes.set('/js/ui-ideal-client-profile.js',{contentType:'text/javascript',body:invalidDates.outputFiles[0].text});
+    if(mode==='accepts-impossible-date')routes.set('/js/ui-ideal-client-profile.generated.js',{contentType:'text/javascript',body:invalidDates.outputFiles[0].text});
     routes.set('/app-release',{status:mode==='protected-release'?401:200,contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:mode==='stale'?'0'.repeat(40):revision}),...(mode==='timeout'?{hold:'timeout'}:{})});
     server=await startFixture({routes});
     return ['--origin',server.origin,'--expected-revision',revision,'--timeout-ms','30000'];
@@ -64,7 +64,7 @@ test('proof command uses served modules and fails closed on unavailable assets a
   const receipt = JSON.parse(passed.stdout);
   assert.equal(receipt.origin, origin); assert.equal(receipt.release.source_commit, revision);
   assert.equal(receipt.assertions.length, 7);
-  assert.ok(receipt.assertions.includes('invalidation terminally retires history')); assert.ok(receipt.module_urls.some(url => url.endsWith('/js/ui-ideal-client-profile.js')));
+  assert.ok(receipt.assertions.includes('invalidation terminally retires history')); assert.ok(receipt.module_urls.some(url => url.endsWith('/js/ui-ideal-client-profile.generated.js')));
   const brokenArgs=await prepare('accepts-impossible-date');
   const contradiction = await cli([...brokenArgs.slice(0, -1), '2000']);
   assert.equal(contradiction.code, 1, 'proof refuses renderer accepting February 31');

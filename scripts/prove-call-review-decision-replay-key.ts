@@ -38,7 +38,7 @@ export async function exercise({
     skipped: ReturnType<typeof resolverFixture>;
   };
 }) {
-  const { mountCallReview } = await import("/js/" + "ui-call.js");
+  const { mountCallReview } = await import("/js/" + "ui-call.generated.js");
   const { createLiveClient } = await import("/js/" + "live-client.js");
   function check(value: unknown, message: string): asserts value {
     if (!value) throw new Error(message);
@@ -204,7 +204,7 @@ export async function prove({
         await load(url.pathname);
       }
     }
-    await load("/js/ui-call.js");
+    await load("/js/ui-call.generated.js");
     await load("/js/live-client.js");
     const browser = await launchProofBrowser(
       chromium,

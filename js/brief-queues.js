@@ -1,6 +1,6 @@
 import { readWithDeadline } from './auto-refresh.mjs';
 
-const QUEUE_VIEW = './ui-queue.js';
+const QUEUE_VIEW = './ui-queue.generated.js';
 const present = value => typeof value === 'string' && value.length > 0;
 function validPage(value, sponsor, previousCursor) {
   return value?.sponsor === sponsor && value.state !== 'unavailable' && Array.isArray(value.items) && value.returned === value.items.length && Number.isInteger(value.total) && value.total >= value.items.length

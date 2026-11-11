@@ -36,7 +36,7 @@ test('declaration command reaches real fixture assertions and refuses missing pr
       for (const [path, asset] of routes) routes.set(path, { ...asset, body: String(asset.body).replaceAll('Received', 'Received extra') });
     }
     routes.set('/app-release',{contentType:'application/json',body:JSON.stringify(mode==='release'?{}:{service:'doctorcre-app',environment:'production',source_commit:commit}),...(mode==='timeout'?{hold:'timeout'}:{})});
-    if(mode==='export'||mode==='assertion')routes.set('/js/ui-checklist.js',{contentType:'text/javascript',body:mode==='export'?'export const wrong = true;':'export function mountDealChecklist() { return {update(){},dispose(){}}; }'});
+    if(mode==='export'||mode==='assertion')routes.set('/js/ui-checklist.generated.js',{contentType:'text/javascript',body:mode==='export'?'export const wrong = true;':'export function mountDealChecklist() { return {update(){},dispose(){}}; }'});
     const server = await startFixture({routes});servers.push(server);return server.origin;
   }
   t.after(()=>Promise.all(servers.map(server=>server.close())));
@@ -50,7 +50,7 @@ test('declaration command reaches real fixture assertions and refuses missing pr
   const receipt = JSON.parse(result.stdout);
   assert.equal(receipt.natural.origin, origin);
   assert.equal(receipt.natural.assertions.length, 3);
-  assert.ok(receipt.natural.loaded_module_urls.includes(`${origin}/js/ui-checklist.js`));
+  assert.ok(receipt.natural.loaded_module_urls.includes(`${origin}/js/ui-checklist.generated.js`));
   for (const failure of ['release', 'export', 'assertion', 'near-miss', 'timeout']) {
     const origin = await prepare(failure);
     const failed = await cli(['--origin', origin, '--expected-commit',commit, '--timeout-ms', failure === 'timeout' ? '100' : '30000']);

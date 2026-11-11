@@ -15,10 +15,10 @@ async function serve(mode) {
  const root=resolve(outDir,'site');
  const responses = await loadFixtureAssets({ root, manifest: new Map(manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
  if (mode === 'missing') responses.clear();
- if (mode === 'contradiction') responses.set('/js/ui-inbox.js', { contentType: 'text/javascript', body: 'document.querySelector("main").textContent="Wrong deployed behavior";' });
- if (mode === 'bytes') responses.set('/js/ui-inbox.js', { contentType: 'text/javascript', body: ' '.repeat(11*1024*1024) });
+ if (mode === 'contradiction') responses.set('/js/ui-inbox.generated.js', { contentType: 'text/javascript', body: 'document.querySelector("main").textContent="Wrong deployed behavior";' });
+ if (mode === 'bytes') responses.set('/js/ui-inbox.generated.js', { contentType: 'text/javascript', body: ' '.repeat(11*1024*1024) });
  if (mode === 'assets') {
-  responses.set('/js/ui-inbox.js', { contentType: 'text/javascript', body: "import './asset-1.js';" });
+  responses.set('/js/ui-inbox.generated.js', { contentType: 'text/javascript', body: "import './asset-1.js';" });
   for (let i = 1; i <= 32; i++) responses.set(`/js/asset-${i}.js`, { contentType: 'text/javascript', body: `import './asset-${i+1}.js';` });
  }
  if (mode === 'observing-timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
@@ -30,7 +30,7 @@ async function serve(mode) {
 test('exact production-proof declaration and command pass fetched fixture bytes',async()=>{
  const plan=JSON.parse(await readFile('proofs/requirements/waiting-editor-canonical-reopen.json','utf8'));
  assert.ok(plan.assertions[0].predicate.includes(`node ${runner} --origin https://app.doctorcre.com --timeout-ms 30000`));
- const server=await serve('pass');try{const result=await cli(server.origin);assert.equal(result.code,0,result.stderr);const receipt=JSON.parse(result.stdout);assert.equal(receipt.assertions.length,5);assert.ok(receipt.assets.length<=30);assert.ok(receipt.fetched_bytes<=10*1024*1024);assert.ok(receipt.assets.every(a=>/^[0-9a-f]{64}$/.test(a.sha256)));assert.ok(receipt.assets.some(a=>a.path==='/js/ui-inbox.js'));assert.ok(server.requests.every(r=>r.method==='GET'));}finally{await server.close();}
+ const server=await serve('pass');try{const result=await cli(server.origin);assert.equal(result.code,0,result.stderr);const receipt=JSON.parse(result.stdout);assert.equal(receipt.assertions.length,5);assert.ok(receipt.assets.length<=30);assert.ok(receipt.fetched_bytes<=10*1024*1024);assert.ok(receipt.assets.every(a=>/^[0-9a-f]{64}$/.test(a.sha256)));assert.ok(receipt.assets.some(a=>a.path==='/js/ui-inbox.generated.js'));assert.ok(server.requests.every(r=>r.method==='GET'));}finally{await server.close();}
 });
 for(const [mode,expected] of [['unavailable',78],['missing',78],['timeout',78],['contradiction',1],['bytes',78],['assets',78]])test(`proof ${mode} exit ${expected}`,async()=>{
  const server=await serve(mode);try{const result=await cli(server.origin,mode==='timeout'?'100':'3000');assert.equal(result.code,expected,result.stderr);assert.notEqual(result.stderr,'');}finally{await server.close();}
@@ -105,7 +105,7 @@ test('observation deadline closes the browser during an asset fetch', async () =
   assert.equal(result.code, 78, result.stderr);
   assert.match(result.stderr, /Proof deadline exceeded/);
   assert.match(result.stderr, /browser disconnected/);
-  assert.ok(server.requests.some(request => request.url === '/js/ui-inbox.js'));
+  assert.ok(server.requests.some(request => request.url === '/js/ui-inbox.generated.js'));
  } finally { await server.close(); }
 });
 
@@ -122,7 +122,7 @@ test('independent host root probe cannot enter proof request observations', asyn
   const [result] = await Promise.all([cli(server.origin), probe]);
   assert.equal(result.code, 0, result.stderr);
   assert.ok(server.requests.some(request => request.url === '/app-release'));
-  assert.ok(server.requests.some(request => request.url === '/js/ui-inbox.js'));
+  assert.ok(server.requests.some(request => request.url === '/js/ui-inbox.generated.js'));
   assert.equal(server.requests.filter(request => request.url === '/').length, 0);
  } finally { await server.close(); }
 });

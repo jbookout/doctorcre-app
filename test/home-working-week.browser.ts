@@ -77,7 +77,7 @@ test("working week refreshes, replaces selected sources and refuses retired late
   );
   await page.goto(`${server.origin}/week-test`);
   await page.evaluate(async () => {
-    const { mountCalendarPanels } = await import("/js/" + "ui-calendar-panels.js");
+    const { mountCalendarPanels } = await import("/js/" + "ui-calendar-panels.generated.js");
     const { createClient } = await import("/js/" + "client.js");
     const { readHomeAgenda, agendaSnapshot } = await import("/js/" + "home-dashboard-model.js");
     const client = await createClient("fixture", {});
@@ -188,7 +188,7 @@ for (const scenario of ["partial detail", "ready day"] as const) {
     );
     await page.goto(`${server.origin}/week-test`);
     await page.evaluate(async (scenario) => {
-      const { mountCalendarPanels } = await import("/js/" + "ui-calendar-panels.js");
+      const { mountCalendarPanels } = await import("/js/" + "ui-calendar-panels.generated.js");
       const { createClient } = await import("/js/" + "client.js");
       const { readHomeAgenda } = await import("/js/" + "home-dashboard-model.js");
       const client = await createClient("fixture", {});

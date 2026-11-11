@@ -37,7 +37,7 @@ export async function syntheticBoard(overrides = {}) {
 }
 
 export async function exerciseHomeDates(board) {
-  const { mountMissingNextStep } = await import('/js/ui-next-step.js');
+  const { mountMissingNextStep } = await import('/js/ui-next-step.generated.js');
   const results = [];
   const check = (name, condition) => { if (!condition) throw Error(name); results.push({ name, passed: true }); };
   const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -125,7 +125,7 @@ export async function prove({ origin, timeoutMs }) {
   const work = async () => {
     release = await readAppRelease(origin, read);
     await init;
-    const queue = ['/js/ui-next-step.js'];
+    const queue = ['/js/ui-next-step.generated.js'];
     for (let i = 0; i < queue.length; i++) {
       if (controller.signal.aborted) throw unavailable('Proof deadline exceeded');
       if (queue.length > 20) throw unavailable('Asset cap exceeded');

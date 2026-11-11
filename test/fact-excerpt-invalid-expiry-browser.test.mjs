@@ -12,10 +12,10 @@ for (const width of [390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await pausedClock(page, new Date('2026-02-01T00:00:00Z'));
     await componentDocument(page, server.origin, { dispose: page => page.evaluate(() => window.fixture?.panel.dispose()) });
-    const result = await observeExcerpts(page, `${server.origin}/js/ui-facts.js`);
+    const result = await observeExcerpts(page, `${server.origin}/js/ui-facts.generated.js`);
     assert.equal(result.assertions, 28);
     await page.evaluate(async origin => {
-      const { mountFactReview } = await import(`${origin}/js/ui-facts.js`);
+      const { mountFactReview } = await import(`${origin}/js/ui-facts.generated.js`);
       const { createFactReviewFixture } = await import(`${origin}/data/fixtures/fact-review.mjs`);
       const { FACT_TERMS } = await import(`${origin}/js/client.js`);
       document.body.replaceChildren();

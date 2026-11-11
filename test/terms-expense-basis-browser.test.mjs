@@ -36,7 +36,7 @@ test('basis keyboard selection intersects loaded term and stage in both themes a
         await page.evaluate(async ({ records, theme }) => {
           document.documentElement.dataset.theme = theme;
           document.body.innerHTML = '<main id="comparison"></main>';
-          const { mountMarketTerms } = await import('/js/ui-market.js');
+          const { mountMarketTerms } = await import('/js/ui-market.generated.js');
           window.reads = 0;
           window.panel = mountMarketTerms(document.querySelector('main'), { entityRef: 'synthetic-a', client: { readMarketTerms: async () => { window.reads++; return records.full.response; } } });
         }, { records, theme });
@@ -77,7 +77,7 @@ test('refresh retains or resets basis, refuses malformed and failed reads, ignor
       await page.goto(server.origin);
       await page.evaluate(async records => {
         document.body.innerHTML = '<main id="comparison"></main>';
-        const { mountMarketTerms } = await import('/js/ui-market.js');
+        const { mountMarketTerms } = await import('/js/ui-market.generated.js');
         window.records = records; window.pending = [];
         window.panel = mountMarketTerms(document.querySelector('main'), { entityRef: 'synthetic-a', client: { readMarketTerms: args => new Promise((resolve, reject) => window.pending.push({ args, resolve, reject })) } });
         window.panel.refresh(); window.pending[0].resolve(records.empty.response);
@@ -137,7 +137,7 @@ test('auth retirement clears loading and selected basis and ignores late complet
       for (const phase of ['loading', 'ready', 'failed']) {
         await page.evaluate(async ({ phase, records }) => {
           document.body.innerHTML = '<main></main>';
-          const { mountMarketTerms } = await import('/js/ui-market.js');
+          const { mountMarketTerms } = await import('/js/ui-market.generated.js');
           const { createSessionBoundary } = await import('/js/private-session.js');
           window.panel = mountMarketTerms(document.querySelector('main'), { entityRef: 'synthetic-a', client: { readMarketTerms: () => new Promise(resolve => { window.finish = resolve; }) } });
           window.boundary = createSessionBoundary({ fetchImpl: async () => new Response('', { status: 401 }), invalidate: () => window.panel.dispose() });

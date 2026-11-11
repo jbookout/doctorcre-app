@@ -1,4 +1,4 @@
-import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.js';
+import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.generated.js';
 import { createPageBudget } from './read-budget.mjs';
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { todayMove } from './today-moves.mjs';
@@ -164,7 +164,7 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
   const boot = resolveDealroomBoot(globalThis.location);
   const weekHost = pathname === '/' ? root.createElement('div') : null;
   if (weekHost) main.prepend(weekHost);
-  const calendarPanels = ready.then(() => import('./ui-calendar-panels.js')).then(module => layout.isConnected ? module.mountCalendarPanels(layout.querySelector('#appCalendarSlot'), layout.querySelector('#appScheduleSlot'), weekHost) : null).catch(() => {
+  const calendarPanels = ready.then(() => import('./ui-calendar-panels.generated.js')).then(module => layout.isConnected ? module.mountCalendarPanels(layout.querySelector('#appCalendarSlot'), layout.querySelector('#appScheduleSlot'), weekHost) : null).catch(() => {
     for (const id of ['#appCalendarSlot', '#appScheduleSlot']) layout.querySelector(id).textContent = 'Calendar unavailable. Reload to try again.';
     return null;
   });

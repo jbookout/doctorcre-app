@@ -122,7 +122,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`pu
   let releaseInbox, reachedInbox;
   const inboxRequested = new Promise(resolve => reachedInbox = resolve);
   const inboxAllowed = new Promise(resolve => releaseInbox = resolve);
-  await page.route('**/js/ui-inbox.js', async route => { reachedInbox(); await inboxAllowed; await route.continue(); });
+  await page.route('**/js/ui-inbox.generated.js', async route => { reachedInbox(); await inboxAllowed; await route.continue(); });
   await page.route('**/api/v1/intelligence/mail-needs-partner*', route => {
     requests.push({ method: route.request().method(), url: route.request().url() });
     return route.fulfill({ json: recordings.ready });

@@ -138,7 +138,7 @@ test('natural observer CLI compares exact recorded counts, rows, due summary and
   const routes=new Map([...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}]));
   routes.set('/js/pipeline.js',{body:`const detail={checklist:${JSON.stringify(recording.response)}}; export const state={panelDeal:"synthetic",panelDetail:detail,client:{getDeal:async()=>{if(${JSON.stringify(readMode)}==="auth")throw Error("Synthetic session expired");return ${JSON.stringify(readMode)}==="malformed"?{checklist:{schema_version:"deal-checklist.v1",template_state:"current",phases:{},due_items:[]}}:detail;}}};`,contentType:'text/javascript'});
   routes.set('/deals',{contentType:'text/html',body:`<!doctype html><div class="kanban-card"><button class="card-open">Open synthetic deal</button></div><main hidden><form id="detailUpdateForm">Synthetic detail</form><div id="host"></div></main><script type="module">
-    import {mountDealChecklist} from '/js/ui-checklist.js';
+    import {mountDealChecklist} from '/js/ui-checklist.generated.js';
     import {state} from '/js/pipeline.js';
     document.querySelector('.card-open').onclick=()=>{document.querySelector('main').hidden=false;mountDealChecklist(document.querySelector('#host'),{dealId:'synthetic',checklist:state.panelDetail.checklist});};
     ${mutation ? `new MutationObserver(()=>{const n=document.querySelector('[data-checklist-count]');if(n && n.dataset.proofValue!==n.textContent){n.textContent='1'+n.textContent;n.dataset.proofValue=n.textContent;}}).observe(document.querySelector('#host'),{subtree:true,childList:true,characterData:true});` : ''}
