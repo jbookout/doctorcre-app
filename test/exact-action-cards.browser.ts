@@ -7,7 +7,7 @@ import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { proveExact } from "../scripts/prove-exact-action-cards.ts";
-import { settles } from "./browser-harness.mjs";
+import { cdpEndpoint } from "./cdp-fixture.ts";
 
 const rows: {
   ref: string;
@@ -197,17 +197,7 @@ test("production proof CLI exits 0, 1 and 78 through a real browser fixture", as
       args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
     });
   try {
-    const session = await browser.newBrowserCDPSession();
-    const result = await session.send("Browser.getBrowserCommandLine");
-    const directory = result.arguments
-      .find((arg: string) => arg.startsWith("--user-data-dir="))
-      ?.slice("--user-data-dir=".length);
-    assert.ok(directory);
-    let port = "";
-    await settles(async () => {
-      port = (await readFile(`${directory}/DevToolsActivePort`, "utf8")).split("\n")[0] || "";
-      assert.match(port, /^[1-9]\d*$/);
-    });
+    const endpoint = await cdpEndpoint(browser);
     const args = [
       "scripts/prove-exact-action-cards.ts",
       "--origin",
@@ -229,7 +219,7 @@ test("production proof CLI exits 0, 1 and 78 through a real browser fixture", as
       "--foreign-ref",
       foreignRef,
       "--cdp-url",
-      `http://127.0.0.1:${port}`,
+      endpoint,
     ];
     assert.equal(JSON.parse((await exec(process.execPath, args, { timeout: 45000 })).stdout).status, "passed");
     const wrong = [...args];
