@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { build } from "esbuild";
-import { startFixture } from "../scripts/fixture-http.mjs";
+import { installDragReadGuard } from "../scripts/drag-read-guard.ts";
 import { chromium } from "./browser-harness.mjs";
-import { propA, propB, runTourDragProofFixture, tourDragRoutes } from "./tour-stop-drag-proof-fixture.ts";
+import {
+  propA,
+  propB,
+  runTourDragProofFixture,
+  startTourDragFixture,
+  tourDragRoutes,
+} from "./tour-stop-drag-proof-fixture.ts";
 
-for (const mode of ["pass", "cancelled", "near-miss"] as const) {
+for (const mode of ["pass", "cancelled", "near-miss", "write", "unknown-verb", "unknown-post"] as const) {
   test(`production drag proof CLI fixture ${mode}`, async (t) => {
     const run = runTourDragProofFixture(await tourDragRoutes(mode), t);
     if (mode === "pass") {
@@ -18,6 +24,8 @@ for (const mode of ["pass", "cancelled", "near-miss"] as const) {
         assert.ok(error instanceof Error && "code" in error && "stderr" in error);
         assert.equal(error.code, 1, String(error.stderr));
         if (mode === "near-miss") assert.match(String(error.stderr), /-near-miss/);
+        if (["write", "unknown-verb", "unknown-post"].includes(mode))
+          assert.match(String(error.stderr), /writes during drag/);
         return true;
       });
     }
@@ -98,11 +106,12 @@ for (const width of [390, 1440])
 for (const width of [390, 1440])
   for (const theme of ["light", "dark"] as const) {
     test(`mouse and touch drag preserve exact order and Undo at ${width}px ${theme}`, async (t) => {
-      const server = await startFixture({ routes: await tourDragRoutes() });
+      const server = await startTourDragFixture(await tourDragRoutes());
       t.after(() => server.close());
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: true, colorScheme: theme });
+        const guard = await installDragReadGuard(page.context(), server.origin);
         await page.goto(`${server.origin}/deals`);
         const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
         assert.ok(editor);
@@ -161,7 +170,8 @@ for (const width of [390, 1440])
               .evaluate((node) => getComputedStyle(node).touchAction),
             "none",
           );
-          assert.equal(server.requests.filter((request) => !["GET", "HEAD"].includes(request.method ?? "")).length, 0);
+          assert.equal(guard.writes, 0, "no writes during drag");
+          assert.ok(server.rpcReads > 0, "saved-search startup read reaches the contract fixture");
           assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         } finally {
           await touch.detach();

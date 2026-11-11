@@ -1,0 +1,21 @@
+stateDiagram-v2
+  state Packet {
+    state Access {
+      [*] --> Checking
+      Checking --> Granted: Approved facts and matching map arrive
+      Checking --> Unavailable: Read or parity check fails
+      Granted --> Unavailable: Access changes
+    }
+    --
+    state Document {
+      [*] --> Opening
+      Opening --> Ready: Approved facts and matching map arrive
+      Opening --> Empty: Read or parity check fails
+      Ready --> PrintDialog: Save PDF
+      PrintDialog --> Ready: Close print dialog
+      Ready --> Empty: Access changes
+      PrintDialog --> Empty: Access changes
+    }
+  }
+  %% never RefusedPacket: Unavailable & Ready -- Unavailable access never shows the prior packet.
+  %% never RefusedPrint: Unavailable & PrintDialog -- Unavailable access never permits starting a print.

@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 import { launchProofBrowser, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
+import { installDragReadGuard } from "./drag-read-guard.ts";
 import { signedInReplyEngine } from "./prove-reply-action-link.ts";
 
 export async function observeStopDrag(page: Page) {
@@ -108,15 +109,16 @@ export async function prove(options: {
         { exitCode: 78 },
       );
     const activePage = page;
-    let writes = 0;
+    // The guard only uses route; page scope preserves routing on borrowed tabs.
+    const installPageReadGuard = installDragReadGuard as (
+      scope: Pick<Page, "route">,
+      origin: string,
+      timeoutMs: number,
+    ) => ReturnType<typeof installDragReadGuard>;
+    const guard = await installPageReadGuard(activePage, options.origin, remaining());
     await activePage.route("**/*", (route) => {
-      const request = route.request();
-      if (++requests > 300 || new URL(request.url()).origin !== options.origin) return route.abort();
-      if (!["GET", "HEAD"].includes(request.method())) {
-        writes++;
-        return route.abort();
-      }
-      return route.continue();
+      requests++;
+      return route.fallback();
     });
     activePage.setDefaultTimeout(remaining());
     const observations = [];
@@ -159,11 +161,11 @@ export async function prove(options: {
             .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-property-id"))),
           before,
         );
-        assert.equal(writes, 0);
+        assert.equal(guard.writes, 0, "no writes during drag");
         observations.push({ width, theme, orderRestored: true, canonicalReadbackUnchanged: true });
       }
     assert.deepEqual(await readAppRelease(options.origin, { timeoutMs: remaining() }), release);
-    return { release, observations, writes, requests };
+    return { release, observations, writes: guard.writes, requests };
   };
   try {
     return await Promise.race([
