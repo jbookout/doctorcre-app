@@ -114,6 +114,29 @@ test("selected vendor reads exact needs, refreshes, pages and retires in both th
         await section.getByText(recorded.rows[0].description, { exact: true }).waitFor();
         await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
         assert.equal(await row.count(), 0);
+        for (const retiring of ["hold", "missing", "empty", "error", "refused"]) {
+          mode = retiring;
+          const started = page.waitForRequest(
+            (request) =>
+              request.url().endsWith("/mcp") && request.postDataJSON()?.params?.name === "read-vendor-client-needs-v1",
+          );
+          await page.reload();
+          await started;
+          const copy =
+            retiring === "hold"
+              ? "Reading client needs…"
+              : retiring === "missing"
+                ? "Approval needed. No approved client needs can be shown."
+                : retiring === "empty"
+                  ? "No approved client needs match this vendor."
+                  : retiring === "refused"
+                    ? "Permission refused. Client needs are not available to this session."
+                    : "Client needs unavailable. The source could not be verified.";
+          await section.getByText(copy, { exact: true }).waitFor();
+          await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
+          release?.();
+          assert.equal(await section.count(), 0, `retired from ${retiring}`);
+        }
       } finally {
         await page.close();
       }
