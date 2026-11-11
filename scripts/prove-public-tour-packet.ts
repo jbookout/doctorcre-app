@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { packetMapPoints, parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
+import { packetProofPdf } from "../test/packet-pdf.fixture.ts";
 import { presentedPacket } from "../test/packet-presentation.fixture.ts";
 import { proofFetch } from "./app-release-reader.mjs";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
@@ -35,14 +36,8 @@ export async function proveTourPacket({
     }));
     if (fixtureCase === "insufficient") return { status: "insufficient_evidence", exitCode: 78 };
     const packet = parsePublicTourPacket(presentedPacket(stops));
-    const pdf = await readFile(
-      new URL(
-        `../test/fixtures/tour-packet-${fixtureCase === "fail" ? "near-miss" : "synthetic"}.pdf`,
-        import.meta.url,
-      ),
-    );
     try {
-      await assertPublishedPacketPdf(pdf, packet);
+      await assertPublishedPacketPdf(await packetProofPdf(packet, fixtureCase === "fail"), packet);
       return { status: "passed", exitCode: 0 };
     } catch {
       return { status: "failed", exitCode: 1 };
