@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { fork, spawnSync } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -72,4 +72,61 @@ test("owned starter forwards its configured environment and awaits shutdown", as
     await server.stop();
   }
   await server.stop();
+});
+
+test("raw IPC fork of the owner refuses acquisition", async () => {
+  const child = fork(new URL("./fixture-probe.ts", import.meta.url), ["{}"], {
+    stdio: ["ignore", "ignore", "pipe", "ipc"],
+    detached: true,
+  });
+  let stderr = "";
+  let ready = false;
+  child.stderr?.on("data", (data) => {
+    stderr += data;
+  });
+  const exited = new Promise<number | null>((resolve) => child.once("exit", resolve));
+  child.on("message", (message) => {
+    if (typeof message === "object" && message !== null && "origin" in message) {
+      ready = true;
+      child.kill("SIGTERM");
+    }
+  });
+  const timer = setTimeout(() => child.kill("SIGKILL"), 30000);
+  try {
+    const code = await exited;
+    assert.equal(ready, false, "raw fork acquired a real fixture without the owner lifecycle");
+    assert.equal(code, 1);
+    assert.match(stderr, /FixtureOwnershipError/);
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+test("a pre-import Symbol hook cannot retain the owner capability", () => {
+  const starter = new URL("../scripts/fixture-server.mjs", import.meta.url).href;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+import assert from 'node:assert/strict';
+const original = globalThis.Symbol;
+let stolen;
+globalThis.Symbol = new Proxy(original, {apply(target, self, args) {
+  const value = Reflect.apply(target, self, args);
+  if (args[0] === 'fixture probe owner') stolen = value;
+  return value;
+}});
+const {startFixtureServer} = await import(${JSON.stringify(starter)});
+globalThis.Symbol = original;
+let accepted = false;
+try { const server = await startFixtureServer({}, stolen); accepted = true; await server.stop(); }
+catch (error) { assert.equal(error.code, 'FIXTURE_OWNER_REQUIRED'); }
+assert.equal(accepted, false, 'hook retained a usable capability');
+`,
+    ],
+    { encoding: "utf8", timeout: 30000 },
+  );
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
