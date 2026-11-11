@@ -19,7 +19,7 @@ test("saved search panel save, reopen, rerun, rollback, conflict, archive, resto
   t.after(() => server.close());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  await mkdir("/tmp/WR591.S18.J3-shots", { recursive: true });
+  await mkdir("/tmp/WR591.S18.J6-shots", { recursive: true });
   for (const width of [1440, 390])
     for (const theme of ["light", "dark"] as const) {
       const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
@@ -53,7 +53,7 @@ test("saved search panel save, reopen, rerun, rollback, conflict, archive, resto
                     failure = false;
                     throw Error("offline");
                   }
-                  current = structuredClone(fixture.positive.search);
+                  current = { ...structuredClone(fixture.positive.search), last_run_at: new Date().toISOString() };
                   return { ...fixture.positive, search: current };
                 }
                 if (conflict) {
@@ -109,7 +109,13 @@ test("saved search panel save, reopen, rerun, rollback, conflict, archive, resto
         assert.equal(await panel.getByLabel("Search name", { exact: true }).inputValue(), "Clinic shortlist");
         await panel.getByRole("button", { name: "Rerun saved search", exact: true }).click();
         await panel.getByRole("checkbox").check();
-        await page.screenshot({ path: `/tmp/WR591.S18.J3-shots/${width}-${theme}.png`, fullPage: true });
+        await page.clock.fastForward(86400001);
+        await panel.getByRole("heading", { name: "Stale results · rerun before using", exact: true }).waitFor({ timeout: 1000 });
+        assert.equal(await panel.getByRole("checkbox").isDisabled(), true);
+        assert.equal(await panel.getByRole("button", { name: "Add chosen results to Tour cart", exact: true }).isDisabled(), true);
+        await panel.getByRole("button", { name: "Rerun saved search", exact: true }).click();
+        await panel.getByRole("checkbox").check();
+        await page.screenshot({ path: `/tmp/WR591.S18.J6-shots/${width}-${theme}.png`, fullPage: true });
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         await panel.getByRole("button", { name: "Add chosen results to Tour cart", exact: true }).click();
         assert.deepEqual(
