@@ -452,8 +452,8 @@ test("Wrapper listener preserves its only small native button", async (t) => {
       audit.small.map((target) => target.id),
       ["small"],
     );
-    assert.equal(audit.small[0].width, 20);
-    assert.equal(audit.small[0].height, 20);
+    assert.equal(audit.small[0]?.width, 20);
+    assert.equal(audit.small[0]?.height, 20);
     assert.deepEqual(audit.covered, []);
   }
 });
