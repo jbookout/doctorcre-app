@@ -44,6 +44,7 @@ async function open(t, { preparationResponse, calendarPanelsGate, actionCompleti
   page.on('pageerror', error => errors.push(error.message));
   const completionRequests = [];
   const handlers = {
+    'read-deal-update-summary-v1': () => { throw Error('Summary producer unavailable in this fixture'); },
     'list-fact-review': args => client.listFactReview(args),
     'list-deal-documents': args => client.listDealDocuments(args),
     'complete-one-action': async args => { completionRequests.push(args); return actionCompletion.write(args); },
@@ -582,17 +583,16 @@ test('Home hides held tasks, ranks eligible arrivals, and links the full prospec
   assert.equal(await page.getByRole('link', { name:'Prospecting queue' }).getAttribute('href'), '/leads');
 });
 
-test('held deal actions remain visible in the deal history reached from Home', async t => {
+test('held deal actions remain visible in the dated timeline reached from Home', async t => {
   const { page } = await open(t, { heldTasks: true });
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#dealFlags a').count(), 0);
   const href = await page.locator('#homePrimaryAction').getAttribute('href');
   await page.goto('http://localhost' + href + '?mode=live');
   await page.locator('.kanban-column [data-id="d14"] .card-open').click();
-  await page.locator('.updates-history').waitFor();
-  await page.locator('.updates-history').click();
-  assert.ok(await page.getByText('Held until Jan 1, 2027', {exact:true}).count());
-  assert.ok(await page.locator('.deal-note').filter({hasText:'Demo follow-up'}).count());
+  await page.getByRole('tab',{name:'Timeline',exact:true}).click();
+  assert.ok(await page.locator('.workspace-events li').filter({hasText:'Held until · Demo follow-up'}).count());
+  assert.ok(await page.locator('.workspace-events time[datetime="2027-01-01"]').count());
 });
 
 for (const failure of [null, '503']) test(`Slice A Calendar distinguishes confirmed empty from unavailable: ${failure}`, async t => {

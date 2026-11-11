@@ -1,0 +1,35 @@
+stateDiagram-v2
+  state Panel {
+  state Summary {
+    [*] --> SummaryLoading
+    SummaryLoading --> SummaryReady: summary arrives
+    SummaryLoading --> SummaryError: summary fails
+    SummaryError --> SummaryLoading: retry summary
+    SummaryReady --> SummaryLoading: refresh source
+    SummaryReady --> SummaryRetired: leave deal
+    SummaryLoading --> SummaryRetired: lose session
+    SummaryError --> SummaryRetired: leave deal
+  }
+  --
+  state History {
+    [*] --> Collapsed
+    Collapsed --> HistoryLoading: expand history
+    HistoryLoading --> HistoryReady: first page arrives
+    HistoryLoading --> HistoryError: first page fails
+    HistoryError --> HistoryLoading: retry history
+    HistoryReady --> Continuing: load older
+    Continuing --> HistoryReady: next page arrives
+    Continuing --> ContinuationError: ordinary failure keeps rows
+    ContinuationError --> Continuing: retry older
+    Continuing --> HistoryLoading: stale cursor replaces pages
+    HistoryReady --> HistoryLoading: refresh replaces revision
+    HistoryReady --> Collapsed: collapse returns focus
+    HistoryLoading --> HistoryRetired: leave deal
+    Continuing --> HistoryRetired: leave deal
+    HistoryReady --> HistoryRetired: lose session
+    HistoryError --> HistoryRetired: leave deal
+    ContinuationError --> HistoryRetired: leave deal
+    Collapsed --> HistoryRetired: leave deal
+  }
+
+  }

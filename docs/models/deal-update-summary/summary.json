@@ -1,0 +1,43 @@
+{
+  "view": "customer",
+  "modelStates": 28,
+  "modelTransitions": 106,
+  "chartStates": 28,
+  "chartTransitions": 106,
+  "chartStatus": {
+    "works": 28,
+    "wrong": 0,
+    "fixed": 0
+  },
+  "classes": [],
+  "codeLike": [
+    "SummaryError | Collapsed",
+    "SummaryError | ContinuationError",
+    "SummaryError | Continuing",
+    "SummaryError | HistoryError",
+    "SummaryError | HistoryLoading",
+    "SummaryError | HistoryReady",
+    "SummaryError | HistoryRetired",
+    "SummaryLoading | Collapsed",
+    "SummaryLoading | ContinuationError",
+    "SummaryLoading | Continuing",
+    "SummaryLoading | HistoryError",
+    "SummaryLoading | HistoryLoading",
+    "SummaryLoading | HistoryReady",
+    "SummaryLoading | HistoryRetired",
+    "SummaryReady | Collapsed",
+    "SummaryReady | ContinuationError",
+    "SummaryReady | Continuing",
+    "SummaryReady | HistoryError",
+    "SummaryReady | HistoryLoading",
+    "SummaryReady | HistoryReady",
+    "SummaryReady | HistoryRetired",
+    "SummaryRetired | Collapsed",
+    "SummaryRetired | ContinuationError",
+    "SummaryRetired | Continuing",
+    "SummaryRetired | HistoryError",
+    "SummaryRetired | HistoryLoading",
+    "SummaryRetired | HistoryReady",
+    "SummaryRetired | HistoryRetired"
+  ]
+}

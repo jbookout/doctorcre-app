@@ -33,7 +33,7 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,heig
  return {page,errors};
 }
 
-test('every deal snapshot opens with an empty Update above a concise overview and expandable attributed history',async t=>{
+test('every deal snapshot starts empty and an unavailable producer never falls back to local excerpts',async t=>{
  await mkdir(new URL('out/test-artifacts/deal-card-review/',root),{recursive:true});
  for(const width of [390,1280]) await t.test(String(width),async t=>{
   const {page,errors}=await open(t,width);
@@ -46,9 +46,8 @@ test('every deal snapshot opens with an empty Update above a concise overview an
   await page.locator('#detailUpdateForm button[type="submit"]').scrollIntoViewIfNeeded();
   assert.equal(await page.locator('#detailUpdateForm button[type="submit"]').isVisible(),true);
   await page.locator('.updates-history > summary').click();
-  assert.equal(await page.locator('.deal-note').first().getAttribute('data-id'),'demo-new');
-  assert.match(await page.locator('.deal-note').first().textContent(),/Dell/);
-  assert.equal(await page.locator('.deal-note').first().locator('time').getAttribute('datetime'),'2026-10-02T17:45:00Z');
+  await page.locator('[data-history-status]').filter({hasText:'Update history unavailable.'}).waitFor();
+  assert.equal(await page.locator('.deal-note').count(),0);
   assert.equal(await page.locator('.timeline-chart').count(),0);
   assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(),1);
   await page.getByRole('tab', {name:'Correspondence & notes'}).click();
@@ -236,8 +235,8 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
   assert.equal(await page.locator('.deal-current-action strong').textContent(),'Confirm the appointment and review the lease draft');
   assert.equal(await page.locator('.updates-history > summary').count(),1);
   assert.equal(await page.locator('.deal-note:visible').count(),0);
-  assert.match(await page.locator('.updates-history > summary').textContent(),/Newest demo update/);
-  assert.doesNotMatch(await page.locator('.updates-history > summary').textContent(),/Older demo update/);
+  assert.equal(await page.locator('.updates-history > summary').textContent(),'Show update history');
+  await page.locator('[data-summary]').filter({hasText:'Deal summary unavailable.'}).waitFor();
   await page.getByRole('tab',{name:'Timeline',exact:true}).click();
   assert.equal(await page.locator('.phase-rail time:visible').count(),4);
   await page.getByRole('tab',{name:'Overview',exact:true}).click();
@@ -250,14 +249,15 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
   assert.ok(title.y>=doc.y+doc.height || title.x>=doc.x+doc.width,'the scrolled title clears Doc');
   await page.screenshot({path:new URL(`${width}-${theme}-summary.png`,dir).pathname,animations:'disabled'});
   await page.locator('.updates-history > summary').click();
-  assert.equal(await page.locator('.deal-note:visible').count()>1,true);
+  await page.locator('[data-history-status]').filter({hasText:'Update history unavailable.'}).waitFor();
+  assert.equal(await page.locator('.deal-note:visible').count(),0);
   await page.locator('.updates-history').scrollIntoViewIfNeeded();
   await page.screenshot({path:new URL(`${width}-${theme}-history.png`,dir).pathname,animations:'disabled'});
   assert.deepEqual(errors,[]);
  });
 });
 
-test('refresh removes and restores Updates as recorded notes change',async t=>{
+test('local note changes never substitute for the independent summary contract',async t=>{
  const {page}=await open(t);
  assert.equal(await page.locator('.deal-updates').count(),1);
  await page.getByLabel('Update',{exact:true}).fill('Demo unsaved draft');
@@ -270,33 +270,28 @@ test('refresh removes and restores Updates as recorded notes change',async t=>{
  });
  await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
  await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.thread.length===0);
- assert.equal(await page.locator('.deal-updates').count(),0);
+ assert.equal(await page.locator('.deal-updates').count(),1);
  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/No updates recorded/);
  await page.evaluate(async()=>{
   const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
   state.client.getDeal=async id=>({...await read(id),thread:[{id:'demo-restored',kind:'note',actor:'joe',text:'Demo restored update',at:'2026-10-02'}]});
  });
  await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
- await page.locator('.deal-note[data-id="demo-restored"]').waitFor({state:'attached'});
+ await page.locator('.workspace-note').filter({hasText:'Demo restored update'}).waitFor({state:'attached'});
+ await page.locator('[data-summary]').filter({hasText:'Deal summary unavailable.'}).waitFor();
+ assert.equal(await page.locator('.deal-note').count(),0);
  assert.equal(await page.locator('.deal-updates').count(),1);
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'Demo unsaved draft');
 });
 
 
-test('thirty notes show one concise summary and expand inline at phone width',async t=>{
+test('thirty local notes never become a complete summary fallback',async t=>{
  const {page}=await open(t,390,{manyUpdates:true});
- const overview=page.locator('.updates-history > summary span');
- assert.ok((await overview.textContent()).length<=180);
- assert.match(await overview.textContent(),/Demo update 29/);
- assert.doesNotMatch(await overview.textContent(),/Demo update 28/);
- const box=await overview.evaluate(n=>({height:n.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),overflow:getComputedStyle(n).overflowY}));
- assert.ok(box.height<=box.lineHeight*2+1,JSON.stringify(box));
- assert.equal(box.overflow,'hidden');
- assert.equal(await page.locator('.deal-note:visible').count(),0);
+ await page.locator('[data-summary]').filter({hasText:'Deal summary unavailable.'}).waitFor();
+ assert.doesNotMatch(await page.locator('.deal-updates').textContent(),/Demo update 29/);
  await page.locator('.updates-history > summary').click();
- assert.equal(await page.locator('.deal-note[data-id^="demo-note-"]:visible').count(),30);
- assert.equal(await page.locator('.deal-note:visible').count(),32);
- assert.equal(await page.locator('.updates-history').evaluate(n=>getComputedStyle(n).overflowY),'visible');
+ await page.locator('[data-history-status]').filter({hasText:'Update history unavailable.'}).waitFor();
+ assert.equal(await page.locator('.deal-note').count(),0);
 });
 
 test('deal card controls meet the 44px target floor at phone and desktop widths',async t=>{

@@ -58,20 +58,17 @@ for(const width of [320,390,1280]) for(const theme of ['light','dark']) test(`un
  assert.equal(await page.locator('.phase-rail').count(),1);
  assert.equal(await page.locator('.timeline-chart').count(),0);
  assert.equal(await page.locator('.phase-rail [aria-current] time').textContent(),'Oct 3, 2026');
- assert.equal(await page.locator('.deal-note[data-id="mail"]').count(),1);
- await page.locator('.updates-history > summary').click();
- await page.locator('.deal-note[data-id="mail"] summary').click();
- assert.match(await page.locator('.deal-note[data-id="mail"] .note-original').textContent(),/Original synthetic email/);
+ await page.locator('[data-summary]').filter({hasText:"Deal summary unavailable."}).waitFor();
+ assert.equal(await page.locator(".deal-note").count(),0);
  assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
  assert.deepEqual(errors,[]);
 });
-test('refresh preserves expanded updates, focus, dates and draft through an outage',async t=>{
+test('refresh preserves expanded date evidence, focus and draft through an outage',async t=>{
  const {page,errors}=await open(t);
- await page.locator('.updates-history > summary').click();
- const summary=page.locator('.deal-note[data-id="mail"] summary');await summary.click();await summary.focus();
+ const summary=page.locator('.critical-date[data-date-id="loi"] summary');await summary.click();await summary.focus();
  await page.evaluate(()=>window.timelineProbe.changed=true);await page.clock.fastForward(61_000);
- await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Demo updated allowance received'));
- assert.equal(await page.locator('.deal-note[data-id="mail"] details').evaluate(e=>e.open),true);
+ await page.waitForFunction(()=>document.querySelector('.critical-date[data-date-id="loi"] [data-countdown]')?.getAttribute('data-countdown')==='2026-10-09');
+ assert.equal(await page.locator('.critical-date[data-date-id="loi"] details').evaluate(e=>e.open),true);
  assert.equal(await summary.evaluate(e=>document.activeElement===e),true);
  await page.locator('#detailUpdateForm textarea').fill('Demo unsaved update');
  await page.evaluate(()=>window.timelineProbe.fail=true);await page.clock.fastForward(61_000);
@@ -112,23 +109,6 @@ for (const theme of ['light','dark']) test(`phone phase labels are legible along
  assert.ok(labels.every(p=>p.labels.length>0),JSON.stringify(labels));
  assert.equal(new Set(labels.map(p=>p.top)).size,2,'dates stay visible in two rows');
  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
- assert.deepEqual(errors,[]);
-});
-
-for(const width of [1440,390]) for(const theme of ['light','dark']) test(`newest update preview and recorded history at ${width} ${theme}`, async t=>{
- const {page,errors}=await open(t,{width,noteOrder:true,reducedMotion:'reduce'});
- await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
- assert.match(await page.locator('.updates-history > summary').textContent(), /3 updates.*Oct 1, 2026.*Synthetic latest update/);
- assert.equal(await page.locator('.updates-overview').count(), 0);
- assert.equal(await page.locator('.updates-history').evaluate(e=>e.open), false);
- await mkdir('out/test-artifacts/newest-updates',{recursive:true});
- await page.locator('.deal-updates').scrollIntoViewIfNeeded();
- await page.screenshot({path:`out/test-artifacts/newest-updates/preview-${width}-${theme}.png`});
- await page.locator('.updates-history > summary').click();
- assert.deepEqual(await page.locator('.deal-note').evaluateAll(rows=>rows.map(row=>row.dataset.id)),['latest','earlier','undated']);
- assert.equal(await page.locator('.deal-note').last().locator('time').textContent(),'Date not recorded');
- assert.equal(await page.locator('#recordPanel').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
- await page.locator('.deal-updates').screenshot({path:`out/test-artifacts/newest-updates/history-${width}-${theme}.png`});
  assert.deepEqual(errors,[]);
 });
 

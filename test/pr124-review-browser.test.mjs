@@ -56,6 +56,7 @@ async function liveDetailRead(page) {
  const reads={status:200,delayed:null,delayNext:false};
  await page.route('**/mcp',async route=>{
    const request=route.request().postDataJSON();
+   if(request.params.name==='read-deal-update-summary-v1') return route.fulfill({status:503,json:{error:'summary_unavailable'}});
    assert.equal(request.params.name,'get-deal-room');
    const status=reads.status;
    if(reads.delayNext) {
@@ -225,7 +226,7 @@ test('append-only updates preserve a partner next step and start empty after ref
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
  await page.locator('#detailUpdateForm textarea').fill('My status update');
  await page.locator('#detailUpdateForm button[type=submit]').click();
- await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('My status update'));
+ await page.waitForFunction(()=>document.querySelector('[data-detail-read="notes"]').textContent.includes('My status update'));
  assert.equal(await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');return (await state.client.getDeal('d14')).deal.next_step;}),'Partner step');
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
 });
@@ -307,7 +308,7 @@ for(const width of [1440,390]) test('R8 list history has no persistent Undo at '
 test('R9 original prior step and actors survive without synthetic activity echo',async t=>{
  const {page}=await open(t);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const read=state.client.getDeal.bind(state.client);state.client.getDeal=async id=>({...await read(id),activities:[],thread:[{id:'prior',kind:'archived_step',text:'Original prior step',actor:'dell',at:'2026-10-01'}]});});await detail(page);
- assert.match(await page.locator('.deal-note').textContent(),/Prior next step/);assert.match(await page.locator('.deal-note').textContent(),/Dell/);assert.match(await page.locator('.deal-note').textContent(),/Original prior step/);
+ assert.match(await page.locator('.workspace-note').textContent(),/Dell/);assert.match(await page.locator('.workspace-note').textContent(),/Original prior step/);
 });
 test('R10 Home flagged personal URL reaches only flagged records for current actor',async t=>{
  const {page}=await open(t,{query:'?workspace=team&filter=flagged&owner=me'});

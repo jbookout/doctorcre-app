@@ -68,7 +68,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
         actionVisible: snapshot.getBoundingClientRect().bottom < innerHeight };
     });
     assert.deepEqual(order, { snapshotBeforeUpdate: true, actionVisible: true });
-    assert.equal(await page.locator('.deal-updates').count(), 0, 'an account action without notes omits Updates');
+    assert.equal(await page.locator('.deal-updates').count(), 1, 'summary availability is read independently from local notes');
     assert.equal(await page.locator('#dealUpdate').getAttribute('placeholder'), null);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });

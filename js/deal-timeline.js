@@ -88,7 +88,7 @@ export function renderDealTimeline(detail, now = Date.now()) {
   const view = dealTimeline(detail,now);
   return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal phases and timeline"><h3>Phase timeline</h3><ol class="phase-rail">${view.phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span>${p.day ? `<time datetime="${esc(p.day)}">${esc(dateCaption(p.day))}</time>` : ''}</li>`).join('')}</ol></section>`;
 }
-export function renderDealUpdates(detail, now = Date.now()) {
+export function renderDealUpdates(detail, now = Date.now(), { entriesOnly = false } = {}) {
   const entries = (detail.entries || []).filter(e => e.source !== 'document' && (e.source !== 'hold' || calendarDay(e.holdUntil) > today(now)))
     .map(e => e.source === 'hold' ? {...e, kind:`Held until ${dateCaption(calendarDay(e.holdUntil))}`} : e);
   if (!entries.length) return '';
@@ -96,7 +96,9 @@ export function renderDealUpdates(detail, now = Date.now()) {
   const overview = concise(entries[0]?.summary, 72);
   const latestDate = new Date(entries[0].when || NaN);
   const latestDay = Number.isFinite(latestDate.getTime()) ? latestDate.toLocaleDateString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric'}) : 'Date not recorded';
-  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.length ? `<details class="updates-history"><summary data-detail-focus="update-history"><span>${entries.length} update${entries.length === 1 ? '' : 's'} · ${esc(latestDay)} · ${esc(overview)}</span></summary>${(detail.activities || []).length >= 50 ? '<p class="updates-scope">Includes the latest 50 activities; older activities may be omitted.</p>' : ''}${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(sourceTime(e.when, undefined, 'Date not recorded'))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${activityIds.has(e.id) ? `<button type="button" class="btn" data-attribution-id="${esc(e.id)}" aria-expanded="false">Show deal attribution</button>` : ''}${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</details>` : '<p>No updates recorded.</p>'}</section>`;
+  const rows = entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(sourceTime(e.when, undefined, 'Date not recorded'))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${activityIds.has(e.id.replace(/^activity:/,'')) ? `<button type="button" class="btn" data-attribution-id="${esc(e.id.replace(/^activity:/,''))}" aria-expanded="false">Show deal attribution</button>` : ''}${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('');
+  if (entriesOnly) return rows;
+  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3><details class="updates-history"><summary data-detail-focus="update-history"><span>${entries.length} update${entries.length === 1 ? '' : 's'} · ${esc(latestDay)} · ${esc(overview)}</span></summary>${rows}</details></section>`;
 }
 export function updateCountdowns(root, now = Date.now()) {
   for (const node of root.querySelectorAll('[data-countdown]')) {
@@ -161,4 +163,22 @@ export function mountActivityAttribution(root, { read = createActivityAttributio
   const retire = () => { disposed = true; clear(false); current.dispose(); root.removeEventListener('click',click); window.removeEventListener('keydown',keydown,true); window.removeEventListener('doctorcre-session-invalidated',retire); };
   window.addEventListener('doctorcre-session-invalidated',retire);
   return {dispose:retire};
+}
+
+export function createDealSummaryRead(options = {}) {
+  const request = createMcpRequests(options);
+  return async (args, signal) => {
+    const result = await request('read-deal-update-summary-v1', args, {signal, timeoutMs:15000});
+    if (result.kind === 'authorization') throw Object.assign(new Error('Sign in to read updates'), {status:result.status});
+    if (result.kind !== 'payload') throw new Error('Deal updates unavailable');
+    if (['unauthenticated','not_found','forbidden'].includes(result.payload?.error)) throw Object.assign(new Error('Deal updates no longer available'), {status:403});
+    if (result.isError && result.payload?.error !== 'stale_history_cursor') throw Object.assign(new Error('Deal updates unavailable'), {payload:result.payload});
+    return result.payload;
+  };
+}
+export function renderSummaryHistory(entries) {
+  return renderDealUpdates({activities:entries.filter(e => e.source === 'activity'),entries:entries.map(e => ({
+    id:`${e.source}:${e.id}`, kind:e.source === 'note' ? (e.original.kind === 'archived_step' ? 'Prior next step' : 'Note') : e.source === 'activity' ? (typeof e.original.kind === 'string' ? e.original.kind : 'Activity') : (typeof e.original.field === 'string' ? e.original.field : 'Deal change'), actor:e.actor, when:e.at, summary:e.text,
+    original: e.source === 'activity' ? [e.original.summary,typeof e.original.detail === 'string' ? e.original.detail : JSON.stringify(e.original.detail)].filter(Boolean).join('\n\n') : e.source === 'note' ? e.original.text : e.text,
+  }))}, Date.now(), {entriesOnly:true});
 }

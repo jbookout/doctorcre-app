@@ -2,7 +2,16 @@ import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { ownedServer as startFixtureServer } from '../../test/fixture-probe.ts';
 
+const summaryRecording = JSON.parse(await readFile(new URL('../../contracts/deal-update-summary.v1/fixture.json', import.meta.url), 'utf8'));
 let server;
+test.beforeEach(async ({page}) => {
+  await page.route('**/mcp', route => {
+    const request = route.request().postDataJSON();
+    if (request?.params?.name !== 'read-deal-update-summary-v1') return route.fallback();
+    const response = {...summaryRecording, deal_id:request.params.arguments.deal_id};
+    return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(response)}]}}});
+  });
+});
 test.beforeAll(async () => { server = await startFixtureServer(); });
 test.afterAll(async () => { await server?.stop(); });
 
@@ -42,7 +51,7 @@ test('opening a deal replaces the board with a workspace and Back restores its s
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
   test(`workspace tabs show recorded data at ${width} in ${theme}`, async ({ page }, testInfo) => {
     const evidenceRequests = [];
-    page.on('request', request => { if (new URL(request.url()).pathname === '/mcp') evidenceRequests.push(request.postData()); });
+    page.on('request', request => { if (new URL(request.url()).pathname === '/mcp' && request.postDataJSON()?.params?.name !== 'read-deal-update-summary-v1') evidenceRequests.push(request.postData()); });
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.clock.install({ time: new Date('2026-10-04T17:00:00Z') });
@@ -79,7 +88,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.critical-dates')).toContainText('LOI');
     await expect(page.locator('#detailUpdateForm')).toBeVisible();
     await expect(page.getByRole('region',{name:'Next actions',exact:true})).toContainText('Demo next action');
-    await expect(page.locator('.deal-updates')).toContainText('Demo discovery meeting');
+    await expect(page.locator('.deal-updates')).toContainText(summaryRecording.summary.text);
     for (const [tab, label] of [['overview','Overview'], ['timeline','Timeline'], ['correspondence','Correspondence & notes']]) {
       await page.getByRole('tab', { name: label, exact: true }).click();
       await expect(page.locator(`#workspace-${tab}`)).toBeVisible();

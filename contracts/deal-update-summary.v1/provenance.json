@@ -1,0 +1,10 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "source_commit": "b04d48ac427b11f50b2d60a53d83733b9cee0d98",
+  "pull_request": "https://github.com/DoctorCRE/carr-system/pull/3202",
+  "version": "1.0.0",
+  "files": {
+    "contract.json": "0caaa6456c99172ce733f35db8a3f6cbd560c7136ff5c2aefcd9b11278bb4f8a",
+    "fixture.json": "4af7b4f8b7d83e73b92f454ea87fd31d7b09833a8dd241e95fc04f2fb1274945"
+  }
+}

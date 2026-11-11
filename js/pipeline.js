@@ -36,7 +36,7 @@ import {
 import { isClosedDeal, localDeals, needsAttention, overdueLabel, overdueSince } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, prepareDealDetail, PHASE_TRIGGERS } from './local-deals-model.js';
 import { sourceTime } from './email-source-line.js';
-import { mountActivityAttribution, renderDealTimeline, renderDealUpdates, renderCriticalDates, dealTimeline, dateCaption, calendarDay } from './deal-timeline.js';
+import { createDealSummaryRead, renderSummaryHistory, mountActivityAttribution, renderDealTimeline, renderCriticalDates, dealTimeline, dateCaption, calendarDay } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
@@ -352,6 +352,7 @@ function applyBoardSnapshot(board) {
     disposeEvidence?.(); disposeEvidence = null;
     disposeActivityAttribution();
     disposePanelEmailFollowups();
+    disposeDealSummary();
     $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
     $('panelTitle').textContent = 'Deal';
     $('workspaceFacts').replaceChildren();
@@ -816,6 +817,20 @@ async function settleConflictChoice(conflictId, result) {
 }
 
 
+let dealSummary = null, summaryMountSequence = 0;
+function disposeDealSummary() { ++summaryMountSequence; dealSummary?.dispose(); dealSummary = null; }
+async function mountPanelDealSummary(id) {
+  disposeDealSummary();
+  const sequence = summaryMountSequence, root = $('panelUpdateSummary');
+  try {
+    const {mountDealUpdateSummary} = await import('./ui-deal-update-summary.generated.js');
+    if (sequence !== summaryMountSequence || state.panelDeal !== id || !root?.isConnected) return;
+    dealSummary = mountDealUpdateSummary(root, {dealId:id, read:createDealSummaryRead(), renderHistory:renderSummaryHistory, onDenied:refusePanelDetail, historyChanged:mountPanelActivityAttribution});
+    mountPanelActivityAttribution();
+  } catch {
+    if (sequence === summaryMountSequence && root?.isConnected) root.textContent = 'Deal updates unavailable. Refresh the deal to retry.';
+  }
+}
 let activityAttribution = null;
 function disposeActivityAttribution() { activityAttribution?.dispose(); activityAttribution = null; }
 function mountPanelActivityAttribution() {
@@ -880,6 +895,7 @@ function refusePanelDetail(error) {
   disposeEvidence?.(); disposeEvidence = null;
   disposeActivityAttribution();
   disposePanelEmailFollowups();
+  disposeDealSummary();
   setContextOpenVisible(false);
   $('contextDrawer').close();
   $('contextDrawerBody').replaceChildren();
@@ -1133,7 +1149,7 @@ function workspaceHtml(detail) {
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
     <h2>Critical dates</h2>${renderCriticalDates(detail)}
-    <div data-detail-read="updates">${renderDealUpdates(detail)}</div></section>
+    <div id="panelUpdateSummary"></div></section>
     <section id="workspace-market-terms" role="tabpanel" aria-labelledby="tab-market-terms" hidden></section>
     <section id="workspace-documents" role="tabpanel" aria-labelledby="tab-documents" hidden></section>
     <section id="workspace-tours" role="tabpanel" aria-labelledby="tab-tours" hidden></section>
@@ -1202,19 +1218,13 @@ async function readPanel(id) {
         if (fresh.dataset.detailRead === 'board-controls' && current.dataset.available === fresh.dataset.available) continue;
         if (fresh.dataset.detailRead === 'parking' && current.dataset.parked === 'false' && fresh.dataset.parked === 'false') continue;
         if (current.innerHTML !== fresh.innerHTML) {
-          const expanded = new Set([...current.querySelectorAll('.deal-note details[open]')].map(n => n.closest('.deal-note').dataset.id));
           const focused = current.contains(document.activeElement) ? document.activeElement : null;
           const focusIdentity = focused?.dataset.detailFocus;
-          const historyOpen = current.querySelector('.updates-history')?.open;
           const dateOpens = new Set([...current.querySelectorAll('[data-date-id] details[open]')].map(n => n.closest('[data-date-id]').dataset.dateId));
           const oldScroll = current.scrollLeft;
-          if (fresh.dataset.detailRead === 'updates') disposeActivityAttribution();
           current.replaceWith(fresh);
-          if (fresh.dataset.detailRead === 'updates') mountPanelActivityAttribution();
           fresh.scrollLeft = oldScroll;
           fresh.querySelectorAll('[data-date-id] details').forEach(n => { n.open = dateOpens.has(n.closest('[data-date-id]').dataset.dateId); });
-          if (historyOpen && fresh.querySelector('.updates-history')) fresh.querySelector('.updates-history').open = true;
-          fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
           if (focusIdentity) {
             const target = [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity);
             if (target) target.focus({preventScroll:true});
@@ -1227,6 +1237,8 @@ async function readPanel(id) {
       void marketTermsPanel?.refresh();
       void dealToursPanel?.refresh();
       void dealDocumentsPanel?.refresh();
+      if (dealSummary) void dealSummary.refresh();
+      else void mountPanelDealSummary(id);
       if ($('panelEvidenceSection')?.open) await refreshEvidence(detail, id, seq);
     }
     if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(true);
@@ -1301,6 +1313,7 @@ function paintPanel(detail) {
   disposeEvidence?.(); disposeEvidence = null;
   disposeActivityAttribution();
   disposePanelEmailFollowups();
+  disposeDealSummary();
   syncUpdateForm();
   updateDetailTimestamp();
   let marketDisposed = false, marketLoading = false;
@@ -1378,8 +1391,8 @@ function paintPanel(detail) {
     dispose() { documentsDisposed = true; documentsMounted?.dispose(); },
   };
   selectWorkspaceTab(workspaceTab);
-  mountPanelActivityAttribution();
   void mountPanelEmailFollowups(detail.deal.id);
+  void mountPanelDealSummary(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   if (!fromHistory && dealDocumentsPanel && !dealDocumentsPanel.confirmLeave()) return;
@@ -1397,6 +1410,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   disposeEvidence?.(); disposeEvidence = null;
   disposeActivityAttribution();
   disposePanelEmailFollowups();
+  disposeDealSummary();
   setContextOpenVisible(false);
   if (!state.panelDeal) boardScroll = history.state?.boardScroll ?? scrollY;
   workspaceTab = new URLSearchParams(location.search).get('tab') === 'tours' ? 'tours' : 'overview'; timelineType = '';
@@ -1458,6 +1472,7 @@ async function closeWorkspace({ fromHistory = false } = {}) {
   disposeEvidence?.(); disposeEvidence=null;
   disposeActivityAttribution();
   disposePanelEmailFollowups();
+  disposeDealSummary();
   if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); writeWorkspaceHistory({},url); }
   $('recordPanel').hidden = true; $('main').hidden = false;
   document.body.classList.remove('workspace-open');

@@ -141,13 +141,13 @@ test('the live adapter preserves authoritative start dates in both board and det
 });
 
 
-test('history includes all activities and discloses the source limit',()=>{
+test('legacy history renders retained activities without guessing coverage from count',()=>{
  const allActivities=Array.from({length:51},(_,i)=>({id:`activity-${i}`,kind:'note',summary:`Demo activity ${i}`,occurred_at:new Date(Date.UTC(2026,9,20,12,0,-i)).toISOString()}));
  const root=new JSDOM(renderDealUpdates({activities:allActivities})).window.document;
  assert.equal(root.querySelectorAll('.deal-note').length,51);
  assert.doesNotMatch(root.body.textContent,/Full history/i);
  assert.match(root.querySelector('.updates-history > summary').textContent,/51 updates/);
- assert.match(root.body.textContent,/latest 50 activities/i);
+ assert.doesNotMatch(root.body.textContent,/latest 50 activities/i);
 });
 
 test('held task history names the hold date and retains the recorded action', () => {

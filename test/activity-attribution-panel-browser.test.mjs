@@ -115,34 +115,6 @@ for(const operation of ['dispose','session','late-import','close'])test(`${opera
  assert.equal(await page.locator('[aria-label="Activity deal attribution"]').count(),0);
  if(operation==='late-import')assert.equal(await page.evaluate(()=>window.probe.calls),0);
 });
-test('Deal Room integrates click-only reads and retires the panel on refresh, close and switch',async t=>{
- const fixture=await fixtureServer();t.after(()=>fixture.close());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();
- let calls=0,release;
- await page.route('**/mcp',async route=>{
-  const request=route.request().postDataJSON();
-  assert.equal(request.params.name,'read-activity-deal-attribution');assert.deepEqual(request.params.arguments,{activity_id:id});calls++;
-  if(release)await release.promise;
-  await route.fulfill({contentType:'application/json',body:JSON.stringify({jsonrpc:'2.0',id:request.id,result:{content:[{type:'text',text:JSON.stringify(recordings.cases[0].response)}]}})});
- });
- await page.goto(fixture.origin+'/deals');await waitForAsync(page,async()=> (await import('/js/pipeline.js')).state.deals.size>0);
- await page.evaluate(async id=>{
-  const {state}=await import('/js/pipeline.js');
-  const get=state.client.getDeal.bind(state.client);
-   state.client.getDeal=async(...args)=>{const detail=await get(...args);return {...detail,activities:[{id,kind:'note',summary:'Synthetic canonical activity',occurred_at:'2026-11-01T12:00:00Z'}]};};
- },id);
- const open=async()=>{await page.locator('.kanban-card[data-id="d14"] .card-open').click();await page.locator('.updates-history > summary').click();};
- await open();assert.equal(calls,0);await page.getByRole('button',{name:'Show deal attribution'}).click();await page.getByRole('heading',{name:'Direct deal attribution'}).waitFor();assert.equal(calls,1);
- await page.getByText('Version evidence',{exact:true}).click();
- await page.locator('[data-refresh-detail]').first().click();await page.getByRole('button',{name:'Show deal attribution'}).waitFor();
- await page.waitForFunction(()=>!document.querySelector('[aria-label="Activity deal attribution"]'));
- await page.getByRole('button',{name:'Back to deals',exact:true}).click();
- await open();
- let resolve;release={promise:new Promise(r=>resolve=r)};
- await page.getByRole('button',{name:'Show deal attribution'}).click();await page.waitForFunction(()=>document.querySelector('[aria-label="Activity deal attribution"]'));
- await page.getByRole('button',{name:'Back to deals',exact:true}).click();resolve();release=null;
- await page.locator('.kanban-card .card-open:visible').first().click();await page.locator('#detailUpdateForm').waitFor();
- assert.equal(await page.locator('[aria-label="Activity deal attribution"]').count(),0);
-});
 test('every settled state clears on session retirement and a failed explanation closes',async t=>{
  const page=await open(t);
  for(const row of recordings.cases){
