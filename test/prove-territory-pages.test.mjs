@@ -78,3 +78,16 @@ chromium.launch=async options=>{const browser=await launch(options),create=brows
 });
 
 test('fixture mode refuses nonloopback origins before any read',async()=>{await assert.rejects(prove({origin:'https://example.invalid',expectedCommit:sha,fixture:true,readRelease:()=>{throw Error('must not read');}}),e=>e.exitCode===78);});
+
+test('controlled cold asset startup reaches evaluation before deadline', async t => {
+  const options = await setup(t);
+  const root = temporaryDirectory('territory-timing-', t), preload = join(root, 'preload.mjs');
+  await writeFile(preload, "import { registerHooks, syncBuiltinESMExports } from 'node:module';\nimport http from 'node:http';\nimport { chromium } from 'playwright';\nconst launch = chromium.launch.bind(chromium);\nchromium.launch = async options => {\n  globalThis.reviewDeadline = Date.now() + 1400;\n  const browser = await launch(options);\n  const create = browser.newPage.bind(browser);\n  browser.newPage = async (...args) => {\n    const page = await create(...args);\n    const go = page.goto.bind(page);\n    page.goto = async (url, options) => {\n      await go(url, { ...options, ...(options?.timeout < 400 ? { timeout: 6 } : {}) });\n      process.stderr.write('TIMING_PROBE_EVALUATION_REACHED\\n');\n      return page.evaluate(() => new Promise(() => {}));\n    };\n    return page;\n  };\n  return browser;\n};\nconst server = http.createServer;\nhttp.createServer = function (...args) {\n  const i = args.findIndex(a => typeof a === 'function');\n  if (i >= 0) {\n    const handler = args[i];\n    args[i] = (req, res) => {\n      if (req.url === '/leads') setTimeout(() => handler(req, res), 100);\n      else handler(req, res);\n    };\n  }\n  return server.apply(this, args);\n};\nsyncBuiltinESMExports();\nregisterHooks({load(url, context, next) {\n  const result = next(url, context);\n  if (url.endsWith('/scripts/fixture-app-assets.mjs')) {\n    result.source = String(result.source).replace('export async function appAssetSnapshot(builtRoot, sourceRoot = process.cwd()) {', 'export async function appAssetSnapshot(builtRoot, sourceRoot = process.cwd()) { await new Promise(r=>setTimeout(r, Math.max(0, globalThis.reviewDeadline-Date.now()-250)));');\n  }\n  return result;\n}});\n".replace("from 'playwright'", `from ${JSON.stringify(import.meta.resolve('playwright'))}`));
+  let result;
+  try { result = await exec(process.execPath, ['--import', preload, 'scripts/prove-territory-pages.mjs', '--origin', options.origin, '--expected-commit', sha, '--fixture', '--recording', options.recordingUrl, '--timeout-ms', '1400'], { timeout: 35000 }); }
+  catch (error) { result = error; }
+  t.diagnostic(`controlled startup exit ${result.code} ${result.stdout?.trim()}`);
+  assert.equal(result.code, 78, result.stdout + result.stderr);
+  assert.match(result.stderr, /TIMING_PROBE_EVALUATION_REACHED/);
+  assert.equal(JSON.parse(result.stdout).status, 'insufficient_evidence');
+});
