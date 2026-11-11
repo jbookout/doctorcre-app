@@ -291,16 +291,37 @@ export function createIntroductionRequest({
     if (!request || !path || view.status === "retired") return;
     const token = generation;
     change("submitting");
-    if (!recover) {
-      try {
-        const next = pathFrom(validate(await client.getRelationshipNetwork()), path.edge.id, now());
-        if (token !== generation) return;
+    const matches = (saved: Edge) =>
+      saved.kind === "intro_requested" &&
+      saved.from === path.from.id &&
+      saved.to === path.to.id &&
+      saved.via === (path.via?.id ?? null) &&
+      saved.when.slice(0, 10) === request.occurred_on &&
+      saved.detail === request.note;
+    const sessionEnded = (error: unknown) => {
+      const failure = error && typeof error === "object" ? object(error) : {};
+      return failure.code === "session_changed" || failure.status === 401 || failure.status === 403;
+    };
+    try {
+      const snapshot = object(validate(await client.getRelationshipNetwork()));
+      if (token !== generation) return;
+      if (Date.parse(text(snapshot.valid_until)) <= now()) throw Error("Source expired");
+      const committed = recover && rows(snapshot.edges).map(edge).some(matches);
+      if (!committed) {
+        const next = pathFrom(snapshot, path.edge.id, now());
         if (JSON.stringify(next) !== JSON.stringify(path)) throw Error("Offer changed");
-      } catch {
-        if (token === generation)
-          change("changed_source", "This offered path could not be verified. Refresh and review it again.");
-        return;
       }
+    } catch (error) {
+      if (token !== generation) return;
+      if (sessionEnded(error)) retire("Session changed. Reopen Relationships in your original session.");
+      else
+        change(
+          recover ? "unknown" : "changed_source",
+          recover
+            ? "This request could not be reconciled with the current path. Check the same request again."
+            : "This offered path could not be verified. Refresh and review it again.",
+        );
+      return;
     }
     if (token !== generation) return;
     try {
@@ -312,20 +333,12 @@ export function createIntroductionRequest({
       const saved = rows(snapshot.edges)
         .map(edge)
         .find((row) => row.id === `link:${receipt.link_id}`);
-      if (
-        saved?.kind !== "intro_requested" ||
-        saved.from !== path.from.id ||
-        saved.to !== path.to.id ||
-        saved.via !== (path.via?.id ?? null) ||
-        saved.when.slice(0, 10) !== request.occurred_on ||
-        saved.detail !== request.note
-      )
-        throw Error("Exact request readback unavailable");
+      if (!saved || !matches(saved)) throw Error("Exact request readback unavailable");
       change("confirmed", "Introduction requested. The refreshed connection shows the recorded request.");
     } catch (error) {
       if (token !== generation) return;
       const failure = error && typeof error === "object" ? object(error) : {};
-      if (failure.code === "session_changed" || failure.status === 401 || failure.status === 403) {
+      if (sessionEnded(error)) {
         retire("Session changed. Reopen Relationships in your original session.");
       } else if (
         failure.payload &&

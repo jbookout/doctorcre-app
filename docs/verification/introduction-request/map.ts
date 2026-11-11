@@ -23,6 +23,7 @@ const steps: Record<string, string> = {
   MatchingReadback: "Exact canonical request matches",
   Recover: "Check the same request",
   SourceChanges: "Source freshness changes",
+  PreflightSessionRefusal: "Session refusal clears the review",
   Retire: "Session ends",
 };
 export const readerActions = ["Open", "OpenUnavailable", "Review", "Prepare", "Recover", "Retire"];

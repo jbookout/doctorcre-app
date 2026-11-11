@@ -344,7 +344,9 @@ for (const mutation of ["restricted", "removed", "stale", "changed", "already-re
     const h = harness();
     h.model.open(h.network, offerId);
     const write = h.client.linkParties;
-    h.client.linkParties = async () => { throw Error("failed before commit"); };
+    h.client.linkParties = async () => {
+      throw Error("failed before commit");
+    };
     await h.model.submit("2026-11-10", "Note", true);
     assert.equal(h.model.view().status, "unknown");
     h.client.linkParties = write;
@@ -357,7 +359,7 @@ for (const mutation of ["restricted", "removed", "stale", "changed", "already-re
     if (mutation === "already-requested") h.network.edges.push({ ...h.network.edges[0], kind: "intro_requested" });
     await h.model.recover();
     assert.equal(h.calls.length, 0);
-    assert.equal(h.model.view().status, "changed_source");
+    assert.equal(h.model.view().status, "unknown");
   });
 
 test("committed recovery remains possible after offer suppression and endpoint restriction", async () => {
@@ -370,7 +372,7 @@ test("committed recovery remains possible after offer suppression and endpoint r
   h.network.suggestions = [];
   await h.model.recover();
   assert.equal(h.model.view().status, "confirmed");
-  assert.equal(h.network.edges.filter(e => e.kind === "intro_requested").length, 1);
+  assert.equal(h.network.edges.filter((e) => e.kind === "intro_requested").length, 1);
 });
 
 test("uncommitted recovery retains its key when current eligibility is verified", async () => {
@@ -378,7 +380,10 @@ test("uncommitted recovery retains its key when current eligibility is verified"
   h.model.open(h.network, offerId);
   const write = h.client.linkParties;
   const attempted: Write[] = [];
-  h.client.linkParties = async args => { attempted.push(args); throw Error("failed before commit"); };
+  h.client.linkParties = async (args) => {
+    attempted.push(args);
+    throw Error("failed before commit");
+  };
   await h.model.submit("2026-11-10", "Note", true);
   h.client.linkParties = write;
   await h.model.recover();
@@ -386,11 +391,13 @@ test("uncommitted recovery retains its key when current eligibility is verified"
   assert.deepEqual(h.calls[0], attempted[0]);
 });
 
-for (const failure of [{status:401}, {status:403}, {code:"session_changed"}])
+for (const failure of [{ status: 401 }, { status: 403 }, { code: "session_changed" }])
   test(`preflight session refusal clears the review ${JSON.stringify(failure)}`, async () => {
     const h = harness();
     h.model.open(h.network, offerId);
-    h.client.getRelationshipNetwork = async () => { throw Object.assign(Error("Session ended"), failure); };
+    h.client.getRelationshipNetwork = async () => {
+      throw Object.assign(Error("Session ended"), failure);
+    };
     await h.model.submit("2026-11-10", "Private note", true);
     assert.equal(h.model.view().status, "retired");
     assert.equal(h.model.view().path, null);
@@ -406,7 +413,7 @@ for (const rejects of [false, true])
     h.client.getRelationshipNetwork = () => pending.promise;
     const sending = h.model.submit("2026-11-10", "Private note", true);
     h.model.retire();
-    if (rejects) pending.reject(Object.assign(Error("Session ended"), {status:401}));
+    if (rejects) pending.reject(Object.assign(Error("Session ended"), { status: 401 }));
     else pending.resolve(h.network);
     await sending;
     assert.equal(h.model.view().status, "retired");
@@ -414,3 +421,22 @@ for (const rejects of [false, true])
     assert.equal(h.model.view().request, null);
     assert.equal(h.calls.length, 0);
   });
+
+test("unavailable recovery read retains unknown intent until reconciliation can finish", async () => {
+  const h = harness();
+  h.model.open(h.network, offerId);
+  h.lost();
+  await h.model.submit("2026-11-10", "Note", true);
+  const read = h.client.getRelationshipNetwork;
+  h.client.getRelationshipNetwork = async () => {
+    throw Error("Unavailable");
+  };
+  await h.model.recover();
+  assert.equal(h.model.view().status, "unknown");
+  h.model.open(h.network, offerId);
+  await h.model.submit("2026-11-11", "Replacement", true);
+  assert.equal(h.calls.length, 1);
+  h.client.getRelationshipNetwork = read;
+  await h.model.recover();
+  assert.equal(h.model.view().status, "confirmed");
+});
