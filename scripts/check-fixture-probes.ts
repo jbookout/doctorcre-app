@@ -73,23 +73,29 @@ export function checkFixtureProbes(sources: Map<string, string>): string[] {
     }
     parsed.set(file, { nodes, bindings, imports });
   }
+  const ownerConsumers = new Set<string>();
   const sensitive = new Set<string>();
   for (const [file, data] of parsed) if (data.imports.some((name) => fixtureModule.test(name))) sensitive.add(file);
+  for (const [file, data] of parsed)
+    if (data.imports.some((name) => /fixture-probe\.ts$/.test(name))) ownerConsumers.add(file);
   let changed = true;
   while (changed) {
     changed = false;
-    for (const [file, data] of parsed)
-      if (
-        !sensitive.has(file) &&
-        data.imports.some((name) => sensitive.has(relative("/", resolve("/", dirname(file), name))))
-      ) {
-        sensitive.add(file);
-        changed = true;
+    for (const [file, data] of parsed) {
+      for (const graph of [sensitive, ownerConsumers]) {
+        if (
+          !graph.has(file) &&
+          data.imports.some((name) => graph.has(relative("/", resolve("/", dirname(file), name))))
+        ) {
+          graph.add(file);
+          changed = true;
+        }
       }
+    }
   }
   for (const [file, data] of parsed) {
     if (owners.has(file)) continue;
-    const hasOwner = data.imports.some((name) => /fixture-probe\.ts$/.test(name));
+    const hasOwner = ownerConsumers.has(file);
     const acquisitionNames = new Set(["fixtureServer", "startFixtureServer", "fixtureProbe"]);
     for (const value of data.nodes)
       if (
@@ -169,7 +175,7 @@ export function checkFixtureProbes(sources: Map<string, string>): string[] {
       if (node(input) && input.type === "Identifier") input = data.bindings.get(String(input.name));
       const elements =
         node(input) && input.type === "ArrayExpression" && Array.isArray(input.elements) ? input.elements : [];
-      const first = elements[0];
+      const first = name === "fork" ? input : elements[0];
       let target = text(first, data.bindings);
       if (!target && node(first))
         walk(first, (entry) => {
@@ -195,7 +201,7 @@ export function checkFixtureProbes(sources: Map<string, string>): string[] {
         : undefined;
       if (
         inlineFixture ||
-        (resolvedTarget && fixtureModule.test(resolvedTarget)) ||
+        (resolvedTarget && (fixtureModule.test(resolvedTarget) || sensitive.has(resolvedTarget))) ||
         (sensitive.has(file) && ((!target && !inline) || (inline && program === undefined)))
       )
         errors.push(`${file}: fixture process probe must use fixtureProbe; dynamic process code cannot be verified`);

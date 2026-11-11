@@ -26,6 +26,27 @@ export class ExerciseClock {
 }
 
 type Ready = { origin: string; fixturePid: number };
+type Status = { kind: "started" } | { kind: "ready"; ownership: Ready } | { kind: "completed" };
+function parseStatus(message: unknown): Status {
+  if (typeof message !== "object" || message === null || Array.isArray(message)) throw Error("protocol invalid status");
+  const keys = Object.keys(message);
+  if (keys.length === 1 && "started" in message && message.started === true) return { kind: "started" };
+  if (keys.length === 1 && "completed" in message && message.completed === true) return { kind: "completed" };
+  if (
+    keys.length !== 2 ||
+    !("origin" in message) ||
+    !("fixturePid" in message) ||
+    typeof message.origin !== "string" ||
+    typeof message.fixturePid !== "number" ||
+    !Number.isSafeInteger(message.fixturePid) ||
+    message.fixturePid < 1
+  )
+    throw Error("protocol invalid ready status");
+  const url = new URL(message.origin);
+  if (url.hostname !== "127.0.0.1" || url.protocol !== "http:" || !Number(url.port))
+    throw Error("protocol invalid origin");
+  return { kind: "ready", ownership: { origin: message.origin, fixturePid: message.fixturePid } };
+}
 type Phase = "Starting" | "Ready" | "Exercising" | "Closing" | "Closed";
 type Options = {
   root?: string;
@@ -59,6 +80,7 @@ export function fixtureProbe(options: Options = {}) {
   let phase: Phase = "Starting";
   let stderr = "";
   let failure: Error | undefined;
+  let awaitingCompletion = false;
   let ownership: Ready | undefined;
   let resolveReady: (ready: Ready) => void = () => {};
   let rejectReady: (error: Error) => void = () => {};
@@ -89,12 +111,16 @@ export function fixtureProbe(options: Options = {}) {
     void close(Error("acquisition timeout"));
   }, options.acquisitionMs ?? 30000);
   function close(error?: Error): Promise<void> {
-    if (phase === "Closing" || phase === "Closed") return closed;
+    if (phase === "Closing" || phase === "Closed") {
+      if (error?.message.startsWith("protocol")) failure = error;
+      return closed;
+    }
     failure = error;
     phase = "Closing";
     clearTimeout(acquisitionTimer);
     clock.close();
     rejectReady(error ?? Error("acquisition closed"));
+    rejectStarted(error ?? Error("acquisition closed"));
     kill("SIGTERM");
     cleanupTimer = setTimeout(() => {
       kill("SIGKILL");
@@ -108,48 +134,45 @@ export function fixtureProbe(options: Options = {}) {
   child.stderr?.on("data", (data: Buffer) => {
     stderr = (stderr + data.toString()).slice(-8192);
   });
+  let receivedStarted = false;
   let markStarted: () => void = () => {};
-  const started = new Promise<void>((resolve) => {
+  let rejectStarted: (error: Error) => void = () => {};
+  const started = new Promise<void>((resolve, reject) => {
+    rejectStarted = reject;
     markStarted = resolve;
   });
+  void started.catch(() => {});
   child.on("message", (message: unknown) => {
-    if (typeof message === "object" && message !== null && "completed" in message && phase === "Exercising") {
-      void close();
-      return;
-    }
-    if (typeof message === "object" && message !== null && "started" in message) {
-      markStarted();
-      return;
-    }
-    if (
-      typeof message !== "object" ||
-      message === null ||
-      !("origin" in message) ||
-      !("fixturePid" in message) ||
-      typeof message.origin !== "string" ||
-      typeof message.fixturePid !== "number" ||
-      !Number.isSafeInteger(message.fixturePid) ||
-      message.fixturePid < 1
-    ) {
-      void close(Error("acquisition invalid ready message"));
-      return;
-    }
-    let url: URL;
+    let status: Status;
     try {
-      url = new URL(message.origin);
+      status = parseStatus(message);
     } catch {
-      void close(Error("acquisition invalid origin"));
+      void close(Error("protocol invalid status message"));
       return;
     }
-    if (url.hostname !== "127.0.0.1" || url.protocol !== "http:" || !Number(url.port)) {
-      void close(Error("acquisition invalid origin"));
+    if (phase === "Closing" || phase === "Closed") {
+      if (status.kind === "ready") ownership = status.ownership;
       return;
     }
-    ownership = { origin: message.origin, fixturePid: message.fixturePid };
-    if (phase !== "Starting") return;
-    clearTimeout(acquisitionTimer);
-    phase = "Ready";
-    resolveReady({ origin: message.origin, fixturePid: message.fixturePid });
+    switch (status.kind) {
+      case "started":
+        if (phase !== "Starting" || receivedStarted) break;
+        receivedStarted = true;
+        markStarted();
+        return;
+      case "ready":
+        if (phase !== "Starting" || !receivedStarted) break;
+        ownership = status.ownership;
+        clearTimeout(acquisitionTimer);
+        phase = "Ready";
+        resolveReady(ownership);
+        return;
+      case "completed":
+        if (phase !== "Exercising" || !awaitingCompletion) break;
+        void close();
+        return;
+    }
+    void close(Error(`protocol unexpected ${status.kind} in ${phase}`));
   });
   child.once("error", (error) => {
     void close(Error(`acquisition spawn: ${error.message}`));
@@ -157,6 +180,7 @@ export function fixtureProbe(options: Options = {}) {
   child.once("close", (code, signal) => {
     if (phase !== "Closing" && code !== 0)
       failure = Error(`${phase === "Starting" ? "acquisition" : "exercise"} exit ${code ?? signal}: ${stderr}`);
+    if (phase === "Exercising" && !failure) failure = Error("protocol exit before completion");
     if (phase === "Starting" && !failure) failure = Error("acquisition exit before ready");
     phase = "Closed";
     clearTimeout(acquisitionTimer);
@@ -164,6 +188,7 @@ export function fixtureProbe(options: Options = {}) {
     clock.close();
     options.signal?.removeEventListener("abort", parentAbort);
     rejectReady(failure ?? Error("acquisition closed"));
+    rejectStarted(failure ?? Error("acquisition closed"));
     if (failure?.message.startsWith("cleanup")) rejectClosed(failure);
     else resolveClosed();
   });
@@ -183,7 +208,10 @@ export function fixtureProbe(options: Options = {}) {
       phase = "Exercising";
       if (mode === "timeout") clock.start();
       else if (mode === "abort") await close(Error("exercise abort"));
-      else child.send({ command: "assert" });
+      else {
+        awaitingCompletion = true;
+        child.send({ command: "assert" });
+      }
       await closed;
       if (failure) throw failure;
       return { stderr };
