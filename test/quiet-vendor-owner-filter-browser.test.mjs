@@ -5,6 +5,7 @@ import { chromium } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 import { validateQuietFollowUps } from '../js/leads-client.js';
+const meetingRecordings = JSON.parse(readFileSync(new URL('./fixtures/vendor-meetings/recordings.json', import.meta.url)));
 const recorded = () => JSON.parse(readFileSync(new URL('./fixtures/quiet-vendor-owner-filter/recordings.json', import.meta.url))).response;
 
 for (const width of [390,1280]) for (const theme of ['light','dark']) test(`loaded owner selection ${width} ${theme}`, async t => {
@@ -16,8 +17,11 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`load
   await page.route('https://**',route=>route.abort());
   await page.route('**/api/v1/business/**',route=>route.fulfill({json:directoryFixture(route.request().url())}));
   await page.route('**/mcp',route=>{
-    const request=route.request().postDataJSON();reads++;
-    return route.fulfill({json:{jsonrpc:'2.0',id:request.id,result:{isError:denied,content:[{type:'text',text:JSON.stringify(denied?{error:'forbidden'}:response)}]}}});
+    const request=route.request().postDataJSON();
+    const quiet=request.params.name==='quiet-follow-ups';
+    if(quiet) reads++;
+    const payload=quiet?(denied?{error:'forbidden'}:response):meetingRecordings[request.params.arguments.view];
+    return route.fulfill({json:{jsonrpc:'2.0',id:request.id,result:{isError:quiet&&denied,content:[{type:'text',text:JSON.stringify(payload)}]}}});
   });
   await page.goto(server.url+'/vendors');
   const section=page.getByRole('region',{name:'Quiet vendor follow-ups'});
