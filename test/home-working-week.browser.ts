@@ -26,6 +26,15 @@ test("Home working week preserves day, exact details, coverage and retirement", 
         const week = page.getByRole("region", { name: "Working week", exact: true });
         const days = week.getByRole("button", { name: /\d{4}/ });
         assert.equal(await days.count(), 7);
+        for (const day of await days.all()) {
+          const weekday = await day.locator("span").first().innerText();
+          const date = await day.locator("strong").innerText();
+          assert.equal(
+            await week.getByRole("button", { name: new RegExp(`^${weekday}\\s*${date}\\b.*\\d{4}$`) }).count(),
+            1,
+            "Each day name starts with its visible label and retains the full date",
+          );
+        }
         assert.equal(
           await page.locator("#appMainSlot #homeRoot").count(),
           1,
