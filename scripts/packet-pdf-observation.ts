@@ -21,6 +21,15 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
   try {
     const doc = await loading.promise;
     assert.ok(doc.numPages > 0 && doc.numPages <= 50, "One to fifty packet pages required");
+    const { info } = await doc.getMetadata();
+    if (
+      info &&
+      typeof info === "object" &&
+      "Creator" in info &&
+      typeof info.Creator === "string" &&
+      /^CARR Tour Operations (?!1\.1\.0$)/.test(info.Creator)
+    )
+      throw Object.assign(Error("Packet renderer version is outside the recorded 1.1.0 contract"), { exitCode: 78 });
     const stops: PacketStop[] = [];
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);

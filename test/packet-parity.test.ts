@@ -108,3 +108,10 @@ test("PDF observations reject contacts and internal notes outside displayed fact
     await assert.rejects(observePdf(await doc.save()), /outside the approved packet fields/);
   }
 });
+
+test("a newer producer layout is insufficient evidence for the recorded observer", async () => {
+  const { PDFDocument } = await import("pdf-lib");
+  const doc = await PDFDocument.load(await packetFixturePdf());
+  doc.setCreator("CARR Tour Operations 2.0.0");
+  await assert.rejects(observePdf(await doc.save()), { exitCode: 78 });
+});
