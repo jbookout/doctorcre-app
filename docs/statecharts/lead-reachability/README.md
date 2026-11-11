@@ -19,7 +19,7 @@ existing authenticated client and its deadline. No new endpoint, storage, cache,
 queue, write, send, retry loop or detail-per-lead query is introduced. Refresh
 replaces the snapshot atomically after parsing. The existing epoch rejects late
 responses after retirement. A compatible refresh preserves selection and the
-existing map instance. Exclusion closes the selected detail and clears selection.
+existing map instance. A returned row excluded by a filter closes its detail and clears selection. A missing row keeps the existing unavailable-detail recovery path while selection is cleared.
 
 Counts and membership are linear in the returned board; rendering and existing
 repeated stage counts dominate at ten times the current load. The existing board

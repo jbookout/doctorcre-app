@@ -85,9 +85,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (state.board && !owners.includes(state.filters.owner)) state.filters.owner = "";
     if (state.board && !markets.includes(state.filters.market)) state.filters.market = "";
     const shown = visibleLeads(leads, state.filters);
-    if (!shown.some(lead => lead.id === state.selectedId)) {
-      state.selectedId = null;
-      if (state.detailId) { clearGuidance(); ++state.detailEpoch; state.detailId = null; state.detail = null; $("leadDetail").close(); }
+    if (!shown.some(lead => lead.id === state.selectedId)) state.selectedId = null;
+    if (state.detailId && leads.some(lead => lead.id === state.detailId) && !shown.some(lead => lead.id === state.detailId)) {
+      clearGuidance(); ++state.detailEpoch; state.detailId = null; state.detail = null; $("leadDetail").close();
     }
     if ($("reachabilityFilter")) {
       const cohort = visibleLeads(leads, {...state.filters, reachability: ""});
@@ -314,7 +314,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       ++state.detailEpoch; state.trigger = null;
       clearGuidance(); $("leadDetail").close(); $("detailTitle").textContent = ""; $("detailBody").replaceChildren();
       render();
-      state.connectionFeedback = error.code === "invalid_projection" ? "Source refused · invalid reachability response. Previous snapshot is stale." : state.board ? "Source stale · reconnecting…" : "Connection interrupted · reconnecting…";
+      state.connectionFeedback = error.code === "invalid_projection" ? "Source refused · invalid reachability response. Previous snapshot is stale." : state.board ? "Connection interrupted · Source stale · reconnecting…" : "Connection interrupted · reconnecting…";
       paintCommandFeedback();
       return false;
     } finally {
