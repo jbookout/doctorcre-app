@@ -1,4 +1,5 @@
 import { packetFacts, packetText } from "../js/ui-packet-facts.js";
+import { navigationFromEvidence } from "../js/ui-tour-navigation.js";
 import { mountStopDrag, reorderFlexibleStops } from "/js/ui-tour-stop-drag.js";
 import { prepareClientGrant, grantReceipt, renderClientGrants } from '../js/ui-tour-client-grants.js';
 import { generatedSheet, sheetHistory, appendSheetSections } from "../js/ui-broker-cheat-sheet.js";
@@ -73,6 +74,7 @@ import { cheatSheetText, itinerarySheetText, formatTourDate, tourDisplayName, to
       if (state.sessionInvalidated || generation !== state.sessionGeneration) throw new Error("session_changed");
       if (sessionBinding && sessionBinding !== binding) { invalidateTourSession(); throw new Error("session_changed"); }
       state.csrf = payload.csrf_token; sessionBinding = binding;
+      if (payload.actor?.slug) state.userRef = payload.actor.slug;
     }
     return payload?.data || {};
   }
@@ -537,12 +539,10 @@ import { cheatSheetText, itinerarySheetText, formatTourDate, tourDisplayName, to
   let composer = null, itineraryView = null, stopDrag = null;
   function renderAcceptedItinerary() {
     const root = $("#accepted-itinerary");
-    const route = acceptedRouteFromDetail(state.tour);
-    const options = { route, scope: sessionBinding };
+    const route = acceptedRouteFromDetail(state.tour, navigationFromEvidence);
+    const options = { route, scope: sessionBinding, user_ref: state.userRef, promotion_receipt: route?.navigation?.promotion_receipt ?? null };
     $("#tour-day-link").hidden = !route;
     $("#tour-day-link").href = `/tours/day.html?tour=${encodeURIComponent(state.tour.id)}`;
-    // PR 1443 deliberately does not authenticate or retrieve promotion receipts.
-    // This surface withholds navigation until that upstream seam supplies one.
     if (!route) { itineraryView?.destroy(); itineraryView = null; root.hidden = true; return; }
     try {
       if (itineraryView) itineraryView.update(options);
@@ -901,6 +901,7 @@ import { cheatSheetText, itinerarySheetText, formatTourDate, tourDisplayName, to
     renderAcceptedItinerary();
   }
   async function loadLibrary() {
+    try { await request('/api/system-work/session'); } catch { state.userRef = null; }
     if (state.sessionInvalidated) return;
     status("Loading tours…");
     let data;

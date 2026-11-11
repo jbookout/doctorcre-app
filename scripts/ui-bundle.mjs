@@ -16,6 +16,7 @@ export const UI_ENTRIES = {
   "ui-packet-worker": "packet-worker",
   "ui-packet-facts": "packet-facts",
   "ui-packet-preview": "packet-preview",
+  'ui-tour-navigation': 'tour-navigation',
   'ui-tour-stop-drag': 'tour-stop-drag',
   'ui-tour-client-download': 'tour-client-download',
   'ui-tour-client-grants': 'tour-client-grants',

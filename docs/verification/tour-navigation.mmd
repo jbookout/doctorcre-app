@@ -1,0 +1,34 @@
+stateDiagram-v2
+ state Tour {
+  state Evidence {
+   [*] --> Unknown
+   Unknown --> Eligible: matching reviewed detail arrives
+   Unknown --> Absent: detail has no evidence
+   Eligible --> Stale: evidence expires
+   Eligible --> Absent: route replaced
+   Eligible --> Unknown: session ends
+   Absent --> Unknown: session ends
+   Stale --> Unknown: session ends
+   Unknown --> Unknown: session ends
+   Absent --> Eligible: matching reviewed detail arrives
+   Stale --> Eligible: matching reviewed detail arrives
+  }
+  --
+  state Selection {
+   [*] --> FirstStop
+   FirstStop --> ChosenStop: select another stop
+   ChosenStop --> Outbound: tap Navigate
+   Outbound --> ChosenStop: return with same user and session
+   Outbound --> ChosenStop: evidence expires
+   Outbound --> FirstStop: route replaced
+   ChosenStop --> FirstStop: route replaced
+   FirstStop --> Retired: session ends
+   ChosenStop --> Retired: session ends
+   Outbound --> Retired: session ends
+   Retired --> FirstStop: matching reviewed detail arrives
+  }
+ }
+ %% never NoUnknownNavigation: Unknown & Outbound -- Unknown evidence never launches navigation.
+ %% never NoAbsentNavigation: Absent & Outbound -- Absent evidence never launches navigation.
+ %% never NoStaleNavigation: Stale & Outbound -- Stale evidence never launches navigation.
+ %% never NoRetiredNavigation: Eligible & Retired -- Retired sessions never retain navigation.
