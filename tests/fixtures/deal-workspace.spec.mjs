@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
-import { identity, found, readiness } from '../../test/fixtures/correspondence.mjs';
 import { startFixtureServer } from '../../scripts/fixture-server.mjs';
 
 let server;
@@ -42,15 +41,15 @@ test('opening a deal replaces the board with a workspace and Back restores its s
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
   test(`workspace tabs show recorded data at ${width} in ${theme}`, async ({ page }, testInfo) => {
+    const evidenceRequests = [];
+    page.on('request', request => { if (new URL(request.url()).pathname === '/mcp') evidenceRequests.push(request.postData()); });
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.clock.install({ time: new Date('2026-10-04T17:00:00Z') });
     await page.goto(`${server.url}/deals`);
     await expect(page.locator('.card-open:visible').first()).toBeVisible();
-    await page.evaluate(async ({identity,found,readiness}) => {
+    await page.evaluate(async () => {
       const { state } = await import('/js/pipeline.js');
-      state.client.correspondenceReadiness = async () => readiness;
-      state.client.readCorrespondenceThread = async () => ({ ...found, receipts: [...found.receipts, { ...found.receipts[0], read_receipt_id: '10000000-0000-4000-8000-000000000002', recorded_at: '2026-10-02T15:30:00Z' }] });
       const read = state.client.getDeal.bind(state.client);
       state.client.getDeal = async id => {
         const detail = await read(id);
@@ -61,11 +60,12 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
           history: [{id:'demo-change',field:'owner',new_value:'dell',recorded_at:'2026-10-02T15:00:00Z',summary:'Demo owner changed'}],
           critical_dates: [{ id: 'demo-loi', kind: 'loi_expiry', due_on: '2026-10-09', note: 'Demo LOI deadline' }],
           thread: [{ id:'demo-old-note', kind:'note', actor:'joe', at:'2026-10-01T12:00:00Z', text:'Demo earlier note' }, { id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-02T12:00:00Z', text: 'Demo recorded deal note' }],
-          activities: [{id:'demo-mail',kind:'correspondence',source:'Demo mail',occurred_at:'2026-10-01T12:00:00Z',summary:'Demo mail receipt',detail:{native_identity:identity}}, { id: 'demo-earlier', kind: 'meeting', occurred_at: '2026-10-01T12:00:00Z', summary: 'Demo earlier meeting', source: 'Demo calendar fixture' }, { id: 'demo-meeting', kind: 'meeting', occurred_at: '2026-10-03T12:00:00Z', summary: 'Demo discovery meeting', detail: 'Demo meeting evidence', source: 'Demo calendar fixture' }],
+          email_threads: [{subject:'Demo newer email', latest_message_at:'2026-10-02T15:30:00Z'}, {subject:'Demo older email', latest_message_at:'2026-09-30T12:00:00Z'}],
+          activities: [{ id: 'demo-earlier', kind: 'meeting', occurred_at: '2026-10-01T12:00:00Z', summary: 'Demo earlier meeting', source: 'Demo calendar fixture' }, { id: 'demo-meeting', kind: 'meeting', occurred_at: '2026-10-03T12:00:00Z', summary: 'Demo discovery meeting', detail: 'Demo meeting evidence', source: 'Demo calendar fixture' }],
           documents: window.workspaceDocumentRemoved ? [] : [{ id: 'demo-document', prepared_at: '2026-10-03T13:00:00Z', note: 'Demo lease document' }],
         };
       };
-    }, {identity,found,readiness});
+    });
     await page.locator('.card-open:visible').first().click();
     const header = page.locator('.workspace-header');
     await expect(page.locator('#workspaceFacts')).toBeVisible();
@@ -130,10 +130,11 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       if (tab === 'correspondence') {
         await expect(page.getByRole('region', { name: 'Deal notes', exact: true })).toContainText('Demo recorded deal note');
         await expect(page.locator('#panelEvidence')).toContainText('Demo discovery meeting');
-        await expect(page.locator('#panelEvidence')).toContainText('Correspondence thread');
+        await expect(page.locator('#panelEvidence')).toContainText('Demo newer email');
+        expect(evidenceRequests).toEqual([]);
         await expect(page.locator('.workspace-note p')).toHaveText(['Demo recorded deal note', 'Demo earlier note']);
         await expect(page.locator('.workspace-note time')).toHaveText(['Oct 2, 7:00 AM CDT', 'Oct 1, 7:00 AM CDT']);
-        await expect(page.locator('[data-evidence-group=threads] time')).toHaveText(['Read Oct 2, 10:30 AM CDT', 'Read Sep 30, 7:00 AM CDT']);
+        await expect(page.locator('[data-evidence-group=threads] time')).toHaveText(['Oct 2, 10:30 AM CDT', 'Sep 30, 7:00 AM CDT']);
         await expect(page.locator('[data-evidence-group=meetings] time')).toHaveText(['Oct 3, 7:00 AM CDT', 'Oct 1, 7:00 AM CDT']);
         await expect(page.locator('[data-evidence-group=meetings] summary span')).toHaveText(['Demo discovery meeting', 'Demo earlier meeting']);
       }

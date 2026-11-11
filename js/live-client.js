@@ -10,7 +10,6 @@ import { requireReviewReceipt } from './deal-review-model.js';
  * staging; one may be passed directly for isolated client tests.
  */
 import { uuidv4 } from './uuid.js';
-import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './current-read.mjs';
 import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
@@ -219,8 +218,6 @@ export function createLiveClient(opts = {}) {
       return response.json();
     },
     async updateVendorTrust(args) { return write("update-vendor", args); },
-    async correspondenceReadiness(args = {}) { return rpc('correspondence-readiness', readinessRequest(args)); },
-    async readCorrespondenceThread(args) { return rpc('read-correspondence-thread', threadRequest(args)); },
 
     // Each deal carries `field_base` — the latest committed event id and time for
     // every editable cell, read in the same statement as the values it belongs
