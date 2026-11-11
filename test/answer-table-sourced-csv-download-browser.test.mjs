@@ -14,7 +14,7 @@ test('sourced CSV selection, lifecycle, escaping and zero business calls', async
       await page.route('**/__csv-component', r => r.fulfill({contentType:'text/html',body:'<!doctype html><body></body>'}));
       await page.goto(server.origin + '/__csv-component');
       await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
-      await page.evaluate(() => import('/js/ui-answers.js').then(() => {}));
+      await page.evaluate(() => import('/js/ui-answers.generated.js').then(() => {}));
       const requests = [];
       page.on('request', request => requests.push(request.url()));
       const result = await page.evaluate(assertSourcedCsv, recordings);
@@ -31,7 +31,7 @@ test('keyboard saves a real local CSV without changing the visible table', async
   await page.route('**/__csv-component', r => r.fulfill({contentType:'text/html',body:'<!doctype html><body></body>'}));
   await page.goto(server.origin + '/__csv-component');
   await page.evaluate(async blocks => {
-    const api = await import('/js/ui-answers.js');
+    const api = await import('/js/ui-answers.generated.js');
     api.mountAnswerBlocks(document.body,blocks,'keyboard');
   }, recordings.populated);
   await page.getByRole('button',{name:'Proposed rent ($/SF/year)',exact:true}).click();

@@ -12,7 +12,7 @@ __pycache__/
 
 test-artifacts/
 /tours/day-shell.generated.js
-/js/deal-room-forms.generated.js
+/js/ui-*.generated.js
 /out/
 # Ad-hoc screen captures; the journeys write their evidence under /.e2e/.
 mobile-a11y-evidence/
@@ -21,19 +21,6 @@ mobile-a11y-evidence/
 /.e2e/
 /playwright/.auth/
 
-
-
-
-
-
-
-
-
-
-
 /public-shell/sw.js
 
 /tsconfig.*.generated.json
-
-
-/js/ui-*.js

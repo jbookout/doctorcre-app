@@ -107,7 +107,7 @@ test('finite query-only module retries resolve all branches and unknown alternat
 
 test('the generated UI module graph resolves the app call and queue imports from checked-out source', async () => {
   const errors = await checkFixtureServers();
-  assert.equal(errors.some(error => /Unresolved fixture helper.*ui-(call|queue)\.js/.test(error)),false,errors.join('\n'));
+  assert.equal(errors.some(error => /Unresolved fixture helper.*ui-(call|queue)\.generated\.js/.test(error)),false,errors.join('\n'));
 });
 
 test('root-relative browser imports resolve the actual source graph and refuse hidden servers', async t => {

@@ -21,7 +21,7 @@ export function options(args) {
 
 export async function calendarAssertions(page, moduleURL) {
   await page.evaluate(async moduleURL => {
-    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
+    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.generated.js');
     if (typeof mountIdealClientProfile !== 'function') throw Error('missing mountIdealClientProfile export');
     const host = document.createElement('main'); document.body.append(host);
     const profile = date => ({ schema_version: 'ideal-client-profile.v1', coverage: 'recorded_closed_won_only', profiles: [
@@ -125,7 +125,7 @@ export async function prove({ origin, timeout, revision }) {
       return route.fulfill({ response: asset });
     });
     await page.goto(`${origin}/__historical_fit_proof__`);
-    const assertions = await calendarAssertions(page, `${origin}/js/ui-ideal-client-profile.js`);
+    const assertions = await calendarAssertions(page, `${origin}/js/ui-ideal-client-profile.generated.js`);
     assert.deepEqual(violations, []);
     return { origin, release, expected_revision: revision, module_urls: [...modules], assertions, requests };
   };

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 
 import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
 const snapshot = await proofAssetSnapshot();
-const entry = await readFile('js/ui-answers.js','utf8');
+const entry = await readFile('js/ui-answers.generated.js','utf8');
 const run = (origin, timeout = '30000') => new Promise((resolve, reject) => {
   const child = spawn(process.execPath,['scripts/prove-answer-source-safe-version.mjs','--origin',origin,'--timeout-ms',timeout]);
   let stdout = '', stderr = '';
@@ -19,11 +19,11 @@ const run = (origin, timeout = '30000') => new Promise((resolve, reject) => {
 
 test('proof CLI executes fetched modules and refuses contradictions, unavailable assets and timeouts', async t => {
   for (const [scenario, expected] of [['pass',0],['fail',1],['release',78],['identity',78],['missing',78],['chunk',78],['external',78],['cap',78],['timeout',78]]) await t.test(scenario, async () => {
-    const routes = new Map([...snapshot].filter(([path])=>path==='/js/ui-answers.js'||/^\/js\/[a-zA-Z0-9_-]+\.generated\.js$/.test(path)));
+    const routes = new Map([...snapshot].filter(([path])=>path==='/js/ui-answers.generated.js'||/^\/js\/[a-zA-Z0-9_-]+\.generated\.js$/.test(path)));
     for (const [path, value] of routes) {
-      if(scenario==='missing'||scenario==='chunk'&&path!=='/js/ui-answers.js') {routes.set(path,{status:404});continue;}
-      let body = path==='/js/ui-answers.js'?entry:value.body.toString();
-      if(path==='/js/ui-answers.js') {
+      if(scenario==='missing'||scenario==='chunk'&&path!=='/js/ui-answers.generated.js') {routes.set(path,{status:404});continue;}
+      let body = path==='/js/ui-answers.generated.js'?entry:value.body.toString();
+      if(path==='/js/ui-answers.generated.js') {
         if(scenario==='fail')body=body.replace('Number.isSafeInteger','Number.isInteger');
         if(scenario==='external')body+='\nimport "https://example.invalid/evil.js";';
         if(scenario==='cap')body+=Array.from({length:20},(_,i)=>`\nimport "./cap${i}.generated.js";`).join('');

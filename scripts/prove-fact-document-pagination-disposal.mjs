@@ -127,7 +127,7 @@ export async function prove({ origin, timeoutMs }) {
     });
     await page.goto(`${origin}/__fact-pagination-proof`, { timeout: remaining() });
     let observation;
-    try { observation = await observeOnPage(page, `${origin}/js/ui-facts.js`); }
+    try { observation = await observeOnPage(page, `${origin}/js/ui-facts.generated.js`); }
     catch (error) { throw routeError || error; }
     if (routeError) throw routeError;
     const final = await readAppRelease(origin, async url => {

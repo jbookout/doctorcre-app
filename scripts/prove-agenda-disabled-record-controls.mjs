@@ -134,7 +134,7 @@ export async function prove({ origin, timeoutMs }) {
     const page = await context.newPage();
     await page.goto(new URL('/__agenda_proof__', base).href);
     let observation;
-    try { observation = await exerciseAgenda(page, new URL('/js/ui-agenda.js', base).href); }
+    try { observation = await exerciseAgenda(page, new URL('/js/ui-agenda.generated.js', base).href); }
     catch (error) { throw routeFailure || error; }
     if (routeFailure) throw routeFailure;
     return { ok: true, origin: base.origin, release, assets: [...assets].map(([url, value]) => ({ url, sha256: createHash('sha256').update(value.body).digest('hex') })), ...observation, limitation: 'Deployed synthetic resilience only. Natural private-data coverage unproven.' };

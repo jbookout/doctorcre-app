@@ -17,7 +17,7 @@ async function server(t, broken = false) {
   const root = resolve(out, 'site');
   const responses = await loadFixtureAssets({ root, manifest: new Map(manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
   responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: 'a'.repeat(40) }) });
-  if (broken) responses.set('/js/ui-inbox.js', { ...responses.get('/js/ui-inbox.js'), body: responses.get('/js/ui-inbox.js').body.toString().replaceAll('America/Chicago', 'UTC') });
+  if (broken) responses.set('/js/ui-inbox.generated.js', { ...responses.get('/js/ui-inbox.generated.js'), body: responses.get('/js/ui-inbox.generated.js').body.toString().replaceAll('America/Chicago', 'UTC') });
   const fixture = await startFixture({ routes: responses });
   t.after(() => fixture.close());
   return fixture.origin;

@@ -21,7 +21,7 @@ test('status controls are keyboard reachable and retain focus', async t => {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage(); await page.goto(server.origin);
   await page.evaluate(async ({ origin, recordings }) => {
-    const { mountFactReview } = await import(`${origin}/js/ui-facts.js`);
+    const { mountFactReview } = await import(`${origin}/js/ui-facts.generated.js`);
     const { createLiveClient } = await import(`${origin}/js/live-client.js`);
     const { FACT_TERMS } = await import(`${origin}/js/client.js`);
     const client = createLiveClient({ fetchImpl: async (url, init) => {
@@ -55,7 +55,7 @@ for (const width of [390, 1440]) for (const colorScheme of ['light', 'dark']) {
     await page.goto(server.origin);
     await page.evaluate(async ({ origin, recordings }) => {
       history.replaceState(null, '', '/deals?deal=d14#term-base_rent_per_sf');
-      const { mountFactReview } = await import(`${origin}/js/ui-facts.js`);
+      const { mountFactReview } = await import(`${origin}/js/ui-facts.generated.js`);
       const { createLiveClient } = await import(`${origin}/js/live-client.js`);
       const { FACT_TERMS } = await import(`${origin}/js/client.js`);
       const client = createLiveClient({ fetchImpl: async (url, init) => {

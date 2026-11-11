@@ -48,7 +48,7 @@ export async function observeWindow(page, origin) {
     await home.waitFor({state:'attached'});
     const preview=await page.evaluate(async()=>{
       const {createLeadBoardClient}=await import('/js/leads-client.js');
-      const {homeListLimit}=await import('/js/ui-limit.js');
+      const {homeListLimit}=await import('/js/ui-limit.generated.js');
       const data=await createLeadBoardClient({docContext:false}).listPracticeOrigination({limit:100});
       return data.cards?.filter(row=>row.route==='research').slice(0,homeListLimit(window)).map(row=>row.id);
     }).catch(()=>{throw insufficient('Natural Home preview read unavailable');});

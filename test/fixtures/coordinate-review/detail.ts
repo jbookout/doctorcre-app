@@ -9,7 +9,7 @@ export function coordinateDetailFixture() {
       property_id: stop.property_id,
       property_name: `Synthetic Medical ${index + 1}`,
       property_address: `${100 + index} Test Street`,
-      as_of: new Date().toISOString(),
+      as_of: "2026-11-11T13:00:00Z",
       status: "candidates",
       reason: null,
       property_evidence: [],

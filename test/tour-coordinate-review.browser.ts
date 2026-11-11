@@ -130,9 +130,9 @@ test("coordinate production proof passes exact candidate fields and fails a near
   for (const broken of [false, true]) {
     const next = new Map(assets);
     if (broken) {
-      const asset = next.get("/js/ui-tour-coordinate-review.js");
+      const asset = next.get("/js/ui-tour-coordinate-review.generated.js");
       assert.ok(asset);
-      next.set("/js/ui-tour-coordinate-review.js", {
+      next.set("/js/ui-tour-coordinate-review.generated.js", {
         ...asset,
         body: Buffer.from(asset.body.toString().replaceAll("Property name unknown", "Wrong property name")),
       });

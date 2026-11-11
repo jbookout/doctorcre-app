@@ -11,8 +11,8 @@ const assets = await uiAssets(path => readFile(new URL('../' + path, import.meta
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 async function fixture(t, mode) {
   const fixtureAssets = new Map(assets);
-  if (mode === 'assertion') fixtureAssets.set('js/ui-action.js', Buffer.from('export function mountActionLink(){throw Error("Synthetic contradiction")}'));
-  if (mode === 'foreign') fixtureAssets.set('js/ui-action.js', Buffer.from('import "https://foreign.invalid/code.js";'));
+  if (mode === 'assertion') fixtureAssets.set('js/ui-action.generated.js', Buffer.from('export function mountActionLink(){throw Error("Synthetic contradiction")}'));
+  if (mode === 'foreign') fixtureAssets.set('js/ui-action.generated.js', Buffer.from('import "https://foreign.invalid/code.js";'));
   const manifest = { schema: 'doctorcre-static-artifact.v1', repository: 'jbookout/doctorcre-app', source_commit: '1'.repeat(40),
     files: [...fixtureAssets].map(([path, bytes]) => ({ path, bytes: bytes.length, sha256: hash(bytes) })) };
   if (mode === 'canonical') manifest.repository = 'DoctorCRE/doctorcre-app';

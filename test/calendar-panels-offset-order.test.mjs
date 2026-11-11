@@ -21,7 +21,7 @@ test('calendar snapshot transitions compare instants and preserve day semantics'
     t.after(() => previous ? Object.defineProperty(globalThis, key, previous) : delete globalThis[key]);
   }
   t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-05T12:30:00Z') });
-  const { mountCalendarPanels } = await import(pathToFileURL(join(outDir, 'site/js/ui-calendar-panels.js')));
+  const { mountCalendarPanels } = await import(pathToFileURL(join(outDir, 'site/js/ui-calendar-panels.generated.js')));
   const left = document.querySelector('#left'), right = document.querySelector('#right');
   const panel = await mountCalendarPanels(left, right);
   const titles = node => [...node.querySelectorAll('.calendar-panel-meeting a')].map(a => a.textContent);

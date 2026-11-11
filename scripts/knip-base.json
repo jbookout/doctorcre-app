@@ -163,7 +163,7 @@
     "js/charts.js",
     "tours/vendor/tour-map-route-state.js",
     "docs/statecharts/SubjectWatchControls.map.ts",
-    "js/ui-share-intake.js",
+    "js/ui-share-intake.generated.js",
     "docs/statecharts/ViewerCode.map.ts",
     "src/ui/worker/service-worker.ts",
     "js/invoice-tracker-fixture.d.ts",

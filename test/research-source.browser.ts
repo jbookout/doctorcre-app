@@ -225,7 +225,7 @@ test("absent research and empty evidence have no source selector", async (t) => 
   t.after(() => server.close());
   await page.goto(`${server.origin}/leads`);
   await page.evaluate(async () => {
-    const { mountLeadResearch } = await import(String("/js/ui-lead-research.js"));
+    const { mountLeadResearch } = await import(String("/js/ui-lead-research.generated.js"));
     const host = document.createElement("div");
     document.body.append(host);
     Reflect.set(window, "sourceMount", mountLeadResearch(host, undefined));
@@ -236,7 +236,7 @@ test("absent research and empty evidence have no source selector", async (t) => 
     const mounted: unknown = Reflect.get(window, "sourceMount");
     if (mounted && typeof mounted === "object" && "dispose" in mounted && typeof mounted.dispose === "function")
       mounted.dispose();
-    const { mountLeadResearch } = await import(String("/js/ui-lead-research.js"));
+    const { mountLeadResearch } = await import(String("/js/ui-lead-research.generated.js"));
     const host = document.createElement("div");
     document.body.append(host);
     Reflect.set(

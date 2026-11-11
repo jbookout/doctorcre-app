@@ -13,7 +13,7 @@ export async function observeNaturalChecklist(page, origin) {
   await page.locator('#detailUpdateForm').waitFor();
   const snapshot = await page.evaluate(async () => {
     const {state} = await import('/js/pipeline.js');
-    const {isDealChecklistSnapshot} = await import('/js/ui-checklist.js');
+    const {isDealChecklistSnapshot} = await import('/js/ui-checklist.generated.js');
     if (!state.panelDeal) return null;
     let detail;
     try { detail = await state.client.getDeal(state.panelDeal); }

@@ -1,9 +1,9 @@
-import { navigationFromEvidence } from "../js/ui-tour-navigation.js";
-import { mountStopDrag, reorderFlexibleStops } from "/js/ui-tour-stop-drag.js";
-import { mountSavedSearches } from "/js/ui-deal-space-searches.js";
+import { navigationFromEvidence } from "../js/ui-tour-navigation.generated.js";
+import { mountStopDrag, reorderFlexibleStops } from "/js/ui-tour-stop-drag.generated.js";
+import { mountSavedSearches } from "/js/ui-deal-space-searches.generated.js";
 import { createMcpRequests } from "../js/mcp-requests.mjs";
-import { prepareClientGrant, grantReceipt, renderClientGrants } from '../js/ui-tour-client-grants.js';
-import { generatedSheet, sheetHistory, appendSheetSections } from "../js/ui-broker-cheat-sheet.js";
+import { prepareClientGrant, grantReceipt, renderClientGrants } from '../js/ui-tour-client-grants.generated.js';
+import { generatedSheet, sheetHistory, appendSheetSections } from "../js/ui-broker-cheat-sheet.generated.js";
 import { createPageBudget } from '../js/read-budget.mjs';
 import { sessionFetch } from '../js/private-session.js';
 import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
@@ -579,7 +579,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     coordinatePanel?.retire(); coordinatePanel = null;
     const root = $("#coordinate-review"); root.replaceChildren();
     if (!tour || !binding || state.sessionInvalidated) return;
-    const { mountCoordinateReview, entranceReceiptResult } = await import("../js/ui-tour-coordinate-review.js");
+    const { mountCoordinateReview, entranceReceiptResult } = await import("../js/ui-tour-coordinate-review.generated.js");
     if (seq !== coordinatePanelSeq || binding !== sessionBinding || state.tour?.id !== tour.id) return;
     const routeId = tour.route_version_id;
     coordinatePanel = mountCoordinateReview(root, {
@@ -1035,8 +1035,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       selectDocRecord("tour", tour.id);
       if (!composer || composer.tourId !== tourId || changed) initComposer(tour);
       restoredTourId = "";
-      renderTour(); renderSelection(); await loadSelectionCart(tourId); await Promise.all([loadProjectionPreview(), loadFeedback()]);
-      if (state.tour?.id === tourId) status(state.feedbackStatus === "unavailable" ? "Tour loaded. Client responses are unavailable." : "Tour ready.");
+      renderTour(); renderSelection();
     } catch (error) {
       if (state.sessionInvalidated) return false;
       const denied = [401,403].includes(error.status) || error.message === "session_changed";
@@ -1068,6 +1067,10 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       navigationBusy = false; if (composer) renderComposer(); renderCreate();
       if (!sheetBusy && state.cheatDirty && state.tour?.id === tourId) $("#cheat-content").dispatchEvent(new Event("input"));
     }
+    await loadSelectionCart(tourId);
+    if (state.tour?.id !== tourId) return;
+    await Promise.all([loadProjectionPreview(), loadFeedback()]);
+    if (state.tour?.id === tourId) status(state.feedbackStatus === "unavailable" ? "Tour loaded. Client responses are unavailable." : "Tour ready.");
   }
   function moveStop(stopId, delta) { const list = stops(); const index = list.findIndex((stop) => stop.id === stopId); const destination = index + delta; if (index < 0 || destination < 0 || destination >= list.length) return; [list[index], list[destination]] = [list[destination], list[index]]; renderTour(); }
   async function saveRoute(reorder = false) {

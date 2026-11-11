@@ -23,7 +23,7 @@ for (const width of [390, 1280]) for (const colorScheme of ['light', 'dark']) {
     assert.ok(results.length > 30);
     assert.ok(results.every(result => result.passed));
     await page.evaluate(async response => {
-      const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.js');
+      const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.generated.js');
       const host = document.createElement('div');document.body.replaceChildren(host);
       mountTerritoryEvidence(host, {getTerritoryStateBoard: async () => response}, () => {});
     }, territoryResponse);

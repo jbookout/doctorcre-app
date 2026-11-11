@@ -28,7 +28,7 @@ test('CLI working-tree fixture passes; broken deployed asset fails; natural proo
     assert.equal(receipt.production_acceptance,false);
     assert.equal(receipt.deployed_asset_fixture.assertions.reads,6);
     await proxy.close();
-    routes.set('/js/ui-market.js',{contentType:'text/javascript',body:'export const missing = true;'});
+    routes.set('/js/ui-market.generated.js',{contentType:'text/javascript',body:'export const missing = true;'});
     proxy=await startFixture({routes});
     const fail = await cli(proxy.origin);
     assert.equal(fail.code,1,fail.stderr);

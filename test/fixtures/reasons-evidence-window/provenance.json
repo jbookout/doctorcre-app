@@ -10,10 +10,10 @@
   "parser": {
     "path": "js/contact-reasons.mjs",
     "snapshot": "producer.txt#parser",
-    "sha256": "0fe1a4b0d79142b08583e51b8c275808ea6b753cf5c52edb2a23699086a07329",
-    "revision": "7ab62552c091ef7db9887cb1b4fdae217d4645ca"
+    "sha256": "8875860597acacfd268a017a84cfd3ebca7e10a0aa8c3bee907690a0b3007ea0",
+    "revision": "fa0554888a82df381dfdab1da1f4081a93a0e1ea"
   },
   "contract": "contracts/carr-interface.v1/mcp_read_contracts/list-practice-origination.json",
   "production_reads": false,
-  "dependency_snapshot_sha256": "27c01aa3243b29d5c5f48b35f1f1bd57426aec790bca4abd3cc1d4c8df68fb8c"
+  "dependency_snapshot_sha256": "d81a88dbe52b8baa4a7f93ff9b852325c4595dae82482afbd9f2d29ccc3c5810"
 }

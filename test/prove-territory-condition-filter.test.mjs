@@ -12,9 +12,9 @@ async function snapshot(mode) {
   const responses = new Map([...assets].map(([path, body]) => ['/' + path, { body, contentType: 'text/javascript' }]));
   if (mode === 'unavailable') responses.clear();
   if (mode === 'chunk-missing') for (const path of responses.keys()) if (path.includes('ui-shared-')) responses.delete(path);
-  if (mode === 'missing-selector') responses.set('/js/ui-territory-evidence.js', { contentType: 'text/javascript', body: 'export function mountTerritoryEvidence(host){host.innerHTML="<details><table><tbody></tbody></table></details>"; return {dispose(){host.replaceChildren()}}}' });
-  if (mode === 'contradiction') responses.set('/js/ui-territory-evidence.js', { contentType: 'text/javascript', body: 'export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}' });
-  if (mode === 'foreign-import') responses.set('/js/ui-territory-evidence.js', { contentType: 'text/javascript', body: 'import "https://foreign.invalid/a.js";' });
+  if (mode === 'missing-selector') responses.set('/js/ui-territory-evidence.generated.js', { contentType: 'text/javascript', body: 'export function mountTerritoryEvidence(host){host.innerHTML="<details><table><tbody></tbody></table></details>"; return {dispose(){host.replaceChildren()}}}' });
+  if (mode === 'contradiction') responses.set('/js/ui-territory-evidence.generated.js', { contentType: 'text/javascript', body: 'export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}' });
+  if (mode === 'foreign-import') responses.set('/js/ui-territory-evidence.generated.js', { contentType: 'text/javascript', body: 'import "https://foreign.invalid/a.js";' });
   responses.set('/app-release', { contentType: 'application/json', body: mode === 'release-missing' ? '{}' : JSON.stringify({ service: 'doctorcre-app', source_commit: 'a'.repeat(40), environment: 'production' }) });
   if (mode === 'timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
   return startFixture({ routes: responses });

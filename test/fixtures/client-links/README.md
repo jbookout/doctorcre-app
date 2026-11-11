@@ -21,7 +21,7 @@ node --test --test-name-pattern="response recordings" test/client-links-producer
 ```
 
 The browser suite builds the current artifact, including its authored download module and report styles.
-It does not require generated `js/ui-tour-client-download.js` or git history.
+It does not require generated `js/ui-tour-client-download.generated.js` or git history.
 These recordings prove the consumer wire shape, not production authorization.
 
 Set `RECORD_CLIENT_LINKS_CONTRACT=1` with the producer checkout variable to
