@@ -29,6 +29,7 @@ export function visibleLeads(leads, filters = {}) {
   return leads.filter(eligibleLead).filter(lead => {
     const stage = normalizedStage(lead);
     return (filters.stage ? stage === filters.stage : BOARD_STAGES.some(([key]) => key === stage)) &&
+      (!filters.reachability || (lead.reachability?.classification || "research") === filters.reachability) &&
       (!filters.owner || lead.owner === filters.owner) && (!filters.market || marketKey(lead) === filters.market) &&
       (!filters.specialty || specialtyKey(lead) === filters.specialty) &&
       (!search || [leadTitle(lead), lead.specialty, marketKey(lead), lead.party_id].join(" ").toLowerCase().includes(search));
