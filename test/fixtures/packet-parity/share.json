@@ -1,0 +1,162 @@
+{
+  "as_of": "2026-08-27T12:00:00Z",
+  "contract_version": "2.1.0",
+  "renderer_version": "2.0.0",
+  "stops": [
+    {
+      "property_ref": "property:public:AlphaHealthCenter01",
+      "route_sequence": 1,
+      "route_label": "A",
+      "name": "Alpha Health Center",
+      "address": "100 Alpha Drive, Pensacola, FL",
+      "suite": "Suite 120",
+      "property_type": "Medical office",
+      "size": {
+        "value": 1600,
+        "unit": "SF"
+      },
+      "asking_economics": {
+        "value": "24.00",
+        "currency": "USD",
+        "period": "NNN"
+      },
+      "availability": "Available",
+      "parking": "4.5/1,000 SF",
+      "public_packet_note": "Please meet in the lobby",
+      "appointment_start": "2031-03-04T14:00:00.123456+00:00",
+      "appointment_end": "2031-03-04T14:30:00.123456+00:00"
+    },
+    {
+      "property_ref": "property:public:BetaMedicalPlaza0002",
+      "route_sequence": 2,
+      "route_label": "B",
+      "name": "Beta Medical Plaza",
+      "address": "200 Beta Lane, Pensacola, FL",
+      "suite": "Suite 220",
+      "property_type": "Medical office",
+      "size": {
+        "value": 2600,
+        "unit": "SF"
+      },
+      "asking_economics": {
+        "value": "24.00",
+        "currency": "USD",
+        "period": "NNN"
+      },
+      "availability": "Available",
+      "parking": "5 spaces",
+      "appointment_start": null,
+      "appointment_end": null
+    }
+  ],
+  "presentation": {
+    "version": "2.0.0",
+    "brand": "CARR Healthcare Real Estate",
+    "map": "Tour map",
+    "title": "Your property tour",
+    "overview": "Tour day at a glance",
+    "properties": "Properties",
+    "notes": "My Notes",
+    "unknown": "Unknown",
+    "fields": [
+      [
+        "suite",
+        "Suite"
+      ],
+      [
+        "property_type",
+        "Property type"
+      ],
+      [
+        "size",
+        "Size"
+      ],
+      [
+        "asking_economics",
+        "Asking economics"
+      ],
+      [
+        "availability",
+        "Availability"
+      ],
+      [
+        "parking",
+        "Parking"
+      ]
+    ],
+    "contractVersion": "2.1.0",
+    "summary": "2 properties in tour order.",
+    "stops": [
+      {
+        "property_ref": "property:public:AlphaHealthCenter01",
+        "route_sequence": 1,
+        "route_label": "A",
+        "name": "Alpha Health Center",
+        "address": "100 Alpha Drive, Pensacola, FL",
+        "appointment": "2031-03-04T14:00:00.123456+00:00 to 2031-03-04T14:30:00.123456+00:00",
+        "public_packet_note": "Please meet in the lobby",
+        "facts": [
+          {
+            "label": "Suite",
+            "value": "Suite 120"
+          },
+          {
+            "label": "Property type",
+            "value": "Medical office"
+          },
+          {
+            "label": "Size",
+            "value": "1600 SF"
+          },
+          {
+            "label": "Asking economics",
+            "value": "USD 24.00 per NNN"
+          },
+          {
+            "label": "Availability",
+            "value": "Available"
+          },
+          {
+            "label": "Parking",
+            "value": "4.5/1,000 SF"
+          }
+        ]
+      },
+      {
+        "property_ref": "property:public:BetaMedicalPlaza0002",
+        "route_sequence": 2,
+        "route_label": "B",
+        "name": "Beta Medical Plaza",
+        "address": "200 Beta Lane, Pensacola, FL",
+        "appointment": null,
+        "public_packet_note": null,
+        "facts": [
+          {
+            "label": "Suite",
+            "value": "Suite 220"
+          },
+          {
+            "label": "Property type",
+            "value": "Medical office"
+          },
+          {
+            "label": "Size",
+            "value": "2600 SF"
+          },
+          {
+            "label": "Asking economics",
+            "value": "USD 24.00 per NNN"
+          },
+          {
+            "label": "Availability",
+            "value": "Available"
+          },
+          {
+            "label": "Parking",
+            "value": "5 spaces"
+          }
+        ]
+      }
+    ]
+  }
+}

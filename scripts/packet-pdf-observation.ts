@@ -11,6 +11,8 @@ export type PacketStop = {
   facts: string[];
   brand: string;
   asOf: string;
+  appointment: string;
+  note: string;
 };
 export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
   const loading = getDocument({
@@ -20,18 +22,22 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
   });
   try {
     const doc = await loading.promise;
-    assert.ok(doc.numPages > 0 && doc.numPages <= 50, "One to fifty packet pages required");
+    assert.ok(doc.numPages > 0 && doc.numPages <= 51, "One overview and up to fifty property pages required");
     const { info } = await doc.getMetadata();
-    if (
-      info &&
-      typeof info === "object" &&
-      "Creator" in info &&
-      typeof info.Creator === "string" &&
-      /^CARR Tour Operations (?!1\.1\.0$)/.test(info.Creator)
-    )
-      throw Object.assign(Error("Packet renderer version is outside the recorded 1.1.0 contract"), { exitCode: 78 });
+    if (!info || typeof info !== "object" || !("Creator" in info) || info.Creator !== "CARR Tour Operations 2.0.0")
+      throw Object.assign(Error("Packet renderer version is outside the recorded 2.0.0 contract"), { exitCode: 78 });
+    const { PDFDocument, PDFName } = await import("pdf-lib");
+    const metadata = await PDFDocument.load(bytes);
+    const overview = await doc.getPage(1);
+    const overviewText = (await overview.getTextContent()).items
+      .filter((item) => "str" in item)
+      .map((item) => item.str)
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
     const stops: PacketStop[] = [];
-    for (let n = 1; n <= doc.numPages; n++) {
+    for (let n = 2; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);
       const items = (await page.getTextContent()).items.filter((item) => "str" in item);
       const band = (low: number, high: number, left = 0, right = 612) =>
@@ -47,27 +53,28 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
           .join(" ")
           .trim()
           .replace(/\s+/g, " ");
-      assert.ok(band(740, 742, 0, 210) === "CARR", "PDF branding mismatch");
-      const labels = ["PROPERTY TYPE", "SIZE", "ASKING ECONOMICS", "AVAILABILITY", "PARKING"];
+      const labels = ["Suite", "Property type", "Size", "Asking economics", "Availability", "Parking"];
       const facts = labels.map((label, i) => {
-        const y = 563 - i * 58;
-        assert.ok(band(y, y, 0, 210) === label, "Known PDF fact label and layout required");
+        const y = 570 - i * 49;
+        assert.equal(band(y, y, 0, 210), label, "Known PDF fact label and layout required");
         return band(y - 14, y, 210);
       });
-      const ref = band(75, 77);
-      const brand = band(740, 742, 0, 210);
-      const asOf = band(203, 205);
+      const reference = metadata.getPages()[n - 1]?.node.get(PDFName.of("CARRPropertyRef"));
+      assert.ok(reference && "decodeText" in reference && typeof reference.decodeText === "function");
+      const ref = String(reference.decodeText());
+      const appointment = band(580, 592);
+      const note = band(278, 290);
+      const label = band(741, 741).replace(/^Stop /, "");
+      const name = band(650, 700),
+        address = band(607, 622);
       const allowed = [
-        brand,
-        band(745, 747),
-        band(650, 700),
-        band(590, 640),
+        `Stop ${label}`,
+        name,
+        address,
+        appointment,
         ...labels.flatMap((label, i) => [label, facts[i]]),
-        "FACTS-ONLY CLIENT NOTE",
-        asOf,
-        ref,
-        band(62, 64, 0, 490),
-        `${n} / ${doc.numPages}`,
+        note,
+        "My Notes",
       ];
       const actual = items
         .map((item) => item.str)
@@ -81,17 +88,34 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
         !/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:\+1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/.test(actual),
         "PDF contains contact information",
       );
-      assert.ok(/^Packet ref: property:public:[A-Za-z0-9_-]{16,128}$/.test(ref), "Public packet reference required");
+      assert.ok(/^property:public:[A-Za-z0-9_-]{16,128}$/.test(ref), "Public packet reference required");
       stops.push({
-        property: ref.slice("Packet ref: ".length),
-        label: band(745, 747),
-        name: band(650, 700),
-        address: band(590, 640),
+        property: ref,
+        label,
+        name,
+        address,
         facts,
-        brand,
-        asOf,
+        brand: "CARR Healthcare Real Estate",
+        asOf: "",
+        appointment,
+        note,
       });
     }
+    const expectedOverview = [
+      "CARR Healthcare Real Estate",
+      "Your property tour",
+      `${stops.length} ${stops.length === 1 ? "property" : "properties"} in tour order.`,
+      "Tour day at a glance",
+      ...stops.map(
+        (p, i) => `${i + 1}. ${p.label} · ${p.name} · ${p.address}${p.appointment ? ` · ${p.appointment}` : ""}`,
+      ),
+      "Tour map",
+      "Properties",
+    ].join(" ");
+    assert.ok(
+      overviewText === expectedOverview,
+      "PDF contains text outside the approved packet fields or ordered overview",
+    );
     return stops;
   } finally {
     await loading.destroy();

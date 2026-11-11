@@ -10,6 +10,9 @@
       "address": "100 Alpha Drive, Pensacola, FL",
       "suite": "Suite 120",
       "property_type": "Medical office",
+      "availability": "Available",
+      "parking": "4.5/1,000 SF",
+      "public_packet_note": "Please meet in the lobby",
       "size": {
         "value": 1600,
         "unit": "SF"
@@ -19,8 +22,9 @@
         "currency": "USD",
         "period": "NNN"
       },
-      "availability": "Available",
-      "parking": "4.5/1,000 SF"
+      "appointment_start": "2031-03-04T14:00:00.123456+00:00",
+      "appointment_end": "2031-03-04T14:30:00.123456+00:00",
+      "as_of": "2026-08-27T12:00:00Z"
     },
     {
       "property_ref": "property:public:BetaMedicalPlaza0002",
@@ -29,7 +33,9 @@
       "name": "Beta Medical Plaza",
       "address": "200 Beta Lane, Pensacola, FL",
       "suite": "Suite 220",
-      "property_type": "Ｍｅｄｉｃａｌ　ｏｆｆｉｃｅ",
+      "property_type": "Medical office",
+      "availability": "Available",
+      "parking": "5 spaces",
       "size": {
         "value": 2600,
         "unit": "SF"
@@ -39,8 +45,9 @@
         "currency": "USD",
         "period": "NNN"
       },
-      "availability": "Available",
-      "parking": "5 spaces"
+      "appointment_start": null,
+      "appointment_end": null,
+      "as_of": "2026-08-27T12:00:00Z"
     }
   ]
 }

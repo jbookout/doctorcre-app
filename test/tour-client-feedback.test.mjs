@@ -18,6 +18,7 @@ const css = readFileSync(new URL("../reports/share.css", import.meta.url), "utf8
 const tours = readFileSync(new URL("../tours/app.js", import.meta.url), "utf8");
 const tourHtml = readFileSync(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 
+const packetRecording = JSON.parse(readFileSync(new URL("./fixtures/packet-parity/share.json", import.meta.url), "utf8"));
 const recorded = JSON.parse(readFileSync(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"));
 const tourScript = await buildToursAppScript();
 const propertyRef = "property:public:synthetic_property_01";
@@ -151,7 +152,7 @@ async function openShare({ refuseOnce = false, properties = [{ property_ref: pro
   dom.window.fetch = async (path, options = {}) => {
     if (!options.method) reads.push(path);
     let data;
-    if (path === "/api/share/report") data = { items: properties };
+    if (path === "/api/share/report") data = { ...packetRecording, stops: properties, presentation: { ...packetRecording.presentation, stops: properties.map((p, i) => ({ ...packetRecording.presentation.stops[0], ...p, route_sequence: p.route_sequence || i + 1, route_label: p.route_label || String(i + 1), address: p.address || "Address unavailable", appointment: null, public_packet_note: null })) } };
     else if (path === "/api/share/map") data = { points: [] };
     else if (path === "/api/share/feedback") {
       if (feedbackRead) {
@@ -379,8 +380,8 @@ test("an approved packet keeps a preview of the downloadable artifact", async ()
 test("the shared packet displays the PDF property facts, not a summary fallback", async () => {
   const app = await openShare({ properties: [{ property_ref: propertyRef, name: "Alpha Health Center", address: "100 Alpha Drive", suite: "Suite 120", property_type: "Medical office", size: { value: 1600, unit: "SF" }, asking_economics: { value: "24.00", currency: "USD", period: "NNN" }, availability: "Available", parking: "4.5/1,000 SF" }] });
   const row = app.doc.querySelector(".report-item");
-  assert.deepEqual([...row.querySelectorAll("dd")].map(node => node.textContent), ["Medical office", "1600 SF", "USD 24.00 / NNN", "Available", "4.5/1,000 SF"]);
-  assert.equal(row.querySelector("h3 + p").textContent, "100 Alpha Drive - Suite 120");
+  assert.deepEqual([...row.querySelectorAll("dd")].map(node => node.textContent), ["Suite 120", "Medical office", "1600 SF", "USD 24.00 per NNN", "Available", "4.5/1,000 SF"]);
+  assert.equal(row.querySelector("h3 + p").textContent, "100 Alpha Drive");
 });
 
 test("the draft packet shows PDF-formatted fact values instead of a field-name summary", async () => {

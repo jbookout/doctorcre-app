@@ -1,3 +1,4 @@
+import { packetPdfCsp } from "./packet-pdf-csp.ts";
 import { build } from "esbuild";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,7 +98,7 @@ async function buildUi(readSource, options) {
     platform: "browser", target: "es2022", minify: true, legalComments: "eof", jsx: "automatic",
     tsconfigRaw: "{}", define: { "process.env.NODE_ENV": '"production"' },
     ...options,
-    plugins: [{ name: "ui-source", setup(builder) {
+    plugins: [packetPdfCsp(), { name: "ui-source", setup(builder) {
       // Island imports are relative and extensionless; each must name an
       // admitted .tsx or .ts file under src/ui/, or the shared read budget.
       builder.onResolve({ filter: /^\.|^src\/ui\// }, async (args) => {

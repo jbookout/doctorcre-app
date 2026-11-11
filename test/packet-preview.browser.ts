@@ -3,15 +3,28 @@ import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { build } from "esbuild";
 import { packetFixturePdf } from "../scripts/packet-fixture.ts";
+import { packetPdfCsp } from "../scripts/packet-pdf-csp.ts";
 import { chromium } from "./browser-harness.mjs";
-import packet from "./fixtures/packet-parity/packet.json" with { type: "json" };
+import packet from "./fixtures/packet-parity/share.json" with { type: "json" };
 
 const html = await readFile(new URL("../tours/packet-preview.html", import.meta.url), "utf8");
 const css = await readFile(new URL("../tours/packet-preview.css", import.meta.url), "utf8");
 const tokens = await readFile(new URL("../css/tokens.css", import.meta.url), "utf8");
 const pdf = Buffer.from(await packetFixturePdf());
-const script = await build({ entryPoints: ["src/ui/packet-preview.ts"], bundle: true, write: false, format: "iife" });
-const worker = await build({ entryPoints: ["src/ui/packet-worker.ts"], bundle: true, write: false, format: "esm" });
+const script = await build({
+  entryPoints: ["src/ui/packet-preview.ts"],
+  bundle: true,
+  plugins: [packetPdfCsp()],
+  write: false,
+  format: "iife",
+});
+const worker = await build({
+  entryPoints: ["src/ui/packet-worker.ts"],
+  bundle: true,
+  plugins: [packetPdfCsp()],
+  write: false,
+  format: "esm",
+});
 const workerCode = worker.outputFiles[0]?.text || "";
 const code = script.outputFiles[0]?.text;
 assert.ok(code);
@@ -22,6 +35,13 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
     const page = await browser.newPage();
     await page.addInitScript(() =>
       Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }),
+    );
+    const violations: string[] = [];
+    await page.exposeFunction("recordPacketCsp", (directive: string) => violations.push(directive));
+    await page.addInitScript(() =>
+      addEventListener("securitypolicyviolation", (event) => {
+        Reflect.get(window, "recordPacketCsp")(event.violatedDirective);
+      }),
     );
     const reads: string[] = [];
     await page.route("**/*", async (route) => {
@@ -37,7 +57,14 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
       if (url.pathname === "/js/theme-boot.js") return route.fulfill({ contentType: "text/javascript", body: "" });
       if (url.pathname === "/css/tokens.css") return route.fulfill({ contentType: "text/css", body: tokens });
       if (url.pathname.endsWith(".css")) return route.fulfill({ contentType: "text/css", body: css });
-      return route.fulfill({ contentType: "text/html", body: html });
+      return route.fulfill({
+        contentType: "text/html",
+        body: html,
+        headers: {
+          "Content-Security-Policy":
+            "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:",
+        },
+      });
     });
     for (const width of [1440, 390])
       for (const theme of ["light", "dark"]) {
@@ -48,8 +75,9 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
         }, theme);
         await page.waitForFunction(
           (count) => document.querySelectorAll('canvas[data-rendered="true"]').length === count,
-          packet.properties.length,
+          packet.stops.length + 1,
         );
+        assert.doesNotMatch(await page.locator("#packet-preview").innerHTML(), /\bstyle\s*=/i);
         assert.equal(
           await page.locator("#packet-preview a").getAttribute("href"),
           `/api/tours/pdf/download?render_job_id=${job}`,
@@ -76,6 +104,7 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
           });
         }
       }
+    assert.deepEqual(violations, []);
     assert.deepEqual(reads, Array(4).fill(`?render_job_id=${job}`));
   } finally {
     await browser.close();
@@ -120,7 +149,7 @@ test("the public packet renders the same synthetic stop facts at both widths", a
       const url = new URL(route.request().url());
       const payload =
         url.pathname === "/api/share/report"
-          ? { as_of: packet.as_of, caveat: packet.caveat, stops: packet.properties }
+          ? packet
           : url.pathname === "/api/share/map"
             ? { points: [] }
             : url.pathname === "/api/share/feedback"
@@ -152,7 +181,9 @@ test("the public packet renders the same synthetic stop facts at both widths", a
             name: node.querySelector("h3")?.textContent || "",
             address: node.querySelector("h3 + p")?.textContent || "",
             facts: Array.from(node.querySelectorAll("dd"), (fact) => fact.textContent || ""),
-            brand: node.querySelector(".packet-brand")?.textContent || "",
+            brand: "CARR Healthcare Real Estate",
+            appointment: node.querySelector(".packet-appointment")?.textContent || "",
+            note: node.querySelector(".packet-public-note")?.textContent || "",
             asOf: node.querySelector(".packet-as-of")?.textContent || "",
           })),
         );
@@ -185,7 +216,7 @@ test("leaving a rendered preview closes its worker and clears packet content", a
     await page.goto(`https://app.test/tours/packet-preview.html?render_job_id=${job}`);
     await page.waitForFunction(
       (count) => document.querySelectorAll('canvas[data-rendered="true"]').length === count,
-      packet.properties.length,
+      packet.stops.length + 1,
     );
     const worker = page.workers()[0];
     assert.ok(worker);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { packetAsOf, packetFacts } from "../src/ui/packet-facts.ts";
+import { readPacketPresentation } from "../src/ui/packet-facts.ts";
 import { packetFixturePdf } from "./packet-fixture.ts";
 import { comparePacketStops, observePdf } from "./packet-pdf-observation.ts";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
@@ -31,6 +31,8 @@ export async function provePacket(options: {
         "near-miss",
         "brand",
         "asOf",
+        "appointment",
+        "note",
         "property",
         "label",
         "name",
@@ -44,43 +46,29 @@ export async function provePacket(options: {
     );
     const pdf = await observePdf(await packetFixturePdf());
     const fixture: unknown = JSON.parse(
-      await readFile(new URL("../test/fixtures/packet-parity/packet.json", import.meta.url), "utf8"),
+      await readFile(new URL("../test/fixtures/packet-parity/share.json", import.meta.url), "utf8"),
     );
-    assert.ok(fixture && typeof fixture === "object" && "properties" in fixture && Array.isArray(fixture.properties));
-    const share = fixture.properties.map((p: unknown) => {
-      assert.ok(
-        p &&
-          typeof p === "object" &&
-          "property_ref" in p &&
-          "route_label" in p &&
-          "name" in p &&
-          "address" in p &&
-          "suite" in p,
-      );
-      const { property_ref, route_label, name, address, suite } = p;
-      assert.ok(
-        typeof property_ref === "string" &&
-          typeof route_label === "string" &&
-          typeof name === "string" &&
-          typeof address === "string" &&
-          typeof suite === "string",
-      );
-      return {
-        property: property_ref,
-        label: route_label,
-        name,
-        address: `${address} - ${suite}`,
-        facts: packetFacts(p).map(([, value]) => value),
-        brand: "CARR",
-        asOf: packetAsOf("as_of" in fixture ? fixture.as_of : null),
-      };
-    });
+    const presentation = readPacketPresentation(fixture);
+    assert.ok(presentation);
+    const share = presentation.stops.map((p) => ({
+      property: p.property_ref,
+      label: p.route_label,
+      name: p.name,
+      address: p.address,
+      facts: p.facts.map((f) => f.value),
+      brand: presentation.brand,
+      asOf: "",
+      appointment: p.appointment || "",
+      note: p.public_packet_note || "",
+    }));
     if (share[0]) {
       if (options.fixtureCase === "near-miss") share[0].facts[1] = "11600 SF";
       else if (mutation.startsWith("fact-")) share[0].facts[Number(mutation.slice(5))] += "x";
       else if (
         mutation === "brand" ||
         mutation === "asOf" ||
+        mutation === "appointment" ||
+        mutation === "note" ||
         mutation === "property" ||
         mutation === "label" ||
         mutation === "name" ||
@@ -185,13 +173,15 @@ export async function provePacket(options: {
           name: node.querySelector("h3")?.textContent || "",
           address: node.querySelector("h3 + p")?.textContent || "",
           facts: Array.from(node.querySelectorAll("dd"), (fact) => fact.textContent || ""),
-          brand: node.querySelector(".packet-brand")?.textContent || "",
+          brand: "CARR Healthcare Real Estate",
+          appointment: node.querySelector(".packet-appointment")?.textContent || "",
+          note: node.querySelector(".packet-public-note")?.textContent || "",
           asOf: node.querySelector(".packet-as-of")?.textContent || "",
         })),
       );
       comparePacketStops(previewStops, await observePdf(downloaded), share);
       return {
-        scope: "PDF bytes and current property facts only; map, times and notes are outside this partial proof",
+        scope: "PDF bytes, ordered stops, recorded appointments and explicit public notes",
         stops: share.length,
       };
     },

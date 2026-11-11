@@ -37,8 +37,8 @@ export async function mountPacketPreview(root: HTMLElement, job: string): Promis
     loading = getDocument({ data: new Uint8Array(blob) });
     const pdf = await loading.promise;
     if (disposed) return dispose;
-    if (pdf.numPages > 50) throw new Error("Packet exceeds the preview page limit.");
-    // eslint-disable-next-line no-restricted-syntax -- Limit rendering to 50 stored pages without network pagination or retries.
+    if (pdf.numPages > 51) throw new Error("Packet exceeds the preview page limit.");
+    // eslint-disable-next-line no-restricted-syntax -- Limit rendering to 51 stored pages without network pagination or retries.
     for (let n = 1; n <= pdf.numPages; n++) {
       if (disposed) break;
       const page = await pdf.getPage(n);

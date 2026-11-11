@@ -1,4 +1,4 @@
-import { appendPacketFacts, appendPacketMetadata, packetText } from "../js/ui-packet-facts.js";
+import { appendPacketPresentation, readPacketPresentation, packetText } from "../js/ui-packet-facts.js";
 import { mountTourClientDownload } from "../js/ui-tour-client-download.js";
 import { mountNavigation } from "../js/navigation.js";
 
@@ -206,15 +206,25 @@ mountNavigation(document, location.pathname, { report: true });
   }
 
   function render(report) {
-    const items = Array.isArray(report?.stops) ? report.stops :
-      (Array.isArray(report?.items) ? report.items : (Array.isArray(report?.properties) ? report.properties : []));
+    const presentation = readPacketPresentation(report);
+    const items = presentation?.stops || [];
     const properties = items.map((item, index) => ({ item, index }))
       .filter(({ item }) => validPropertyRef(item?.property_ref))
       .sort((left, right) => routeOrder(left.item, left.index) - routeOrder(right.item, right.index));
+    if (!presentation) throw new Error("This packet version is unavailable. Refresh the shared link.");
     reportProperties = new globalThis.Map(properties.map(({ item }) => [item.property_ref, item]));
-    document.querySelector("#report-title").textContent = "Tour report";
-    summary.textContent = `${properties.length} ${properties.length === 1 ? "property" : "properties"} in this report.`;
+    document.querySelector("#report-title").textContent = presentation.title;
+    summary.textContent = presentation.summary;
     list.replaceChildren();
+    const overview = document.createElement("li");
+    const title = document.createElement("h2"); title.textContent = presentation.overview;
+    const itinerary = document.createElement("ol");
+    for (const stop of presentation.stops) {
+      const entry = document.createElement("li");
+      entry.textContent = `${stop.route_label} · ${stop.name} · ${stop.address}${stop.appointment ? ` · ${stop.appointment}` : ""}`;
+      itinerary.append(entry);
+    }
+    overview.append(title, itinerary); list.append(overview);
     for (const { item, index } of properties) {
       const row = document.createElement("li");
       row.className = "report-item";
@@ -225,10 +235,9 @@ mountNavigation(document, location.pathname, { report: true });
       const heading = document.createElement("h3");
       heading.textContent = packetText(item.name, packetText(item.title, "Tour property"));
       const detail = document.createElement("p");
-      detail.textContent = propertyAddress(item, "Address unavailable");
+      detail.textContent = item.address;
       row.append(route, heading, detail);
-      appendPacketFacts(row, item);
-      appendPacketMetadata(row, report.as_of);
+      appendPacketPresentation(row, presentation.stops.find(stop => stop.property_ref === item.property_ref), presentation.notes);
       renderFeedbackControls(row, item);
       list.append(row);
     }
