@@ -166,3 +166,13 @@ test("category switch and session retirement fence late success and failure", as
     mounted.dispose();
   }, fixture);
 });
+
+for (const theme of ["light", "dark"])
+  test(`one local vendor keeps Regional references in the first phone viewport ${theme}`, async (t) => {
+    const { page, section } = await setup(t, 390, theme, true);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await section.locator('[data-market-slug="sandestin"]').waitFor();
+    const regional = section.getByRole("heading", { name: "Regional coverage references", exact: true });
+    const box = await regional.boundingBox();
+    assert.ok(box && box.y >= 0 && box.y + box.height <= 844, "Regional references must start in the first phone viewport");
+  });
