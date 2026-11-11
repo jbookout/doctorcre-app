@@ -89,11 +89,9 @@ test("working day strip stays compact with full dates only in accessible names",
           for (const day of await days.all()) {
             const height = await day.evaluate((button) => button.getBoundingClientRect().height);
             assert.ok(height <= (width === 390 ? 60 : 72), `${width} ${theme}: compact day height, got ${height}px`);
-            assert.match(
-              await day.innerText(),
-              /^[A-Z][a-z]{2}\s*\d{1,2}$/,
-              "Only weekday and number render in the strip",
-            );
+            const text = await day.textContent();
+            assert.ok(text);
+            assert.match(text, /^[A-Z][a-z]{2}\s*\d{1,2}$/, "Only weekday and number remain in button text");
           }
         } finally {
           await page.close();
