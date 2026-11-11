@@ -1,6 +1,4 @@
-import { stripTypeScriptTypes } from "node:module";
-import { autoRefreshScript } from "./auto-refresh-script.mjs";
-import { mapScript } from "./tours-map-script.mjs";
+import { buildToursAppScript } from "./tours-app-loader.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -11,13 +9,8 @@ import { animationsSettled, chromium, settles } from "./browser-harness.mjs";
 import { carrInterface } from "./carr-contract.mjs";
 import { committedTourWebModule } from "./tour-producer.mjs";
 
+const script = await buildToursAppScript();
 const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
-const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
-const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "").replace(/^export /gm, "");
-const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
-const cheatHelpers = stripTypeScriptTypes(await readFile(new URL("../src/ui/broker-cheat-sheet.ts", import.meta.url), "utf8")).replace(/^export /gm, "");
-const tourScript = `${cheatHelpers}\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
-const script = `${autoRefreshScript}\n${tourScript}`;
 const uuid = () => webcrypto.randomUUID();
 const fixtureDeal = "11111111-1111-4111-8111-111111111111";
 const propA = "44444444-4444-4444-8444-444444444444", propB = "55555555-5555-4555-8555-555555555555";

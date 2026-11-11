@@ -1,4 +1,4 @@
-import { generatedSheet } from "../src/ui/broker-cheat-sheet.ts";
+import { toursAppImports } from "./tours-app-loader.ts";
 import { createPageBudget } from '../js/read-budget.mjs';
 import { createCurrentRead } from "../js/current-read.mjs";
 import { authGeneration, authReadable } from '../js/progress-auth.js';
@@ -20,6 +20,7 @@ import { answerBaseVersion, ANSWER_VERSION_CONFLICT_SENTENCE } from '../js/model
 import { JSDOM } from "jsdom";
 
 const source = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
+const tourImports = await toursAppImports();
 const noop = () => {};
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return {promise,resolve,reject}; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -31,6 +32,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
   const context = vm.createContext({createPageBudget,sessionFetch:(...args)=>globals.fetch(...args),observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable,createRetainedCommands,answerBaseVersion,ANSWER_VERSION_CONFLICT_SENTENCE,classifyCommandOutcome,appWrite:(_key,args,send)=>send({...args,idempotency_key:"key"}), console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  if (path === "tours/app.js") { vm.runInContext(tourImports, context); Object.assign(context, globals); }
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }
@@ -511,7 +513,7 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
   // projection and grant, while the uncertain operation belongs to the old one.
   const currentGrant="00000000-0000-4000-8000-000000000004";
   const reload=handlers("tours/app.js","  function renderTour()","  function moveStop(",{
-    state,$,generatedSheet,sheetGenerated:"",dealContext:null,embedded:false,notify:noop,id:()=>false,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
+    state,$,sheetGenerated:"",dealContext:null,embedded:false,notify:noop,id:()=>false,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
     request:async()=>({id:"A",stops:[],projection_id:"projection-B",share_grant_id:currentGrant}),
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",tourDisplayName:(value,fallback="Untitled tour")=>value||fallback,renderFeedback:noop,renderShareGrants:noop,
