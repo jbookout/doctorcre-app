@@ -8,6 +8,7 @@ import { directoryFixture } from '../test/fixtures/vendor-directory.synthetic.mj
 import { parseViewState, PAGE_SIZE } from '../js/workspace-business-model.js';
 import { PHASES } from '../js/client.js';
 import { censusResponse } from './work-inventory-fixture.mjs';
+import { presentedPacket } from '../test/packet-presentation.fixture.ts';
 
 const cookieName = 'doctorcre_qa';
 const now = () => new Date().toISOString();
@@ -63,7 +64,7 @@ function makeState(variant) {
     { property_ref:'property:public:synthetic_qa_property_02', route_sequence:2, route_label:'B', name:'Demo Harbor Offices', address:'200 Sample Harbor Lane', suite:'Suite 202' },
   ];
   const sharedTour = {
-    report:{stops},
+    report:presentedPacket(stops),
     map:{points:stops.map((stop,index) => ({property_ref:stop.property_ref,route_sequence:stop.route_sequence,route_label:stop.route_label,latitude:30.4+index*0.01,longitude:-87.2+index*0.01}))},
     feedback:{projection_ref:'projection:public:synthetic_qa_tour_01',permission_scopes:['shortlist','comment'],items:stops.map(stop => ({property_ref:stop.property_ref,shortlisted:false,comments:[{comment:'Synthetic feedback for this demo property.'}]}))},
   };

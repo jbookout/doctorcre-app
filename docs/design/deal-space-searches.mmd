@@ -1,0 +1,46 @@
+stateDiagram-v2
+state Workspace {
+state Search {
+[*] --> idle
+idle --> editing: New search
+idle --> saved: Reopen
+editing --> saving: Save
+saving --> saved: Saved
+saving --> conflict: Version changed
+conflict --> saving: Save retained draft
+saved --> editing: Edit
+saved --> running: Rerun
+running --> current: Results confirmed
+running --> failed: Run failed
+failed --> running: Retry same run
+current --> running: Rerun
+current --> editing: Edit
+saved --> archived: Archive
+current --> archived: Archive
+archived --> restored: Restore
+restored --> running: Rerun
+current --> stale: Results aged
+stale --> running: Rerun
+current --> handed: Hand to cart
+handed --> running: Rerun
+idle --> closed: Session changed
+editing --> closed: Session changed
+saving --> closed: Session changed
+saved --> closed: Session changed
+conflict --> closed: Session changed
+running --> closed: Session changed
+current --> closed: Session changed
+failed --> closed: Session changed
+archived --> closed: Session changed
+restored --> closed: Session changed
+stale --> closed: Session changed
+handed --> closed: Session changed
+}
+--
+state Access {
+[*] --> active
+active --> retired: Session changed
+}
+%% never NoRetiredWrite: saving & retired -- A retired session cannot save a search.
+%% never NoRetiredRun: running & retired -- A retired session cannot rerun a search.
+}

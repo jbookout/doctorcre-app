@@ -17,6 +17,7 @@ export async function buildToursAppScript(source?: string): Promise<string> {
     write: false,
     format: "iife",
     platform: "browser",
+    jsx: "automatic",
     target: "es2022",
     logLevel: "silent",
     define: { "import.meta.url": JSON.stringify("https://app.doctorcre.com/js/market-map-shell.js") },

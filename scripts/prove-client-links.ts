@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import type { Browser, LaunchOptions } from "playwright";
+import type { Browser, LaunchOptions, Response } from "playwright";
 import { chromium } from "playwright";
+import { parsePublicTourPacket, UnsupportedPublicTourPacketError } from "../src/ui/public-tour-packet.ts";
 import { launchProofBrowser, proofFetch, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
+import { requireTourEvidence, TourEvidenceError } from "./tour-proof-evidence.ts";
 
 type Row = { propertyRef: string; label: string; name: string; detail: string };
 type Evidence = { active: string; revoked: string; viewOnly: string; rows: Row[]; pdfSha256: string };
@@ -67,6 +69,20 @@ export function parseEvidence(value: unknown, origin: string): Evidence {
   return { active, revoked, viewOnly, rows, pdfSha256: value.pdfSha256 };
 }
 
+export function packetSummary(packet: unknown, rowCount: number): string {
+  const parsed = parsePublicTourPacket(packet);
+  const count = parsed.length;
+  assert.equal(count, rowCount, "packet stop count matches independent rows");
+  const quantity = `${count} ${count === 1 ? "property" : "properties"}`;
+  const summary = parsed.template.summary;
+  assert.equal(
+    summary.match(/^\d+ (?:property|properties)\b/)?.[0],
+    quantity,
+    "packet summary agrees with its stop count",
+  );
+  return summary;
+}
+
 export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, engine = chromium }: Options) {
   const lifetime = new AbortController();
   const timer = setTimeout(() => lifetime.abort(insufficient("Total client proof deadline exceeded")), timeoutMs);
@@ -104,6 +120,7 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
             acceptDownloads: true,
             serviceWorkers: "block",
           });
+          let packetResponse: Promise<{ response: Response } | { error: unknown }> | undefined;
           try {
             const page = await context.newPage();
             let violation = false;
@@ -122,6 +139,18 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               return route.fallback();
             });
             await page.goto(expected[kind]);
+            packetResponse =
+              kind === "revoked"
+                ? undefined
+                : page
+                    .waitForResponse((response) => {
+                      const url = new URL(response.url());
+                      return url.origin === clientOrigin && url.pathname === "/api/share/report";
+                    })
+                    .then(
+                      (response) => ({ response }),
+                      (error: unknown) => ({ error }),
+                    );
             await page.getByRole("button", { name: "Open tour", exact: true }).click();
             await page.waitForFunction(() => {
               const status = document.querySelector("#status")?.textContent;
@@ -131,30 +160,6 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
                 status === "Report and map loaded."
               );
             });
-            assert.equal(await page.evaluate(() => location.hash), "", "bearer scrubbed");
-            if (kind === "revoked") {
-              assert.equal(await page.locator("#status").textContent(), "This shared report is unavailable.");
-              assert.equal(await page.locator(".report-item").count(), 0);
-            } else {
-              assert.equal(
-                await page.locator("#report-summary").textContent(),
-                `${expected.rows.length} ${expected.rows.length === 1 ? "property" : "properties"} in this report.`,
-              );
-              const rows = await page.locator(".report-item").evaluateAll((nodes) =>
-                nodes.map((node) => ({
-                  propertyRef: node.getAttribute("data-property-ref"),
-                  label: node.querySelector(".route-label")?.textContent,
-                  name: node.querySelector("h3")?.textContent,
-                  detail: node.querySelector(":scope > p:not(.route-label)")?.textContent,
-                })),
-              );
-              assert.deepEqual(rows, expected.rows, "exact independently supplied displayed values");
-            }
-            assert.equal(
-              await page.getByRole("button", { name: "Download PDF", exact: true }).count(),
-              kind === "active" ? 1 : 0,
-              "download control matches the producer capability",
-            );
             const cookies = await context.cookies(clientOrigin);
             const response = await proofFetch(new URL("/api/share/download", clientOrigin), {
               signal: lifetime.signal,
@@ -174,6 +179,48 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               type: response.headers.get("content-type"),
               digest: createHash("sha256").update(Buffer.concat(chunks)).digest("hex"),
             };
+            let envelope: unknown;
+            if (kind !== "revoked") {
+              const packet = await packetResponse;
+              if (!packet) throw insufficient("Packet response required");
+              if ("error" in packet) throw packet.error;
+              try {
+                envelope = await packet.response.json();
+              } catch {
+                throw insufficient("Unreadable packet evidence");
+              }
+              await requireTourEvidence("containing", [
+                { kind: "json", value: object(envelope) ? envelope.data : undefined },
+                ...(kind === "active" ? [{ kind: "pdf" as const, value: Buffer.concat(chunks) }] : []),
+              ]);
+            }
+            assert.equal(await page.evaluate(() => location.hash), "", "bearer scrubbed");
+            if (kind === "revoked") {
+              assert.equal(await page.locator("#status").textContent(), "This shared report is unavailable.");
+              assert.equal(await page.locator(".report-item").count(), 0);
+            } else {
+              const packet = await packetResponse;
+              assert.ok(packet && "response" in packet && packet.response.ok(), "packet response available");
+              assert.ok(object(envelope), "packet envelope required");
+              assert.equal(
+                await page.locator("#report-summary").textContent(),
+                packetSummary(envelope.data, expected.rows.length),
+              );
+              const rows = await page.locator(".report-item").evaluateAll((nodes) =>
+                nodes.map((node) => ({
+                  propertyRef: node.getAttribute("data-property-ref"),
+                  label: node.querySelector(".route-label")?.textContent,
+                  name: node.querySelector("h3")?.textContent,
+                  detail: node.querySelector(":scope > p:not(.route-label)")?.textContent,
+                })),
+              );
+              assert.deepEqual(rows, expected.rows, "exact independently supplied displayed values");
+            }
+            assert.equal(
+              await page.getByRole("button", { name: "Download PDF", exact: true }).count(),
+              kind === "active" ? 1 : 0,
+              "download control matches the producer capability",
+            );
             if (kind === "active") {
               assert.equal(download.status, 200);
               assert.equal(download.type, "application/pdf");
@@ -190,7 +237,11 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               "no horizontal overflow",
             );
           } finally {
-            await context.close();
+            try {
+              await context.close();
+            } finally {
+              await packetResponse;
+            }
           }
         }
       }
@@ -198,7 +249,12 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
     return { status: "passed", release, layouts: 4, grants: 3, requests };
   } catch (error) {
     if (lifetime.signal.aborted) throw lifetime.signal.reason;
-    if (error instanceof assert.AssertionError || (object(error) && error.exitCode === 78)) throw error;
+    if (
+      error instanceof assert.AssertionError ||
+      error instanceof UnsupportedPublicTourPacketError ||
+      (object(error) && error.exitCode === 78)
+    )
+      throw error;
     throw insufficient("Client journey evidence unavailable");
   } finally {
     clearTimeout(timer);
@@ -252,7 +308,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(
       JSON.stringify({
         status: exitCode === 78 ? "insufficient_evidence" : "failed",
-        error: exitCode === 1 ? "Client link assertion failed" : "Client proof evidence unavailable",
+        error:
+          error instanceof UnsupportedPublicTourPacketError || error instanceof TourEvidenceError
+            ? error.message
+            : exitCode === 1
+              ? "Client link assertion failed"
+              : "Client proof evidence unavailable",
       }),
     );
     process.exitCode = exitCode;

@@ -1,0 +1,44 @@
+stateDiagram-v2
+state Vendors {
+ state Browse {
+  [*] --> Category
+  Category --> Comparison: open markets
+  Comparison --> Selected: open market
+  Selected --> Comparison: compare all markets
+  Comparison --> Detail: open vendor
+  Selected --> Detail: open vendor
+  Detail --> Comparison: return to comparison
+  Detail --> Selected: return to market
+  Comparison --> Category: open category
+  Selected --> Category: open category
+  Category --> Retired: session ends
+  Comparison --> Retired: session ends
+  Selected --> Retired: session ends
+  Detail --> Retired: session ends
+ }
+ --
+ state Reading {
+  [*] --> Idle
+  Idle --> Loading: open markets
+  Loading --> Ready: read succeeds
+  Loading --> Empty: registry empty
+  Loading --> Unavailable: read fails
+  Ready --> Loading: refresh
+  Empty --> Loading: refresh
+  Unavailable --> Loading: refresh
+  Ready --> Loading: open market
+  Ready --> Loading: compare all markets
+  Loading --> Idle: open category
+  Ready --> Idle: open category
+  Empty --> Idle: open category
+  Unavailable --> Idle: open category
+  Idle --> Closed: session ends
+  Loading --> Closed: session ends
+  Ready --> Closed: session ends
+  Empty --> Closed: session ends
+  Unavailable --> Closed: session ends
+ }
+}
+%% never RetiredRead: Retired & Ready -- A retired session never displays a registry.
+%% never CategoryRead: Category & Ready -- Category never displays a registry.
+%% never ClosedComparison: Comparison & Closed -- Session end removes the comparison.
