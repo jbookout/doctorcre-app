@@ -15,17 +15,15 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
   await page.route("**/__phone-axe.js", (route) => route.fulfill({ contentType: "text/javascript", body: axeSource }));
   await frame.addScriptTag({ url: new URL("/__phone-axe.js", frame.url()).href });
   const measurements = await frame.evaluate(async () => {
-    const visible = (node: Element) => {
+    const rendered = (node: Element) => {
       const r = node.getBoundingClientRect();
-      return (
-        r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && getComputedStyle(node).visibility !== "hidden"
-      );
+      return r.width > 0 && r.height > 0 && getComputedStyle(node).visibility !== "hidden";
     };
     const targets = [
       ...document.querySelectorAll<HTMLElement>(
         "button,a[href],input:not([type=hidden]),select,textarea,summary,[role=button],[role=tab]",
       ),
-    ].filter(visible);
+    ].filter(rendered);
     const describe = (node: HTMLElement) => ({
       tag: node.tagName,
       width: node.getBoundingClientRect().width,
