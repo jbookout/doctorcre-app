@@ -6,7 +6,10 @@ export function componentDocument(
   options: { headers?: Record<string, string>; html: string; dispose: (page: Page) => Promise<void> },
 ): Promise<void>;
 
-export function fixtureServer(options?: { root?: string }): Promise<{ origin: string; close(): Promise<void> }>;
+export function fixtureServer(
+  options?: { root?: string },
+  capability?: unknown,
+): Promise<{ origin: string; close(): Promise<void> }>;
 
 export function settles(check: () => unknown | Promise<unknown>, budgetMs?: number): Promise<void>;
 

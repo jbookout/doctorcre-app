@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/tours/property-panel.css">
   <script type="module" src="/tours/app.js"></script>
   <link rel="stylesheet" href="/css/app-shell.css">
+<link rel="stylesheet" href="/css/coordinate-review.css">
 </head>
 <body>
   <div id="appShell"></div>
@@ -39,6 +40,7 @@
       <div id="tour-panel" hidden>
         <header class="tour-heading"><div><p id="tour-state" class="badge">Draft</p><h2 id="tour-name">Tour</h2><p id="tour-meta"></p></div><div class="status-grid"><span>Projection <b id="projection-state">Not generated</b></span><span>Share <b id="share-state">Not issued</b></span></div></header>
         <a id="tour-day-link" class="download-button tour-day-link" hidden>Navigate tour</a>
+        <section id="coordinate-review" aria-label="Stop coordinate review"></section>
         <section id="accepted-itinerary" class="accepted-itinerary" aria-label="Accepted itinerary" hidden></section>
         <div class="workspace-grid">
           <details class="card route-card" id="route-editing" open><summary>Edit route</summary>

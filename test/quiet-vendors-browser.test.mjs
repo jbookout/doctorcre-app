@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 
 const id = '00000000-0000-4000-8000-000000000002';

@@ -417,3 +417,6 @@ body.has-app-layout:has(#confirmDock:not([hidden])) .toast { bottom: calc(var(--
 }
 :root[data-motion="reduced"] * { scroll-behavior: auto !important; transition: none !important; }
 :root[data-motion="reduced"] .post-call-spinner, :root[data-motion="reduced"] .receipt { animation: none; }
+
+.skip:not(:focus) { clip-path: inset(50%); }
+.skip:focus { min-width: 44px; min-height: 44px; align-content: center; }

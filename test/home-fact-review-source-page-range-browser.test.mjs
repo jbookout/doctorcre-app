@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { exerciseHome } from '../scripts/prove-home-fact-review-source-page-range.mjs';
 
 test('Home renders original valid citations and refuses unsafe provenance before approval', async t => {

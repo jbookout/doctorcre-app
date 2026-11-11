@@ -99,7 +99,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     } else {
       if (!cdpUrl) throw insufficient('Signed-in CDP session required');
       const cdp = new URL(cdpUrl);
-      assert.ok(cdp.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) && !cdp.username && !cdp.password);
+      assert.ok(['http:', 'ws:'].includes(cdp.protocol) && ['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) && !cdp.username && !cdp.password);
       const borrowed = { launch: async options => {
         let connection;
         try { connection = await engine.connectOverCDP(cdpUrl,{timeout:options.timeout}); }

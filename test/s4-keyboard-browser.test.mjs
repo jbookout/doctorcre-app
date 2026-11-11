@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Doc Chats keeps the focused conversation through a background refresh at ${width}px in ${theme}`, async t => {

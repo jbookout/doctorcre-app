@@ -39,3 +39,26 @@ test('the shared Chromium harness passes safety args and preserves caller args',
     engine.launch = original;
   }
 });
+
+test("owned process launcher supplies safety flags, scratch environment and cancellation", async () => {
+  const { ownedCdpFixture } = await import("./owned-cdp-fixture.ts");
+  let captured;
+  await assert.rejects(
+    ownedCdpFixture({
+      launcher: (options) => {
+        captured = options;
+        throw Error("synthetic spawn failure");
+      },
+    }),
+    /Starting.*synthetic spawn failure/s,
+  );
+  assert.ok(captured);
+  assert.deepEqual(captured.args?.slice(0, required.length), required);
+  assert.ok(captured.args?.some((arg) => /^--remote-debugging-port=0$/.test(arg)));
+  const profile = captured.args?.find((arg) => arg.startsWith("--user-data-dir="))?.slice("--user-data-dir=".length);
+  assert.ok(profile);
+  assert.equal(captured.env?.TMPDIR, profile);
+  assert.equal(captured.env?.TEMP, profile);
+  assert.equal(captured.env?.TMP, profile);
+  assert.equal(captured.signal?.aborted, true);
+});
