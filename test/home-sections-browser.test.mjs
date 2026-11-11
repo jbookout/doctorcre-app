@@ -20,7 +20,7 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   await run.open('/');
   await page.getByRole('heading', { name: 'Welcome home.' }).waitFor();
   for (const name of ['Needs your attention', 'Today', 'In motion and waiting', 'Done today', 'Earlier and undated completions']) {
-    const heading = page.locator('main').getByRole('heading', { name: new RegExp(`^${name}`) });
+    const heading = page.locator('main').getByRole('heading', { name: new RegExp(`^${name}`), level: 2 });
     await heading.waitFor();
     assert.equal(await heading.count(), 1);
   }
