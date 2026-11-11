@@ -15,6 +15,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
   const model = useRef<ReturnType<typeof createShareIntake> | null>(null);
   const life = useRef(new AbortController());
   const sessionToken = useRef<string | null>(null);
+  const recoveryStorage = useRef<Storage | null>(null);
   const active = upload && ["receiving", "choosing", "ready", "filing", "uncertain"].includes(upload.kind);
   async function request(path: string, body?: object) {
     const signal = AbortSignal.any([life.current.signal, AbortSignal.timeout(15000)]);
@@ -70,6 +71,10 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
     }
   }
   function start(file: File | null) {
+    if (!recoveryStorage.current) {
+      setFailure("File recovery unavailable. Allow site storage before uploading.");
+      return;
+    }
     model.current?.close();
     let operation: Parameters<Parameters<typeof createShareIntake>[0]["handoff"]>[2];
     const id = crypto.randomUUID();
@@ -77,6 +82,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
     model.current = createShareIntake({
       fetcher: fetch.bind(globalThis),
       destination: "deliverables",
+      storage: recoveryStorage.current,
       journalKey: `doctorcre-deliverable-recovery-v1:${dealId}`,
       async handoff(_csrf, action, next) {
         if (action === "operation") {
@@ -97,7 +103,13 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
   }
   const initialize = useEffectEvent(() => {
     void refresh();
-    if (localStorage.getItem(`doctorcre-deliverable-recovery-v1:${dealId}`)) start(null);
+    try {
+      recoveryStorage.current = localStorage;
+      if (recoveryStorage.current.getItem(`doctorcre-deliverable-recovery-v1:${dealId}`)) start(null);
+    } catch {
+      recoveryStorage.current = null;
+      setFailure("File recovery unavailable. Allow site storage before uploading.");
+    }
   });
   useEffect(() => {
     life.current = new AbortController();
@@ -160,7 +172,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
       <button
         type="button"
         className="deliverable-drop"
-        disabled={!!active || life.current.signal.aborted}
+        disabled={!!active || life.current.signal.aborted || !recoveryStorage.current}
         onClick={() => chooser.current?.click()}
         tabIndex={0}
         onKeyDown={(event) => {
@@ -183,7 +195,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
         type="file"
         aria-label="Choose a deliverable"
         accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
-        disabled={!!active || life.current.signal.aborted}
+        disabled={!!active || life.current.signal.aborted || !recoveryStorage.current}
         onChange={(event) => {
           choose(Array.from(event.target.files ?? []));
           event.target.value = "";
