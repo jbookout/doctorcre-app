@@ -14,6 +14,8 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
   const envelope = (v: Record<string, unknown>) => ({ ...v, schema_version: "deal-deliverables.v1" });
   let row = { ...fixture.finalize.deliverable },
     saved = false,
+    failList = false,
+    failReadback = false,
     lost = false,
     conflict = false,
     loseVisibility = false;
@@ -53,6 +55,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
               },
             });
           if (request.method === "GET" && !path.endsWith("/receipt")) {
+            if (failList) return json({}, 503);
             const value = { ok: true, schema_version: "deal-deliverables.v1", deliverables: saved ? [row] : [] };
             parseDeliverableList(value, deal);
             return json(value);
@@ -75,6 +78,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
             assert.equal(body.expected_version, row.version);
             if (conflict) return json({}, 409);
             row = { ...row, visibility: body.visibility, version: row.version + 1 };
+            if (failReadback) failList = true;
             if (loseVisibility) {
               loseVisibility = false;
               return json({}, 503);
@@ -90,10 +94,12 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
   t.after(() => server.close());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  await mkdir("/tmp/WR586.S3.J8-shots", { recursive: true });
+  await mkdir("/tmp/WR586.S3.J10-shots", { recursive: true });
   for (const width of [1440, 390])
     for (const theme of ["light", "dark"] as const) {
       saved = false;
+      failList = false;
+      failReadback = false;
       lost = false;
       conflict = false;
       row = { ...fixture.finalize.deliverable };
@@ -103,6 +109,8 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await page.addInitScript((theme) => {
           document.addEventListener("DOMContentLoaded", () => (document.documentElement.dataset.theme = theme));
         }, theme);
+        let chooserCount = 0;
+        page.on("filechooser", () => chooserCount++);
         await page.goto(`${server.origin}/share-intake.html`);
         await page.evaluate((theme) => (document.documentElement.dataset.theme = theme), theme);
         const panel = page.getByRole("region", { name: "Deal Deliverables", exact: true });
@@ -112,12 +120,20 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         assert.equal(await keyboardButton.isEnabled(), true);
         await keyboardButton.focus();
         assert.equal(await keyboardButton.evaluate((element) => element === document.activeElement), true);
+        await keyboardButton.evaluate((element) => {
+          element.addEventListener("click", (event) =>
+            element.setAttribute("data-trusted-click", String(event.isTrusted)),
+          );
+        });
         const keyboardChooser = page.waitForEvent("filechooser");
         await page.keyboard.press("Enter");
         await (await keyboardChooser).setFiles([]);
-        await panel
-          .getByLabel("Choose a deliverable", { exact: true })
-          .setInputFiles({ name: "bad.html", mimeType: "text/html", buffer: Buffer.from("bad") });
+        assert.equal(await keyboardButton.getAttribute("data-trusted-click"), "true");
+        await keyboardButton.focus();
+        const spaceChooser = page.waitForEvent("filechooser");
+        await page.keyboard.press("Space");
+        await (await spaceChooser).setFiles({ name: "bad.html", mimeType: "text/html", buffer: Buffer.from("bad") });
+        assert.equal(chooserCount, 2);
         await panel.getByText("Failed.", { exact: false }).waitFor();
         assert.equal(writes.length, 0);
         const file = { name: "Photo.jpg", mimeType: "image/jpeg", buffer: Buffer.from([255, 216, 255, 0, 1, 2, 3]) };
@@ -139,8 +155,34 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await panel.getByText("Confirmed.", { exact: false }).waitFor();
         assert.equal(writes.filter((w) => w.body.target_collection).length, 1);
         assert.equal(writes.filter((w) => w.path.endsWith("/finalize")).length, 1);
+        failReadback = true;
+        const expectedVersion = row.version + 1;
         await panel.getByRole("button", { name: "Mark Photo.jpg shared" }).click();
-        await panel.getByText("Shared · ready for publication", { exact: false }).waitFor();
+        await panel.getByText("Request unavailable or version changed.", { exact: false }).waitFor();
+        const refresh = panel.getByRole("button", { name: "Refresh deliverables", exact: true });
+        assert.equal(await refresh.isEnabled(), true);
+        await panel.getByText("Designation unconfirmed.", { exact: false }).waitFor();
+        assert.equal(await panel.getByLabel("Choose a deliverable", { exact: true }).isDisabled(), true);
+        assert.equal(await panel.getByRole("button", { name: /Drop one file here/ }).isDisabled(), true);
+        const visibilityCount = () => writes.filter((w) => w.path.endsWith("/visibility")).length;
+        assert.equal(visibilityCount(), 1);
+        await page.screenshot({ path: `/tmp/WR586.S3.J10-shots/${width}-${theme}-unknown.png`, fullPage: true });
+        await refresh.click();
+        await panel.getByText("Request unavailable or version changed.", { exact: false }).waitFor();
+        assert.equal(await refresh.isEnabled(), true);
+        assert.equal(visibilityCount(), 1);
+        failList = false;
+        failReadback = false;
+        await refresh.click();
+        await panel
+          .getByText(`Shared · ready for publication · Version ${expectedVersion}`, { exact: false })
+          .waitFor();
+        assert.equal(await panel.getByRole("button", { name: "Make Photo.jpg private" }).isEnabled(), true);
+        assert.equal(await panel.getByLabel("Choose a deliverable", { exact: true }).isEnabled(), true);
+        assert.equal(await panel.getByRole("button", { name: /Drop one file here/ }).isEnabled(), true);
+        assert.equal(visibilityCount(), 1);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({ path: `/tmp/WR586.S3.J10-shots/${width}-${theme}-recovered.png`, fullPage: true });
         conflict = true;
         await panel.getByRole("button", { name: "Make Photo.jpg private" }).click();
         await panel.getByText("Designation unconfirmed.", { exact: false }).waitFor();
@@ -163,7 +205,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await panel.getByText("File discarded.", { exact: false }).waitFor();
         assert.equal(writes.filter((w) => w.body.target_collection).length, 1);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-        await page.screenshot({ path: `/tmp/WR586.S3.J8-shots/${width}-${theme}.png`, fullPage: true });
+        await page.screenshot({ path: `/tmp/WR586.S3.J10-shots/${width}-${theme}.png`, fullPage: true });
         await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
         await page.getByText("Session expired. Sign in again to view documents.", { exact: true }).waitFor();
         assert.equal(await panel.count(), 0);

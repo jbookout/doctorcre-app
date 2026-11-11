@@ -65,11 +65,13 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
       if (!life.current.signal.aborted) {
         setListing({ kind: "ready", rows });
         setDesignation({ kind: "idle" });
+        return true;
       }
     } catch (error) {
       if (!life.current.signal.aborted)
         setListing({ kind: "failed", message: error instanceof Error ? error.message : "Deliverables unavailable" });
     }
+    return false;
   }
   function start(file: File | null) {
     if (!recoveryStorage.current) {
@@ -155,7 +157,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
         expected_version: row.version,
         visibility: row.visibility === "private" ? "shared" : "private",
       });
-      await refresh();
+      if (!(await refresh())) throw Error("Canonical designation unavailable");
     } catch {
       setDesignation({
         kind: "unknown",
@@ -176,12 +178,6 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
         disabled={busy || life.current.signal.aborted || !recoveryStorage.current}
         onClick={() => chooser.current?.click()}
         tabIndex={0}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            chooser.current?.click();
-          }
-        }}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();

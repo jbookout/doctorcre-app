@@ -27,7 +27,8 @@ stateDiagram-v2
     %% when SignedIn
     Saving --> Shared: canonical shared version confirmed
     Saving --> Private: canonical private version confirmed
-    Saving --> Unconfirmed: response lost or version conflict
+    Saving --> Unconfirmed: response lost, version conflict or canonical readback fails
+    Unconfirmed --> Unconfirmed: refresh unavailable; writes stay disabled
     Unconfirmed --> Private: refresh canonical private
     Unconfirmed --> Shared: refresh canonical shared
     Private --> Stopped: session ends
