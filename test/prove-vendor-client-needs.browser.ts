@@ -4,13 +4,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { promisify } from "node:util";
 import { chromium as driver } from "playwright";
-import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-vendor-client-needs.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
-import { cdpEndpoint } from "./cdp-fixture.ts";
 import { directoryFixture } from "./fixtures/vendor-directory.synthetic.mjs";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { assertProofDeadlineCleanup } from "./proof-browser-harness.mjs";
 
 const exec = promisify(execFile);
@@ -202,26 +201,27 @@ for (const mode of ["late launch", "stalled evaluation"])
   });
 
 test("real CDP deadline closes delayed page and preserves the original tab", async (t) => {
-  const root = temporaryDirectory("client-needs-cdp-", t);
-  const context = await driver.launchPersistentContext(root, {
-    headless: true,
-    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
+  const connect = driver.connectOverCDP.bind(driver);
+  let acquired = false;
+  let readinessChecks = 0;
+  const browserFixture = await ownedCdpFixture({
+    connect: async (endpoint, options) => {
+      const browser = await connect(endpoint, options);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.equal(acquired, false, "acquisition waits for the endpoint connection");
+        readinessChecks += 1;
+      }
+      return browser;
+    },
   });
-  t.after(() => context.close());
-  const originalTab = context.pages()[0];
+  acquired = true;
+  t.after(() => browserFixture.close());
+  const { context, page: originalTab, browser, endpoint: cdpUrl } = browserFixture;
   assert.ok(originalTab);
   const before = context.pages().length;
-  let portReads = 0;
-  const readPortFile = async (path: string, encoding: "utf8") => {
-    portReads += 1;
-    if (portReads <= 2) throw Object.assign(new Error("port file not visible yet"), { code: "ENOENT", path });
-    return readFile(path, encoding);
-  };
-  const browser = context.browser();
   assert.ok(browser);
-  const cdpUrl = await cdpEndpoint(browser, { readPortFile });
-  assert.ok(portReads > 2, "acquisition waits for port file visibility");
-  const connect = driver.connectOverCDP.bind(driver);
+  assert.ok(readinessChecks > 2, "acquisition waits for endpoint readiness");
   let delayedTab: import("playwright").Page | undefined;
   t.mock.method(driver, "connectOverCDP", async (...args: Parameters<typeof connect>) => {
     const browser = await connect(...args);
