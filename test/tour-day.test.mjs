@@ -96,6 +96,13 @@ test("offline tour shell caches required local modules without the optional base
   assert.equal([...files].some(path => path.includes('/maplibre-gl-')), false, 'Tour day has no basemap style and must not install its engine');
   await init;
   const optionalUi = new Set(), required = new Set();
+  const html = new JSDOM(await readFile(new URL('tours/day.html', root), 'utf8'));
+  for (const link of html.window.document.querySelectorAll('link[rel="modulepreload"]')) {
+    const path = new URL(link.getAttribute('href'), 'https://synthetic.test/tours/day.html').pathname;
+    required.add(path);
+    assert.ok(files.has(path), `${path} is an explicit offline shell dependency`);
+  }
+  html.window.close();
   async function check(path) {
     if (checked.has(path) || !/\.m?js$/.test(path)) return;
     checked.add(path);
