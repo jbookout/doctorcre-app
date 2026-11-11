@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
 import { build } from "esbuild";
+import { UI_ENTRIES } from "../scripts/ui-bundle.mjs";
 
 const appUrl = new URL("../tours/app.js", import.meta.url);
 
@@ -23,6 +24,14 @@ export async function buildToursAppScript(source?: string): Promise<string> {
       {
         name: "isolated-tour-transport",
         setup(builder) {
+          builder.onResolve({ filter: /\/js\/[^/]+\.js$/ }, async (args) => {
+            const entry = Object.entries(UI_ENTRIES).find(([name]) => args.path.endsWith(`/js/${name}.js`));
+            if (!entry) return undefined;
+            return builder.resolve(fileURLToPath(new URL(`../src/ui/${entry[1]}`, import.meta.url)), {
+              kind: args.kind,
+              resolveDir: fileURLToPath(new URL("../", import.meta.url)),
+            });
+          });
           builder.onLoad({ filter: /[/\\]js[/\\](private-session|app-shell)\.js$/ }, (args) => ({
             contents: args.path.endsWith("private-session.js")
               ? "export const sessionFetch = (...args) => fetch(...args);"
