@@ -42,7 +42,14 @@ test('CLI broken deployed fixture cannot pass', async t => {
   assert.equal(result.receipt.ok, false);
   assert.equal(result.code, 1);
 });
-test('late launch closes its acquired browser after deadline with no survivor', async t => {
+for (const delayedRelease of [false, true]) test(delayedRelease ? 'release deadline before acquisition launches no browser' : 'late launch closes its acquired browser after deadline with no survivor', { timeout: 20000 }, async t => {
+  if (delayedRelease) {
+    const fetch = globalThis.fetch;
+    t.mock.method(globalThis, 'fetch', async (...args) => {
+      if (new URL(String(args[0])).pathname === '/app-release') await new Promise(resolve => setTimeout(resolve, 60));
+      return fetch(...args);
+    });
+  }
   const origin = await server(t);
   let browser;
   let disposed;
