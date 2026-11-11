@@ -128,7 +128,7 @@ export async function prove(options: {
         if (new URL(options.tourUrl).pathname === "/tours/route-editor.html")
           throw Object.assign(
             Error(
-              "No qualified Tour at supplied URL: expected an existing deal workspace Tour; legacy Dr. Sapala route-editor Tours do not qualify",
+              "No qualified Tour at supplied URL: expected an existing deal workspace Tour; legacy standalone route-editor Tours do not qualify",
             ),
             { exitCode: 78 },
           );

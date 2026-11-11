@@ -17,7 +17,7 @@ for (const mode of ["pass", "near-miss", "legacy", "unreachable"] as const)
   test(`Tour proof shared CDP CLI ${mode}`, async (t) => {
     const routes = await tourDragRoutes(mode === "near-miss" ? mode : "pass");
     if (mode === "legacy")
-      routes.set("/tours/route-editor.html", { contentType: "text/html", body: "<h1>Dr. Sapala legacy Tour</h1>" });
+      routes.set("/tours/route-editor.html", { contentType: "text/html", body: "<h1>Synthetic legacy Tour</h1>" });
     const server = await startFixture({ routes });
     t.after(() => server.close());
     const portServer = await startFixture();

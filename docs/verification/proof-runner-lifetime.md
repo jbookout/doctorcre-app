@@ -2,7 +2,7 @@
 
 The introduction proof loads the app once, switches theme using the shell control, and reviews and cancels at both widths. It takes `--expected-commit`. The Tour drag proof accepts either a shared `--cdp-url` or a private `--storage-state` file. CDP does not export session state.
 
-The Tour proof requires an existing editable Tour in its deal workspace with two flexible stops. The legacy Dr. Sapala route-editor URL does not satisfy that acceptance. The proof never creates a Tour or saves a reorder. Missing qualification exits 78 and names the missing evidence.
+The Tour proof requires an existing editable Tour in its deal workspace with two flexible stops. A legacy standalone route-editor URL does not satisfy that acceptance. The proof never creates a Tour or saves a reorder. Missing qualification exits 78 and names the missing evidence.
 
 ```mermaid
 stateDiagram-v2
