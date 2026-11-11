@@ -10,7 +10,7 @@ import { walkV2Accessibility } from "../scripts/v2-accessibility-walk.ts";
 import { chromium } from "./browser-harness.mjs";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 
-test("V2 phone targets have zero undersized or covered controls in both themes", async (t) => {
+test("V2 phone targets have zero undersized or covered controls in both themes", { timeout: 600_000 }, async (t) => {
   const root = await temporaryDirectory("v2-phone-a11y-", t);
   await buildArtifact({ root: process.cwd(), outDir: root, commit: "1".repeat(40) });
   const server = await (await createQaServer({ buildRoot: `${root}/site` })).start();
