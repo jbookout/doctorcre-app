@@ -72,3 +72,9 @@ test('portal transport never returns material after refusal, HTTP outage or an e
     await assert.rejects(client.read({ slug: 'demo-practice', password: 'synthetic-password' }), /Portal unavailable/);
   }
 });
+
+test('publication contract accepts explicit milestones and file metadata with an empty roadmap',async()=>{
+  const projection={slug:'demo-practice',roadmap:{current_phase:null,phases:[]},materials:[],publications:[{kind:'milestone',title:'Published step',content:'Client update'},{kind:'deliverable',title:'Final report',deliverable:{id:'11111111-1111-4111-8111-111111111111',filename:'report.pdf',mime:'application/pdf',bytes:400}}]};
+  const client=createClientPortalClient({fetchImpl:async()=>response({ok:true,schema_version:'client-portal.v1',portal:projection})});
+  assert.deepEqual(await client.read({slug:projection.slug,password:'synthetic-password'}),projection);
+});

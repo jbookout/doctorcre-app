@@ -54,6 +54,7 @@ export const UI_ENTRIES = {
   'ui-calendar-panels': 'calendar-panels',
   'ui-deal-documents': 'deal-documents',
   'ui-checklist': 'deal-checklist',
+  'ui-client-publications': 'client-publications',
   'ui-deal-tours': 'deal-tours',
   'ui-inbox': 'inbox-entry',
   'ui-home-mail-start': 'home/mail-priorities-start',

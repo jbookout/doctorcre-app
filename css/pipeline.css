@@ -356,3 +356,13 @@
 
 .deliverable-drop { display: block; width: 100%; color: var(--fg); text-align: left; cursor: pointer; }
 .deliverable-drop:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+
+.client-publications { max-width: 900px; margin-inline: auto; overflow-wrap: anywhere; }
+.client-preview { border: 1px solid var(--hairline); border-radius: 12px; padding: 20px; margin-block: 24px; background: var(--surface-1); }
+.client-publication-item { border-bottom: 1px solid var(--hairline); padding-block: 16px; }
+.client-publications form { display: grid; gap: 12px; margin-block: 24px; }
+.client-publications label { display: grid; gap: 6px; }
+.client-publications input, .client-publications textarea, .client-publications select { box-sizing: border-box; width: 100%; max-width: 100%; font: inherit; color: inherit; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 6px; padding: 10px; }
+.client-publications textarea { min-height: 120px; }
+.client-publications .btn { min-height: 44px; white-space: normal; }
+@media (max-width: 480px) { .client-preview { padding: 12px; } }

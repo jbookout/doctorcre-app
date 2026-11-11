@@ -32,12 +32,12 @@ function setState(next) {
   status.textContent = {
     locked: 'Enter your portal name and password to continue.',
     loading: 'Opening your portal…',
-    ready: 'Your current roadmap and shared material.',
+    ready: next.portal?.publications ? 'Your published milestones and shared material.' : 'Your current roadmap and shared material.',
     unavailable: 'Portal unavailable. Check the portal name and password, then try again.',
   }[state.kind];
   if (state.kind !== 'ready') return;
   const portal = state.portal;
-  const heading = node('h2', 'Your transaction roadmap');
+  const heading = node('h2', portal.publications ? 'Your client view' : 'Your transaction roadmap');
   heading.tabIndex = -1;
   content.append(heading);
   const phases = node('ol'); phases.id = 'portalPhases';
@@ -51,10 +51,10 @@ function setState(next) {
   }
   const materials = node('section'); materials.setAttribute('aria-label', 'Shared material');
   materials.append(node('h2', 'Shared material'));
-  if (!portal.materials.length) materials.append(node('p', 'No material has been shared yet.'));
-  for (const material of portal.materials) {
+  if (!portal.materials.length && !portal.publications?.length) materials.append(node('p', 'No material has been shared yet.'));
+  for (const material of [...portal.materials,...(portal.publications || [])]) {
     const article = node('article');
-    article.append(node('p', material.kind, 'material-kind'), node('h3', material.title), node('p', material.content, 'material-content'));
+    article.append(node('p', material.kind, 'material-kind'), node('h3', material.title), node('p', material.kind === 'deliverable' ? `${material.deliverable.filename} · ${material.deliverable.mime} · ${material.deliverable.bytes} bytes` : material.content, 'material-content'));
     materials.append(article);
   }
   content.append(phases, materials);
