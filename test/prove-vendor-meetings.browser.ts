@@ -38,7 +38,26 @@ async function fixture(t: import("node:test").TestContext, mode = "ready", sourc
     ]),
   );
   const server = await startWorkerFixture({
-    assets: snapshot,
+    assets:
+      mode === "throttled-reloads"
+        ? new Map([...snapshot].filter(([path]) => path !== "/js/workspace-business.js"))
+        : snapshot,
+    routes:
+      mode === "throttled-reloads"
+        ? new Map([
+            [
+              "/js/workspace-business.js",
+              {
+                sequence: [
+                  snapshot.get("/js/workspace-business.js"),
+                  snapshot.get("/js/workspace-business.js"),
+                  snapshot.get("/js/workspace-business.js"),
+                  { status: 429, body: "Too many requests" },
+                ],
+              },
+            ],
+          ])
+        : new Map(),
     env: {
       APP_ENV: "production",
       GIT_SHA: source,
@@ -63,6 +82,13 @@ async function fixture(t: import("node:test").TestContext, mode = "ready", sourc
   t.after(() => server.close());
   return server;
 }
+test("proof covers both themes and widths without reloading into the asset rate limit", async (t) => {
+  const server = await fixture(t, "throttled-reloads");
+  const result = await prove({ origin: server.origin, expectedCommit: commit, fixture: true, timeoutMs: 12000 });
+  assert.equal(result.status, "passed");
+  assert.equal(result.observations.length, 8);
+  assert.equal(server.requests.filter((r) => r.path === "/vendors").length, 1);
+});
 test("proof CLI passes exact values and rejects near-miss rendered values", async (t) => {
   const server = await fixture(t);
   const result = await exec(process.execPath, [
