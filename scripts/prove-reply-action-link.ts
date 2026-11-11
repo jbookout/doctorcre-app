@@ -33,7 +33,10 @@ const insufficient = (message: string) => Object.assign(Error(message), { exitCo
 export function signedInReplyEngine(endpoint: string, engine: Connector = chromium) {
   const url = new URL(endpoint);
   assert.ok(
-    url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname) && !url.username && !url.password,
+    ["http:", "ws:"].includes(url.protocol) &&
+      ["localhost", "127.0.0.1"].includes(url.hostname) &&
+      !url.username &&
+      !url.password,
     "loopback CDP required",
   );
   return {

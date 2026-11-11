@@ -13,6 +13,7 @@ import { chromium } from "../scripts/proof-browser.mjs";
 import { prove } from "../scripts/prove-research-source.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import recording from "./fixtures/research-source/recordings.json" with { type: "json" };
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 
 validateLeadWorkspace(recording);
 validateLeadDetail(recording.detail, recording.detail.id);
@@ -125,10 +126,9 @@ for (const mode of ["equal", "descendant", "older", "unrelated", "unknown", "fai
       return;
     }
     if (mode === "equal" || mode === "failure") {
-      const portFixture = await startFixture();
-      const port = new URL(portFixture.origin).port;
-      await portFixture.close();
-      const browser = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+      const browserFixture = await ownedCdpFixture();
+      t.after(() => browserFixture.close());
+      const browser = browserFixture.browser;
       t.after(() => browser.close());
       const args = [
         "scripts/prove-research-source.ts",
@@ -137,7 +137,7 @@ for (const mode of ["equal", "descendant", "older", "unrelated", "unknown", "fai
         "--expected-commit",
         options.expectedCommit,
         "--cdp-url",
-        `http://127.0.0.1:${port}`,
+        browserFixture.endpoint,
       ];
       if (mode === "failure")
         await assert.rejects(
@@ -192,12 +192,11 @@ for (const mode of ["late connection", "stalled evaluation"])
   });
 
 async function borrowedBrowser(t: TestContext) {
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port;
-  await portFixture.close();
-  const browser = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+  const browserFixture = await ownedCdpFixture();
+  t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   t.after(() => browser.close());
-  const cdpUrl = `http://127.0.0.1:${port}`;
+  const cdpUrl = browserFixture.endpoint;
   const { chromium: cdp } = await import("playwright");
   const connection = await cdp.connectOverCDP(cdpUrl);
   t.after(() => connection.close());
@@ -254,7 +253,7 @@ test("proof deadline closes a late CDP page before disconnecting and preserves e
   const { browser, connection, cdp, cdpUrl } = await borrowedBrowser(t);
   const context = connection.contexts()[0];
   assert.ok(context);
-  const existing = await context.newPage();
+  const existing = context.pages()[0] || (await context.newPage());
   await existing.goto("about:blank#existing");
   const newPage = context.newPage.bind(context);
   const acquisitions: Promise<Page>[] = [];

@@ -1,7 +1,8 @@
-import { cdpEndpoint } from "./cdp-fixture.ts";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { execFileSync } from 'node:child_process';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import test from 'node:test';
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { get } from 'node:http';
 import { once } from 'node:events';
@@ -128,10 +129,11 @@ test('unreachable CDP and page acquisition refusal are insufficient evidence', a
 test('late CDP page is drained before disconnect and preserves existing tabs', async t => {
   const { chromium } = await import('../scripts/proof-browser.mjs');
   const { chromium: driver } = await import('playwright');
-  const browser = await chromium.launch({ args: ['--remote-debugging-port=0', '--enable-automation'] });
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   t.after(() => browser.close());
-  const sentinel = await browser.newPage(); await sentinel.setContent('<title>Preserved tab</title>');
-  const endpoint = await cdpEndpoint(browser), before = browser.contexts()[0].pages().length;
+  const sentinel = browserFixture.page; await sentinel.setContent('<title>Preserved tab</title>');
+  const endpoint = browserFixture.endpoint, before = browser.contexts()[0].pages().length;
   let acquired = false;
   const engine = { connectOverCDP: async (...args) => {
     const connection = await driver.connectOverCDP(...args), context = connection.contexts()[0], newPage = context.newPage.bind(context);
@@ -161,7 +163,6 @@ test('near-miss matching count fails the exact CLI assertion', async t => {
   assert.equal(result.code, 1, JSON.stringify(result));
   assert.match(result.receipt.error, /exact-count/);
 });
-
 
 test('CLI release gate accepts equal and descendant and refuses older unrelated and unknown', async t => {
   const cwd = temporaryDirectory('priority-cli-release-', t);

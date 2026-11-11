@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { prove } from '../scripts/prove-mail-priority-panel.mjs';
 const expectedCommit = '1'.repeat(40);
@@ -78,11 +80,10 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`real owned Chrom
 import { startFixture } from '../scripts/fixture-http.mjs';
 test('real CDP closes a late-acquired page before disconnecting and preserves existing pages', async t => {
   const root = temporaryDirectory('mail-proof-late-cdp-page-', t);
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port;
-  await portFixture.close();
-  const context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
-  const cdpUrl = `http://127.0.0.1:${port}`;
+
+  const contextFixture = await ownedCdpFixture(); t.after(() => contextFixture.close());
+  const context = contextFixture.context;
+  const cdpUrl = contextFixture.endpoint;
   const existing = context.pages()[0];
   let acquisition, inspection;
   const fixture = setup();
@@ -141,11 +142,10 @@ chromium.connectOverCDP = async () => { ${mode === 'connection rejection' ? "thr
 });
 
 test('actual CLI compares every displayed evidence field exactly', async t => {
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port;
-  await portFixture.close();
+
   const root = temporaryDirectory('mail-exact-cdp-', t);
-  const context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const contextFixture = await ownedCdpFixture(); t.after(() => contextFixture.close());
+  const context = contextFixture.context;
   t.after(() => context.close());
   const mutations = {
     correct: '',
@@ -168,7 +168,7 @@ test('actual CLI compares every displayed evidence field exactly', async t => {
       ['/api/v1/intelligence/mail-needs-partner', json(recordings.ready)],
     ]) });
     try {
-      const result = await cli(server.origin, `http://127.0.0.1:${port}`);
+      const result = await cli(server.origin, contextFixture.endpoint);
       assert.equal(result.code, mode === 'correct' ? 0 : 1, `${mode} ${JSON.stringify(result)}`);
       assert.equal(context.pages().length, 1, 'only the preexisting page survives');
     } finally { await server.close(); }

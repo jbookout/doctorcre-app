@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import { chromium as driver } from "playwright";
-import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-vendor-markets.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { directoryFixture } from "./fixtures/vendor-directory.synthetic.mjs";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { assertProofDeadlineCleanup } from "./proof-browser-harness.mjs";
 
 const exec = promisify(execFile);
@@ -150,17 +149,10 @@ for (const mode of ["late launch", "stalled evaluation"])
   });
 
 test("real CDP deadline closes delayed page and preserves the original tab", async (t) => {
-  const root = temporaryDirectory("vendor-markets-cdp-", t);
-  const context = await driver.launchPersistentContext(root, {
-    headless: true,
-    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0"],
-  });
-  t.after(() => context.close());
-  const originalTab = context.pages()[0];
-  assert.ok(originalTab);
+  const fixtureOwner = await ownedCdpFixture();
+  t.after(() => fixtureOwner.close());
+  const { context, page: originalTab, endpoint: cdpUrl } = fixtureOwner;
   const before = context.pages().length;
-  const port = (await readFile(join(root, "DevToolsActivePort"), "utf8")).split("\n")[0];
-  const cdpUrl = `http://127.0.0.1:${port}`;
   const connect = driver.connectOverCDP.bind(driver);
   let delayedTab: import("playwright").Page | undefined;
   t.mock.method(driver, "connectOverCDP", async (...args: Parameters<typeof connect>) => {

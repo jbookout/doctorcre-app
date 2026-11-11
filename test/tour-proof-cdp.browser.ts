@@ -4,11 +4,10 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { chromium as driver } from "playwright";
-import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { startFixture } from "../scripts/fixture-http.mjs";
-import { chromium } from "../scripts/proof-browser.mjs";
 import { signedInReplyEngine } from "../scripts/prove-reply-action-link.ts";
 import { prove } from "../scripts/prove-tour-stop-drag.ts";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { fixtureDeal, tourDragRoutes } from "./tour-stop-drag-proof-fixture.ts";
 
 const commit = "1".repeat(40);
@@ -20,17 +19,17 @@ for (const mode of ["pass", "near-miss", "legacy", "unreachable"] as const)
       routes.set("/tours/route-editor.html", { contentType: "text/html", body: "<h1>Synthetic legacy Tour</h1>" });
     const server = await startFixture({ routes });
     t.after(() => server.close());
-    const portServer = await startFixture();
-    const port = new URL(portServer.origin).port;
-    await portServer.close();
-    const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+
+    const browserFixture = await ownedCdpFixture();
+    t.after(() => browserFixture.close());
+    const browser = browserFixture.browser;
     t.after(() => browser.close());
-    const endpoint = `http://127.0.0.1:${port}`;
+    const endpoint = browserFixture.endpoint;
     const initial = await driver.connectOverCDP(endpoint);
     t.after(() => initial.close());
     const context = initial.contexts()[0];
     assert.ok(context);
-    const sentinel = await context.newPage();
+    const sentinel = context.pages()[0] || (await context.newPage());
     const before = context.pages().length;
     const args = [
       "scripts/prove-tour-stop-drag.ts",
@@ -67,12 +66,12 @@ for (const scenario of ["late page", "late launch", "stalled evaluation"] as con
   test(`Tour proof deadline cleans ${scenario} without closing shared tabs`, async (t) => {
     const server = await startFixture({ routes: await tourDragRoutes() });
     t.after(() => server.close());
-    const portServer = await startFixture();
-    const port = new URL(portServer.origin).port;
-    await portServer.close();
-    const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+
+    const browserFixture = await ownedCdpFixture();
+    t.after(() => browserFixture.close());
+    const browser = browserFixture.browser;
     t.after(() => browser.close());
-    const endpoint = `http://127.0.0.1:${port}`;
+    const endpoint = browserFixture.endpoint;
     const initial = await driver.connectOverCDP(endpoint);
     t.after(() => initial.close());
     const initialContext = initial.contexts()[0];

@@ -293,7 +293,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (values.fixture && !['127.0.0.1','localhost','[::1]'].includes(url.hostname)) throw new Error('Fixtures require loopback origin');
     if (values['cdp-url']) {
       const cdp = new URL(values['cdp-url']);
-      if (cdp.protocol !== 'http:' || !['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) || cdp.username || cdp.password) throw Error('CDP requires a loopback HTTP endpoint');
+      if (!['http:', 'ws:'].includes(cdp.protocol) || !['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) || cdp.username || cdp.password) throw Error('CDP requires a loopback HTTP or browser WebSocket endpoint');
     }
     const result = await prove({origin:url.origin,timeoutMs,fixture:values.fixture,commit:values.commit,cdpUrl:values['cdp-url']});
     console.log(JSON.stringify(result));

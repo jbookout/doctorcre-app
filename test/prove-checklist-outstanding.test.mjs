@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { startFixture, startWorkerFixture } from '../scripts/fixture-http.mjs';
 import {prove} from '../scripts/prove-checklist-outstanding.mjs';
@@ -83,10 +85,11 @@ test('CLI acquisition failures refuse evidence and late CDP pages are closed bef
  const server=await startWorkerFixture({env:{APP_ENV:'production',GIT_SHA:commit}});
  t.after(()=>server.close());
  const origin=server.origin;
- const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
- const endpoint=`http://127.0.0.1:${port}`;
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
- const existing=await browser.newPage();
+
+ const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+ const endpoint = browserFixture.endpoint;
+ const browser=browserFixture.browser;t.after(()=>browser.close());
+ const existing=browserFixture.page;
  const scratch=temporaryDirectory('attribution-acquisition-',t);
  const playwrightURL=import.meta.resolve('playwright');
  for(const mode of ['unreachable','connect-rejection','retired-context','missing-context','late-page'])await t.test(mode,async()=>{
@@ -145,9 +148,10 @@ test('natural observer CLI compares exact recorded counts, rows, due summary and
   </script>`});
   server=await startWorkerFixture({routes,env:{APP_ENV:'production',GIT_SHA:commit}});
  };
- const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());const existing=await browser.newPage();
- const run=()=>new Promise(resolve=>execFile(process.execPath,['scripts/prove-checklist-outstanding.mjs','--origin',server.origin,'--expected-commit',commit,'--cdp-url',`http://127.0.0.1:${port}`,'--timeout-ms','7000'],{timeout:12000},(error,stdout,stderr)=>resolve({code:error?.code||0,stdout,stderr})));
+
+ const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+ const browser=browserFixture.browser;t.after(()=>browser.close());const existing=browserFixture.page;
+ const run=()=>new Promise(resolve=>execFile(process.execPath,['scripts/prove-checklist-outstanding.mjs','--origin',server.origin,'--expected-commit',commit,'--cdp-url',browserFixture.endpoint,'--timeout-ms','7000'],{timeout:12000},(error,stdout,stderr)=>resolve({code:error?.code||0,stdout,stderr})));
  await start(false);const pass=await run();assert.equal(pass.code,0,JSON.stringify(pass));assert.equal(JSON.parse(pass.stdout).status,'passed');
  await start(true);const fail=await run();assert.equal(fail.code,1,JSON.stringify(fail));
  for(const mode of ['auth','malformed']){await start(false,mode);const missing=await run();assert.equal(missing.code,78,JSON.stringify({mode,...missing}));}

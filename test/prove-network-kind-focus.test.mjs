@@ -1,5 +1,7 @@
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
-import test from 'node:test';
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -50,12 +52,11 @@ for (const mode of ['equal','descendant','older','unrelated','unknown','failure'
     await assert.rejects(prove(options), error=>error.exitCode===78);return;
   }
   if (mode === 'equal' || mode === 'failure') {
-    const portFixture = await startFixture();
-    const port = new URL(portFixture.origin).port;
-    await portFixture.close();
-    const browser = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+
+    const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+    const browser = browserFixture.browser;
     t.after(() => browser.close());
-    const args = ['scripts/prove-network-kind-focus.mjs', '--origin', options.origin, '--expected-commit', options.expectedCommit, '--cdp-url', `http://127.0.0.1:${port}`];
+    const args = ['scripts/prove-network-kind-focus.mjs', '--origin', options.origin, '--expected-commit', options.expectedCommit, '--cdp-url', browserFixture.endpoint];
     if (mode === 'failure') await assert.rejects(promisify(execFile)(process.execPath, args), error => error.code === 1);
     else assert.equal(JSON.parse((await promisify(execFile)(process.execPath, args)).stdout).status, 'passed');
     assert.ok(browser.isConnected(), 'proof disconnect preserves acquired test browser');
@@ -77,12 +78,11 @@ for(const mode of ['late connection','stalled evaluation']) test(`proof deadline
 });
 
 async function borrowedBrowser(t) {
-  const portFixture = await startFixture();
-  const port = new URL(portFixture.origin).port;
-  await portFixture.close();
-  const browser = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   t.after(() => browser.close());
-  const cdpUrl = `http://127.0.0.1:${port}`;
+  const cdpUrl = browserFixture.endpoint;
   const { chromium: cdp } = await import('playwright');
   const connection = await cdp.connectOverCDP(cdpUrl);
   t.after(() => connection.close());
@@ -124,7 +124,7 @@ test('proof deadline closes a late CDP page before disconnecting and preserves e
   const options = await fixture(t, 'equal');
   const { browser, connection, cdp, cdpUrl } = await borrowedBrowser(t);
   const context = connection.contexts()[0];
-  const existing = await context.newPage();
+  const existing = context.pages()[0] || await context.newPage();
   await existing.goto('about:blank#existing');
   const newPage = context.newPage.bind(context);
   let acquisition;
@@ -248,12 +248,12 @@ for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable
       return connection;
     };
   `);
-  const listener = await startFixture();
-  const port = new URL(listener.origin).port; await listener.close();
+
   const { chromium: owner } = await import('../scripts/proof-browser.mjs');
-  const browser = await owner.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   t.after(() => browser.close());
-  const cliArgs = ['--import', preload, 'scripts/prove-network-kind-focus.mjs', '--origin', f.origin, '--expected-commit', f.expectedCommit, '--cdp-url', `http://127.0.0.1:${port}`];
+  const cliArgs = ['--import', preload, 'scripts/prove-network-kind-focus.mjs', '--origin', f.origin, '--expected-commit', f.expectedCommit, '--cdp-url', browserFixture.endpoint];
   const execution = promisify(execFile)(process.execPath, cliArgs);
   if (['extra read', 'future read'].includes(mode)) {
     assert.equal(JSON.parse((await execution).stdout).status, 'passed');

@@ -10,3 +10,4 @@ export declare function assertProofDeadlineCleanup(
     evaluationTarget?: "page" | "locator";
   },
 ): Promise<{ code: number; stdout: string; stderr: string }>;
+export declare function ownedBrowserProcesses(root: string, ownerPid?: number): number[];

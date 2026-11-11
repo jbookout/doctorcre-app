@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -52,9 +54,9 @@ for(const [mode,count,code]of [['pass',45,0],['insufficient',1,78]])test(`CLI ${
 });
 import { chromium as cdpChromium } from 'playwright';
 test('real CDP late page closes before disconnect and preserves borrowed tabs',async t=>{
-  const reservation=await startFixture();const port=Number(new URL(reservation.origin).port);await reservation.close();
-  const owned=await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});t.after(()=>owned.close());
-  const url=`http://127.0.0.1:${port}`, original=await cdpChromium.connectOverCDP(url);t.after(()=>original.close());
+  const ownedFixture = await ownedCdpFixture(); t.after(() => ownedFixture.close());
+  const owned=ownedFixture.browser;t.after(()=>owned.close());
+  const url=ownedFixture.endpoint, original=await cdpChromium.connectOverCDP(url);t.after(()=>original.close());
   const borrowed=await original.contexts()[0].newPage();await borrowed.goto('about:blank');
   const count=original.contexts()[0].pages().length;
   const engine={connectOverCDP:async(...args)=>{

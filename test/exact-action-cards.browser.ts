@@ -7,7 +7,7 @@ import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { proveExact } from "../scripts/prove-exact-action-cards.ts";
-import { cdpEndpoint } from "./cdp-fixture.ts";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 
 const rows: {
   ref: string;
@@ -236,17 +236,16 @@ test("exact-card proof containing release passes and near-match fails; unavailab
   }
 });
 
-test("production proof CLI exits 0, 1 and 78 through a real browser fixture", async () => {
+test("production proof CLI exits 0, 1 and 78 through a real browser fixture", async (t) => {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const exec = promisify(execFile);
+  const browserFixture = await ownedCdpFixture();
+  t.after(() => browserFixture.close());
   const server = await fixture(),
-    browser = await chromium.launch({
-      headless: true,
-      args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
-    });
+    browser = browserFixture.browser;
   try {
-    const endpoint = await cdpEndpoint(browser);
+    const endpoint = browserFixture.endpoint;
     const args = [
       "scripts/prove-exact-action-cards.ts",
       "--origin",
