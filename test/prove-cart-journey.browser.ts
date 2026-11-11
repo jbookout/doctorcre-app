@@ -7,10 +7,10 @@ import { chromium as driver } from "playwright";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
+import { chromium } from "../scripts/proof-browser.mjs";
 import { proveJourney } from "../scripts/prove-cart-journey.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { parseSearchResponse } from "../src/ui/deal-space-search-model.ts";
-import { chromium } from "./browser-harness.mjs";
 
 const responses = JSON.parse(
   await readFile(new URL("./fixtures/deal-space-searches/responses.json", import.meta.url), "utf8"),
@@ -28,6 +28,10 @@ for (const mode of ["ready", "wrong-order", "deadline"] as const) {
     const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
     t.after(() => browser.close());
     const page = await browser.newPage();
+    await page.route(
+      (url) => !["127.0.0.1", "localhost"].includes(url.hostname),
+      (route) => route.abort(),
+    );
     const detail = structuredClone(recorded.detail.data);
     const deal = responses.saved.search.deal_id;
     const tour = detail.id;
