@@ -98,7 +98,7 @@ export function parseNeed(value: unknown, context: Context): Need {
   if (!need) throw Error("Need missing");
   return need;
 }
-export function fieldsOf(n: Need): Fields {
+function fieldsOf(n: Need): Fields {
   return {
     vendor: n.vendor_id,
     description: n.description,

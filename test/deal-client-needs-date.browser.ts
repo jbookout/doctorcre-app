@@ -4,12 +4,32 @@ import test from "node:test";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { parseNeed } from "../src/ui/deal-client-needs-model.ts";
+import { parseVendorMarkets } from "../src/ui/vendor-markets-client.ts";
 import { chromium } from "./browser-harness.mjs";
 
 const recorded = JSON.parse(await readFile(new URL("./fixtures/client-needs/authoring.json", import.meta.url), "utf8"));
-Object.assign(recorded, {client_name: 'Gulf Coast Pediatric Partners', deal_name: 'Fairhope clinic relocation', vendor_ref: 'Bayshore Medical Buildout', description: 'Price a 4,200 SF pediatric clinic buildout with six exam rooms and an accessible imaging suite.', applicability: 'Tenant improvement estimate for Fairhope relocation. Client needs a preliminary budget before LOI approval.', source_ref: 'Client discovery call with Dr. Morgan, November 10', source_revision: 'Call transcript revision 3', observed_at: '2026-11-10T16:00:00Z', fresh_until: '2026-12-10T16:00:00Z'});
+Object.assign(recorded, {
+  client_name: "Gulf Coast Pediatric Partners",
+  deal_name: "Fairhope clinic relocation",
+  vendor_ref: "Bayshore Medical Buildout",
+  description: "Price a 4,200 SF pediatric clinic buildout with six exam rooms and an accessible imaging suite.",
+  applicability:
+    "Tenant improvement estimate for Fairhope relocation. Client needs a preliminary budget before LOI approval.",
+  source_ref: "Client discovery call with Dr. Morgan, November 10",
+  source_revision: "Call transcript revision 3",
+  observed_at: "2026-11-10T16:00:00Z",
+  fresh_until: "2026-12-10T16:00:00Z",
+});
+const directory = JSON.parse(await readFile(new URL("./fixtures/vendor-markets.v1.json", import.meta.url), "utf8"));
+const originalVendor = directory.vendors[1].id;
+directory.vendors[1].id = recorded.vendor_id;
+directory.vendors[1].name = "Bayshore Medical Buildout";
+for (const market of directory.markets)
+  for (const member of market.memberships)
+    if (member.vendor_id === originalVendor) member.vendor_id = recorded.vendor_id;
+parseVendorMarkets(directory);
 const fixture = parseNeed(recorded, { deal: recorded.deal_id, client: recorded.client_id });
-test("author list, create, edit, exact review, cancel and withdraw at four sizes", async (t) => {
+test("correcting either date recovers validation at desktop and phone widths", async (t) => {
   const server = await startWorkerFixture({
     assets: await appAssetSnapshot(),
     env: { APP_ENV: "fixture", CARR: { fetch: async () => new Response("synthetic") } },
@@ -20,7 +40,7 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
   await mkdir("/tmp/WR591.S27.J21-shots", { recursive: true });
   for (const width of [1440, 390])
     for (const theme of ["light", "dark"]) {
-      const page = await browser.newPage({ viewport: { width, height: 1000 } });
+      const page = await browser.newPage({ viewport: { width, height: 844 }, timezoneId: "UTC" });
       try {
         await page.route("**/need-fixture", (route) =>
           route.fulfill({
@@ -30,7 +50,7 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
         );
         await page.goto(server.origin + "/need-fixture");
         await page.evaluate(
-          async ({ fixture, theme }) => {
+          async ({ fixture, theme, directory }) => {
             document.documentElement.dataset.theme = theme;
             const modulePath = "/js/ui-deal-client-needs.js";
             const { mountDealClientNeeds } = await import(modulePath);
@@ -42,6 +62,7 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
               deal: fixture.deal_id,
               client: fixture.client_id,
               call: async (verb: string, args: Record<string, unknown>) => {
+                if (verb === "read-vendor-markets-v1") return directory;
                 calls.push({ verb, args });
                 if (verb.startsWith("read"))
                   return {
@@ -82,9 +103,9 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
             Reflect.set(window, "needCalls", calls);
             Reflect.set(window, "needView", view);
           },
-          { fixture, theme },
+          { fixture, theme, directory },
         );
-        await page.screenshot({path: `/tmp/WR591.S27.J21-shots/${width}-${theme}-list.png`, fullPage: true});
+        await page.screenshot({ path: `/tmp/WR591.S27.J21-shots/${width}-${theme}-list.png`, fullPage: true });
         await page.getByRole("button", { name: "Review for approval" }).click();
         await page.getByRole("button", { name: "Cancel review" }).click();
         assert.equal(await page.evaluate(() => Reflect.get(window, "needCalls").length), 1);
@@ -95,32 +116,45 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
         await page.getByRole("button", { name: "Approve this revision" }).click();
         await page.getByText(/^Approved ·/).waitFor();
         await page.getByRole("button", { name: "Edit need" }).click();
-        await page.getByLabel("Need description").fill("Add acoustic treatment to the six exam rooms and price a separate imaging allowance.");
+        await page
+          .getByLabel("Need description")
+          .fill("Add acoustic treatment to the six exam rooms and price a separate imaging allowance.");
         await page.getByRole("button", { name: "Save need" }).click();
         await page.getByText(/^Approval lapsed ·/).waitFor();
         await page.getByRole("button", { name: "Withdraw need" }).click();
         await page.getByText(/^Withdrawn ·/).waitFor();
         await page.getByRole("button", { name: "Record client need", exact: true }).click();
+        await page.getByLabel("Search vendors by name").fill("Bayshore");
+        await page.getByLabel("Choose vendor").selectOption(fixture.vendor_id);
         for (const [label, value] of Object.entries({
-          "Vendor ID": fixture.vendor_id,
           "Need description": "Obtain a preliminary medical buildout estimate before the client signs the LOI.",
           Applicability: fixture.applicability,
           "Source identity": fixture.source_ref,
           "Source revision": fixture.source_revision,
-          "Observed at (ISO date and time)": fixture.observed_at,
-          "Fresh until (ISO date and time)": fixture.fresh_until,
+          "Observed at": fixture.observed_at.slice(0, 16),
+          "Fresh until": fixture.fresh_until.slice(0, 16),
         }))
           await page.getByLabel(label, { exact: true }).fill(value);
         await page.screenshot({ path: `/tmp/WR591.S27.J21-shots/${width}-${theme}-edit.png`, fullPage: true });
-        const observed = page.getByLabel("Observed at (ISO date and time)", {exact:true});
-        await observed.fill("2099-01-01T00:00:00Z");
+        const observed = page.getByLabel("Observed at", { exact: true });
+        await observed.fill("2099-01-01T00:00");
         await page.getByRole("button", { name: "Save need" }).click();
-        await observed.fill(fixture.observed_at);
+        await page.getByLabel("Fresh until", { exact: true }).fill("2100-01-01T00:00");
+        assert.equal(
+          await page.getByLabel("Fresh until", { exact: true }).evaluate((e: HTMLInputElement) => e.validity.valid),
+          true,
+        );
+        await page.getByLabel("Fresh until", { exact: true }).fill(fixture.fresh_until.slice(0, 16));
+        await observed.fill(fixture.observed_at.slice(0, 16));
+        const stuck = await page
+          .getByLabel("Fresh until", { exact: true })
+          .evaluate((e: HTMLInputElement) => ({ valid: e.validity.valid, message: e.validationMessage }));
+        console.log(JSON.stringify({ width, theme, correctedObservationStillBlocked: stuck }));
+        assert.equal(stuck.valid, true, "Correcting the observed date must allow the valid form to submit");
         await page.getByRole("button", { name: "Save need" }).click();
-        const stuck = await page.getByLabel("Fresh until (ISO date and time)", {exact:true}).evaluate((e: HTMLInputElement) => ({valid:e.validity.valid,message:e.validationMessage}));
-        console.log(JSON.stringify({width,theme,correctedObservationStillBlocked:stuck}));
-        assert.equal(stuck.valid,true,'Correcting the observed date must allow the valid form to submit');
-        await page.getByText("Obtain a preliminary medical buildout estimate before the client signs the LOI.", { exact: true }).waitFor();
+        await page
+          .getByText("Obtain a preliminary medical buildout estimate before the client signs the LOI.", { exact: true })
+          .waitFor();
         await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
         await page.getByText("Session ended. Sign in again.", { exact: true }).waitFor();
       } finally {
@@ -128,4 +162,3 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
       }
     }
 });
-

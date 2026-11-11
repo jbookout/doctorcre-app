@@ -4,9 +4,18 @@ import test from "node:test";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { parseNeed } from "../src/ui/deal-client-needs-model.ts";
+import { parseVendorMarkets } from "../src/ui/vendor-markets-client.ts";
 import { chromium } from "./browser-harness.mjs";
 
 const recorded = JSON.parse(await readFile(new URL("./fixtures/client-needs/authoring.json", import.meta.url), "utf8"));
+const directory = JSON.parse(await readFile(new URL("./fixtures/vendor-markets.v1.json", import.meta.url), "utf8"));
+const originalVendor = directory.vendors[1].id;
+directory.vendors[1].id = recorded.vendor_id;
+directory.vendors[1].name = "Bayshore Medical Buildout";
+for (const market of directory.markets)
+  for (const member of market.memberships)
+    if (member.vendor_id === originalVendor) member.vendor_id = recorded.vendor_id;
+parseVendorMarkets(directory);
 const fixture = parseNeed(recorded, { deal: recorded.deal_id, client: recorded.client_id });
 test("author list, create, edit, exact review, cancel and withdraw at four sizes", async (t) => {
   const server = await startWorkerFixture({
@@ -16,10 +25,10 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
   t.after(() => server.close());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  await mkdir("/tmp/WR591.S27.J16-shots", { recursive: true });
+  await mkdir("/tmp/WR591.S27.J21-workflow-shots", { recursive: true });
   for (const width of [1440, 390])
     for (const theme of ["light", "dark"]) {
-      const page = await browser.newPage({ viewport: { width, height: 1000 } });
+      const page = await browser.newPage({ viewport: { width, height: 844 }, timezoneId: "America/Chicago" });
       try {
         await page.route("**/need-fixture", (route) =>
           route.fulfill({
@@ -29,7 +38,7 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
         );
         await page.goto(server.origin + "/need-fixture");
         await page.evaluate(
-          async ({ fixture, theme }) => {
+          async ({ fixture, theme, directory }) => {
             document.documentElement.dataset.theme = theme;
             const modulePath = "/js/ui-deal-client-needs.js";
             const { mountDealClientNeeds } = await import(modulePath);
@@ -41,6 +50,7 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
               deal: fixture.deal_id,
               client: fixture.client_id,
               call: async (verb: string, args: Record<string, unknown>) => {
+                if (verb === "read-vendor-markets-v1") return directory;
                 calls.push({ verb, args });
                 if (verb.startsWith("read"))
                   return {
@@ -81,15 +91,33 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
             Reflect.set(window, "needCalls", calls);
             Reflect.set(window, "needView", view);
           },
-          { fixture, theme },
+          { fixture, theme, directory },
         );
+        await page.screenshot({ path: `/tmp/WR591.S27.J21-workflow-shots/${width}-${theme}-list.png`, fullPage: true });
         await page.getByRole("button", { name: "Review for approval" }).click();
         await page.getByRole("button", { name: "Cancel review" }).click();
         assert.equal(await page.evaluate(() => Reflect.get(window, "needCalls").length), 1);
         await page.getByRole("button", { name: "Review for approval" }).click();
         await page.getByRole("region", { name: "Review need revision" }).waitFor();
-        await page.screenshot({ path: `/tmp/WR591.S27.J16-shots/${width}-${theme}-review.png`, fullPage: true });
+        await page.screenshot({
+          path: `/tmp/WR591.S27.J21-workflow-shots/${width}-${theme}-review.png`,
+          fullPage: true,
+        });
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        const reviewBounds = await page.getByRole("region", { name: "Review need revision" }).boundingBox();
+        assert.ok(reviewBounds && reviewBounds.height < 844, "Review fits within one phone screen");
+        assert.equal(await page.getByText(fixture.vendor_id, { exact: true }).count(), 0);
+        const review = page.getByRole("region", { name: "Review need revision" });
+        const details = review.locator("details");
+        assert.equal(await details.getAttribute("open"), null);
+        await details.locator("summary").click();
+        assert.equal(
+          await details.locator('[data-need-field="Vendor"]').textContent(),
+          `${fixture.vendor_ref} (${fixture.vendor_id})`,
+        );
+        assert.equal(await details.locator('[data-need-field="Observed at"]').textContent(), fixture.observed_at);
+        assert.equal(await details.locator('[data-need-field="Fresh until"]').textContent(), fixture.fresh_until);
+        await details.locator("summary").click();
         await page.getByRole("button", { name: "Approve this revision" }).click();
         await page.getByText(/^Approved ·/).waitFor();
         await page.getByRole("button", { name: "Edit need" }).click();
@@ -99,19 +127,33 @@ test("author list, create, edit, exact review, cancel and withdraw at four sizes
         await page.getByRole("button", { name: "Withdraw need" }).click();
         await page.getByText(/^Withdrawn ·/).waitFor();
         await page.getByRole("button", { name: "Record client need", exact: true }).click();
+        const defaults = await page.locator("form").evaluate((form: HTMLFormElement) => {
+          const data = new FormData(form);
+          return {
+            observed: Date.parse(String(data.get("observed_at"))),
+            fresh: Date.parse(String(data.get("fresh_until"))),
+            now: Date.now(),
+          };
+        });
+        assert.ok(Math.abs(defaults.observed - defaults.now) < 60000);
+        assert.ok(Math.abs(defaults.fresh - defaults.observed - 30 * 86400000) < 60000);
+        await page.getByLabel("Search vendors by name").fill("Bayshore");
+        await page.getByLabel("Choose vendor").selectOption(fixture.vendor_id);
         for (const [label, value] of Object.entries({
-          "Vendor ID": fixture.vendor_id,
           "Need description": "Synthetic new need",
           Applicability: fixture.applicability,
           "Source identity": fixture.source_ref,
           "Source revision": fixture.source_revision,
-          "Observed at (ISO date and time)": fixture.observed_at,
-          "Fresh until (ISO date and time)": fixture.fresh_until,
         }))
           await page.getByLabel(label, { exact: true }).fill(value);
-        await page.screenshot({ path: `/tmp/WR591.S27.J16-shots/${width}-${theme}-edit.png`, fullPage: true });
+        await page.screenshot({ path: `/tmp/WR591.S27.J21-workflow-shots/${width}-${theme}-edit.png`, fullPage: true });
         await page.getByRole("button", { name: "Save need" }).click();
         await page.getByText("Synthetic new need", { exact: true }).waitFor();
+        const submitted = await page.evaluate(() => Reflect.get(window, "needCalls").at(-1).args.fields);
+        assert.equal(submitted.vendor, fixture.vendor_id);
+        assert.ok(Math.abs(Date.parse(submitted.observed_at) - defaults.observed) < 1000);
+        assert.ok(submitted.observed_at.endsWith("Z"));
+        assert.ok(Math.abs(Date.parse(submitted.fresh_until) - defaults.fresh) < 1000);
         await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
         await page.getByText("Session ended. Sign in again.", { exact: true }).waitFor();
       } finally {

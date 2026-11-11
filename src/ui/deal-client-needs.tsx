@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Fields, Need } from "./deal-client-needs-model.ts";
-import { approvable, createNeedAuthor, fieldsOf } from "./deal-client-needs-model.ts";
+import { approvable, createNeedAuthor } from "./deal-client-needs-model.ts";
+import { parseVendorMarkets, type VendorMarkets } from "./vendor-markets-client.ts";
 
 type Options = Parameters<typeof createNeedAuthor>[0];
 const sessions = new Map<string, { model: ReturnType<typeof createNeedAuthor>; listeners: Set<() => void> }>();
@@ -17,32 +19,117 @@ const labels = {
   withdrawn: "Withdrawn",
   stale: "Stale",
 };
-function Evidence({ need: n }: { need: Need }) {
+function localDate(value: string) {
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+}
+function validateDates(form: HTMLFormElement) {
+  const observed = form.elements.namedItem("observed_at");
+  const fresh = form.elements.namedItem("fresh_until");
+  if (!(observed instanceof HTMLInputElement) || !(fresh instanceof HTMLInputElement)) return false;
+  fresh.setCustomValidity(
+    Number.isFinite(Date.parse(observed.value)) && Date.parse(fresh.value) > Date.parse(observed.value)
+      ? ""
+      : "Fresh until must follow the observation.",
+  );
+  return fresh.validity.valid;
+}
+type Directory = { kind: "loading" } | { kind: "unavailable" } | { kind: "ready"; page: VendorMarkets };
+function VendorPicker({ directory, need }: { directory: Directory; need: Need | null }) {
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(need?.vendor_id ?? "");
+  const vendors = directory.kind === "ready" ? directory.page.vendors : [];
+  const matches = vendors.filter(
+    (v) => v.id === selected || v.name?.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+  );
   return (
-    <dl>
-      {Object.entries({
-        Client: `${n.client_name} (${n.client_id})`,
-        Deal: `${n.deal_name} (${n.deal_id})`,
-        Vendor: `${n.vendor_ref} (${n.vendor_id})`,
-        Need: n.id,
-        Revision: String(n.revision),
-        "Record version": String(n.version),
-        "Approval revision": n.approved_revision === null ? "Not approved" : String(n.approved_revision),
-        "Approved by": n.approved_by ?? "Not recorded",
-        "Approved at": n.approved_at ?? "Not recorded",
-        Applicability: n.applicability,
-        Restriction: n.restriction,
-        Source: n.source_ref,
-        "Source revision": n.source_revision,
-        "Observed at": n.observed_at,
-        "Fresh until": n.fresh_until,
-      }).map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd data-need-field={label}>{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <fieldset>
+      <legend>Vendor</legend>
+      <label>
+        Search vendors by name
+        <input type="search" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
+      </label>
+      <label>
+        Choose vendor
+        <select name="vendor" required value={selected} onChange={(e) => setSelected(e.currentTarget.value)}>
+          <option value="">Select a vendor</option>
+          {need && !vendors.some((v) => v.id === need.vendor_id) && (
+            <option value={need.vendor_id}>{need.vendor_ref} · Current vendor</option>
+          )}
+          {matches.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name || v.ref} ·{" "}
+              {v.market_slugs
+                .map((slug) =>
+                  directory.kind === "ready"
+                    ? (directory.page.markets.find((m) => m.slug === slug)?.name ?? slug)
+                    : slug,
+                )
+                .join(", ") || "Market not recorded"}
+            </option>
+          ))}
+        </select>
+      </label>
+      {directory.kind === "ready" && selected && (
+        <p className="need-vendor-selection">
+          {vendors.find((v) => v.id === selected)?.name ?? need?.vendor_ref} ·{" "}
+          {vendors
+            .find((v) => v.id === selected)
+            ?.market_slugs.map((slug) => directory.page.markets.find((m) => m.slug === slug)?.name ?? slug)
+            .join(", ") || "Market not recorded"}
+        </p>
+      )}
+      {directory.kind !== "ready" && (
+        <p role="status">
+          {directory.kind === "loading"
+            ? "Reading vendors…"
+            : "Vendor directory unavailable. Reopen the deal to try again."}
+        </p>
+      )}
+      {directory.kind === "ready" && !matches.length && <p>No vendors match this name.</p>}
+    </fieldset>
+  );
+}
+function Evidence({ need: n, vendor }: { need: Need; vendor: string }) {
+  const rows = (values: Record<string, string>) =>
+    Object.entries(values).map(([label, value]) => (
+      <div key={label}>
+        <dt>{label}</dt>
+        <dd data-need-field={label}>{value}</dd>
+      </div>
+    ));
+  return (
+    <>
+      <dl>
+        {rows({
+          "Vendor name": vendor,
+          Applicability: n.applicability,
+          Source: n.source_ref,
+          "Source revision": n.source_revision,
+          Restriction: n.restriction,
+          Observed: new Date(n.observed_at).toLocaleString(),
+          "Fresh through": new Date(n.fresh_until).toLocaleString(),
+        })}
+      </dl>
+      <details>
+        <summary>Exact identities and approval details</summary>
+        <dl>
+          {rows({
+            Client: `${n.client_name} (${n.client_id})`,
+            Deal: `${n.deal_name} (${n.deal_id})`,
+            Vendor: `${n.vendor_ref} (${n.vendor_id})`,
+            Need: n.id,
+            Revision: String(n.revision),
+            "Record version": String(n.version),
+            "Approval revision": n.approved_revision === null ? "Not approved" : String(n.approved_revision),
+            "Approved by": n.approved_by ?? "Not recorded",
+            "Approved at": n.approved_at ?? "Not recorded",
+            "Observed at": n.observed_at,
+            "Fresh until": n.fresh_until,
+          })}
+        </dl>
+      </details>
+    </>
   );
 }
 export function mountDealClientNeeds(host: Element, options: Omit<Options, "changed">) {
@@ -63,6 +150,12 @@ export function mountDealClientNeeds(host: Element, options: Omit<Options, "chan
   }
   const { model, listeners } = session;
   const root = createRoot(host);
+  let directory: Directory = { kind: "loading" };
+  let disposed = false;
+  const vendorName = (n: Need) =>
+    directory.kind === "ready"
+      ? directory.page.vendors.find((v) => v.id === n.vendor_id)?.name || n.vendor_ref
+      : n.vendor_ref;
   function render() {
     const state = model.state;
     const canList = state.kind === "listing";
@@ -112,8 +205,15 @@ export function mountDealClientNeeds(host: Element, options: Omit<Options, "chan
           {state.kind === "editing" && (
             <form
               key={state.need?.id ?? "new"}
+              onInput={(event) => {
+                validateDates(event.currentTarget);
+              }}
               onSubmit={(event) => {
                 event.preventDefault();
+                if (!validateDates(event.currentTarget)) {
+                  event.currentTarget.reportValidity();
+                  return;
+                }
                 const data = new FormData(event.currentTarget);
                 const value = (name: string) => String(data.get(name) ?? "");
                 const fields: Fields = {
@@ -122,61 +222,77 @@ export function mountDealClientNeeds(host: Element, options: Omit<Options, "chan
                   applicability: value("applicability"),
                   source_ref: value("source_ref"),
                   source_revision: value("source_revision"),
-                  observed_at: value("observed_at"),
-                  fresh_until: value("fresh_until"),
+                  observed_at: new Date(value("observed_at")).toISOString(),
+                  fresh_until: new Date(value("fresh_until")).toISOString(),
                   restriction: data.get("restriction") === "restricted" ? "restricted" : "allowed",
                   withdrawn: false,
                 };
-                const freshness = event.currentTarget.elements.namedItem("fresh_until");
-                if (freshness instanceof HTMLInputElement) {
-                  freshness.setCustomValidity(
-                    Number.isFinite(Date.parse(fields.observed_at)) &&
-                      Number.isFinite(Date.parse(fields.fresh_until)) &&
-                      Date.parse(fields.fresh_until) > Date.parse(fields.observed_at)
-                      ? ""
-                      : "Enter valid ISO dates. Fresh until must follow the observation.",
-                  );
-                  if (!freshness.reportValidity()) return;
-                }
                 void model.save(fields);
               }}
             >
               <h3>{state.need ? "Edit client need" : "Record client need"}</h3>
               <p>Saving an edit lapses approval. Review the saved revision before approving it.</p>
-              {(
-                [
-                  "vendor",
-                  "description",
-                  "applicability",
-                  "source_ref",
-                  "source_revision",
-                  "observed_at",
-                  "fresh_until",
-                ] as const
-              ).map((name) => {
-                const titles = {
-                  vendor: "Vendor ID",
-                  description: "Need description",
-                  applicability: "Applicability",
-                  source_ref: "Source identity",
-                  source_revision: "Source revision",
-                  observed_at: "Observed at (ISO date and time)",
-                  fresh_until: "Fresh until (ISO date and time)",
-                };
-                return (
-                  <label key={name}>
-                    {titles[name]}
-                    <input
-                      name={name}
-                      required
-                      onChange={(event) => event.currentTarget.setCustomValidity("")}
-                      maxLength={name === "source_revision" ? 200 : 2000}
-                      pattern={name === "vendor" ? "[0-9a-fA-F-]{36}" : undefined}
-                      defaultValue={state.need ? fieldsOf(state.need)[name] : ""}
-                    />
-                  </label>
-                );
-              })}
+              <VendorPicker directory={directory} need={state.need} />
+              {(["description", "applicability", "source_ref"] as const).map((name) => (
+                <label key={name}>
+                  {
+                    { description: "Need description", applicability: "Applicability", source_ref: "Source identity" }[
+                      name
+                    ]
+                  }
+                  <textarea
+                    name={name}
+                    required
+                    rows={3}
+                    maxLength={2000}
+                    defaultValue={state.need?.[name] ?? ""}
+                    ref={(element) => {
+                      if (element) {
+                        element.style.height = "auto";
+                        element.style.height = `${element.scrollHeight}px`;
+                      }
+                    }}
+                    onInput={(event) => {
+                      event.currentTarget.style.height = "auto";
+                      event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+                    }}
+                  />
+                </label>
+              ))}
+              <label>
+                Source revision
+                <input
+                  name="source_revision"
+                  required
+                  maxLength={200}
+                  defaultValue={state.need?.source_revision ?? ""}
+                />
+              </label>
+              <p>Dates use your local time. New needs stay fresh for 30 days.</p>
+              <div className="need-dates">
+                <label>
+                  Observed at
+                  <input
+                    name="observed_at"
+                    type="datetime-local"
+                    step="1"
+                    required
+                    defaultValue={localDate(state.need?.observed_at ?? new Date().toISOString())}
+                  />
+                </label>
+                <label>
+                  Fresh until
+                  <input
+                    name="fresh_until"
+                    type="datetime-local"
+                    step="1"
+                    required
+                    defaultValue={localDate(
+                      state.need?.fresh_until ?? new Date(Date.now() + 30 * 86400000).toISOString(),
+                    )}
+                  />
+                </label>
+              </div>
               <label>
                 Restriction
                 <select name="restriction" defaultValue={state.need?.restriction ?? "allowed"}>
@@ -196,7 +312,7 @@ export function mountDealClientNeeds(host: Element, options: Omit<Options, "chan
             <section aria-label="Review need revision">
               <h3>Review revision {state.need.revision}</h3>
               <p>{state.need.description}</p>
-              <Evidence need={state.need} />
+              <Evidence need={state.need} vendor={vendorName(state.need)} />
               <button className="btn" type="button" onClick={() => void model.approve()}>
                 Approve this revision
               </button>
@@ -214,10 +330,7 @@ export function mountDealClientNeeds(host: Element, options: Omit<Options, "chan
                   <p>
                     {labels[n.state]} · {n.restriction} · Fresh until {n.fresh_until}
                   </p>
-                  <details>
-                    <summary>Source and approval details</summary>
-                    <Evidence need={n} />
-                  </details>
+                  <Evidence need={n} vendor={vendorName(n)} />
                   <button className="btn" type="button" onClick={() => model.edit(n.id)}>
                     Edit need
                   </button>
@@ -246,9 +359,22 @@ export function mountDealClientNeeds(host: Element, options: Omit<Options, "chan
   }
   listeners.add(render);
   render();
+  void options
+    .call("read-vendor-markets-v1", {})
+    .then((value) => {
+      if (disposed || model.state.kind === "retired") return;
+      directory = { kind: "ready", page: parseVendorMarkets(value) };
+      render();
+    })
+    .catch(() => {
+      if (disposed || model.state.kind === "retired") return;
+      directory = { kind: "unavailable" };
+      render();
+    });
   void model.load();
   return {
     dispose() {
+      disposed = true;
       listeners.delete(render);
       root.unmount();
     },

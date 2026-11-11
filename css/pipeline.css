@@ -351,7 +351,7 @@
 .deal-client-needs { margin-block: 1rem; overflow-wrap: anywhere; }
 .deal-client-needs article, .deal-client-needs form, .deal-client-needs [aria-label="Review need revision"] { border: 1px solid var(--hairline); border-radius: .75rem; padding: 1rem; margin-block: 1rem; }
 .deal-client-needs label { display: grid; gap: .35rem; margin-block: .7rem; }
-.deal-client-needs input, .deal-client-needs select { min-height:44px; padding:.6rem; border:1px solid var(--hairline); border-radius:.4rem; background:var(--surface-1); color:inherit; font:inherit; width: 100%; min-width: 0; box-sizing: border-box; }
+.deal-client-needs input, .deal-client-needs select, .deal-client-needs textarea { min-height:44px; padding:.6rem; border:1px solid var(--hairline); border-radius:.4rem; background:var(--surface-1); color:inherit; font:inherit; width: 100%; min-width: 0; box-sizing: border-box; }
 .deal-client-needs dl { display: grid; gap: .5rem; }
 .deal-client-needs dt { font-weight: 600; }
 .deal-client-needs dd { margin: 0; }
@@ -365,3 +365,11 @@
 
 .deliverable-drop { display: block; width: 100%; color: var(--fg); text-align: left; cursor: pointer; }
 .deliverable-drop:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+
+.deal-client-needs fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.deal-client-needs textarea { resize: vertical; overflow: hidden; line-height: 1.5; }
+.deal-client-needs .need-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: .75rem; }
+.deal-client-needs details { margin-block: .75rem; }
+.deal-client-needs summary { cursor: pointer; min-height: 44px; align-content: center; }
+.deal-client-needs [aria-label="Review need revision"] dl { margin-block: .75rem; gap: .6rem; font-size: .9rem; }
+.deal-client-needs [aria-label="Review need revision"] dt { color: var(--text-secondary); font-size: .8rem; }
