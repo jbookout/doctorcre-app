@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import type { Page } from "playwright";
+import type { createLiveClient as ClientFactory } from "../js/live-client.d.ts";
+import type { normalizeBrief as ParseBrief, morningBriefView as ViewBrief } from "../js/morning-brief-model.d.ts";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
 
 export async function observeInlineBrief(page: Page, origin: string) {
@@ -30,43 +32,67 @@ export async function observeInlineBrief(page: Page, origin: string) {
         (previous) => document.getElementById("morningUpdated")?.getAttribute("datetime") !== previous,
         previous,
       );
-      const { normalizeBrief, morningBriefView } = await import(
-        new URL("../js/morning-brief-model.js", import.meta.url).href
-      );
-      const { createMcpRequests } = await import(new URL("../js/mcp-requests.mjs", import.meta.url).href);
-      const request = createMcpRequests({
-        fetchImpl: async () => new Response(JSON.stringify(raw), { headers: { "content-type": "application/json" } }),
-      });
-      const result = await request("morning-brief", {});
-      if (result.kind !== "payload" || result.isError) throw Error("Invalid independent RPC envelope");
-      const payload = normalizeBrief(result.payload);
-      if (!payload) throw Error("Invalid independent morning-brief response");
-      const scope = await page.evaluate(() => ({
-        owner: document.querySelector<HTMLElement>('#morningOwners [aria-pressed="true"]')?.dataset.briefOwner || "all",
-        observed: document.getElementById("morningUpdated")?.getAttribute("datetime") || "",
-      }));
-      const view = morningBriefView(payload, {
-        now: new Date(scope.observed),
-        events: [],
-        caughtUp: false,
-        owner: scope.owner,
-      });
-      const expected = {
-        title: `Morning brief · ${payload.sponsor === "joe" ? "Joe" : "Dell"}`,
-        observed: view.observedAt,
-        cards: view.groups.map(({ row }: { row: { key: string; title: string; due: string | null } }) => ({
-          key: row.key,
-          title: row.title,
-          due: row.due,
-        })),
-        sections: view.coverage.map((row: { key: string }) => row.key),
-      };
+      const expected = await page
+        .evaluate(async (raw) => {
+          const { normalizeBrief, morningBriefView } = await import("/js/morning-brief-model.js");
+          const { createLiveClient } = await import("/js/live-client.js");
+          const snapshot = createLiveClient({
+            fetchImpl: async () =>
+              new Response(JSON.stringify(raw), { headers: { "content-type": "application/json" } }),
+          });
+          const payload: ReturnType<typeof ParseBrief> = normalizeBrief(await snapshot.morningBrief({ fresh: true }));
+          if (!payload) throw Error("Invalid independent morning-brief response");
+          const owner =
+            document.querySelector<HTMLElement>('#morningOwners [aria-pressed="true"]')?.dataset.briefOwner || "all";
+          const observed = document.getElementById("morningUpdated")?.getAttribute("datetime") || "";
+          const preference = JSON.parse(localStorage.getItem(`doctorcre:morning:${payload.sponsor}`) || "{}");
+          const since = typeof preference.since === "string" ? preference.since : "";
+          if (!Number.isFinite(Date.parse(since))) throw Error("Brief cutoff unavailable");
+          const client: ReturnType<typeof ClientFactory> = createLiveClient();
+          const events: unknown[] = [];
+          let cursor: string | null = null,
+            caughtUp = false;
+          for (let page = 0; page < 4; page++) {
+            const changes = await client.getChanges(cursor, { since });
+            if (!Array.isArray(changes.events)) throw Error("Invalid changes response");
+            events.push(...changes.events);
+            cursor = changes.cursor;
+            if (!changes.events.length) {
+              caughtUp = true;
+              break;
+            }
+          }
+          if (!caughtUp) throw Error("Overnight source window incomplete");
+          const view: ReturnType<typeof ViewBrief> = morningBriefView(payload, {
+            now: new Date(observed),
+            since,
+            events,
+            caughtUp,
+            owner,
+          });
+          if (!view) throw Error("Invalid independent brief view");
+          return {
+            title: `Morning brief · ${payload.sponsor === "joe" ? "Joe" : "Dell"}`,
+            observed: view.observedAt,
+            cards: view.groups.map(({ row }) => ({ key: row.key, title: row.title, due: row.due })),
+            sections: view.coverage.map((row) => row.key),
+          };
+        }, raw)
+        .catch((error: unknown) => {
+          if (
+            error instanceof Error &&
+            /Brief cutoff unavailable|Overnight source window incomplete/.test(error.message)
+          )
+            throw Object.assign(error, { exitCode: 78 });
+          throw error;
+        });
       assert.ok(
         Date.parse(expected.observed) >= started && Date.parse(expected.observed) <= Date.now(),
         "Observed clock belongs to this read",
       );
       assert.equal(await page.locator("dialog#docMorningBrief").count(), 0);
       assert.equal(await page.locator("#morningTitle").textContent(), expected.title);
+      assert.equal(await brief.locator("[data-brief-record]").count(), expected.cards.length);
       for (const card of expected.cards) {
         const node = brief.locator(`[data-brief-key="${card.key}"]`);
         assert.equal(await node.count(), 1, "Independent priority remains visible");

@@ -33,7 +33,6 @@ export function readMorningBrief(document, read, { fresh = false, signal } = {})
   const pending = readWithDeadline(read, { signal }).then(value => {
     if (epoch !== state.epoch) throw Error('Brief session retired');
     const brief = normalizeBrief(value);
-    if (!brief) throw Error('Invalid brief');
     state.value = brief; state.observed = Date.now();
     return brief;
   }).catch(error => { if (epoch === state.epoch) { state.value = null; state.observed = 0; } throw error; }).finally(() => { if (state.pending === pending) state.pending = null; });

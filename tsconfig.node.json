@@ -8,7 +8,9 @@
       "DOM.Iterable"
     ],
     "paths": {
-      "/js/ui-deal-space-searches.generated.js": ["./src/ui/deal-space-searches.tsx"],
+      "/js/ui-deal-space-searches.generated.js": [
+        "./src/ui/deal-space-searches.tsx"
+      ],
       "/js/ui-phone-push.generated.js": [
         "./src/ui/phone-push.tsx"
       ],
@@ -26,6 +28,12 @@
       ],
       "/js/ui-queue.generated.js": [
         "./src/ui/brief-queues.tsx"
+      ],
+      "/js/morning-brief-model.js": [
+        "./js/morning-brief-model.d.ts"
+      ],
+      "/js/live-client.js": [
+        "./js/live-client.d.ts"
       ]
     },
     "jsx": "react-jsx",

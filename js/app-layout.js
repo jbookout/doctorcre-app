@@ -251,7 +251,7 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
       readWithDeadline(async () => {
         const brief = await readMorningBrief(root, () => client.morningBrief({ signal }), { signal });
         if (signal.aborted) return null;
-        if (!brief) return null;
+        if (!brief) return client.todayTriage();
         owners.setViewer(brief.sponsor);
         return brief.sections.today.state === 'unavailable' ? null : { items: brief.sections.today.items };
       }, { signal }),
