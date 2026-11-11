@@ -9,14 +9,24 @@ import tempfile
 CLI = str(Path('node_modules/playwright/cli.js').resolve())
 
 
+def run_group(command, timeout):
+    with subprocess.Popen(command, start_new_session=True) as child:
+        try:
+            return child.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.wait()
+            raise
+
+
 def setup(browsers):
     try:
         if sys.platform == 'linux':
-            probe = subprocess.run(['node', CLI, 'install-deps', '--dry-run', *browsers], timeout=15)
-            if probe.returncode not in (0, 1):
+            probe = run_group(['node', CLI, 'install-deps', '--dry-run', *browsers], timeout=15)
+            if probe not in (0, 1):
                 print('::error::Playwright OS dependency probe failed.', flush=True)
                 return 1
-            if probe.returncode == 1:
+            if probe == 1:
                 with tempfile.TemporaryDirectory(prefix='playwright-apt-') as directory:
                     config = Path(directory, 'apt.conf')
                     config.write_text('Acquire::Retries "1";\nAcquire::http::Timeout "10";\nAcquire::https::Timeout "10";\nAPT::Update::Error-Mode "any";\n')
@@ -28,14 +38,11 @@ def setup(browsers):
                 if result.returncode:
                     print('::error::Playwright OS dependencies unavailable. Ubuntu mirror install failed or reached its 120-second limit. Browser tests cannot run.', flush=True)
                     return 1
-        with subprocess.Popen(['node', CLI, 'install', *browsers], start_new_session=True) as child:
-            try:
-                return child.wait(timeout=180)
-            except subprocess.TimeoutExpired:
-                os.killpg(child.pid, signal.SIGKILL)
-                child.wait()
-                print('::error::Playwright browser download reached its 180-second limit.', flush=True)
-                return 1
+        try:
+            return run_group(['node', CLI, 'install', *browsers], timeout=180)
+        except subprocess.TimeoutExpired:
+            print('::error::Playwright browser download reached its 180-second limit.', flush=True)
+            return 1
     except subprocess.TimeoutExpired:
         print('::error::Playwright OS dependency probe reached its 15-second limit.', flush=True)
         return 1

@@ -26,7 +26,7 @@ class BrowserSetupTest(unittest.TestCase):
         def popen(command, **options):
             calls.append((command, options))
             child = MagicMock()
-            child.__enter__.return_value.wait.return_value = 0
+            child.__enter__.return_value.wait.return_value = probe if '--dry-run' in command else 0
             return child
 
         with patch.object(self.module.subprocess, 'Popen', side_effect=popen), patch.object(self.module.subprocess, 'run', side_effect=run), patch.object(self.module.sys, 'platform', 'linux'):
@@ -65,7 +65,7 @@ class BrowserSetupTest(unittest.TestCase):
     def test_browser_download_failure_stops_setup(self):
         child = MagicMock()
         child.__enter__.return_value.wait.return_value = 1
-        with patch.object(self.module.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)), patch.object(self.module.subprocess, 'Popen', return_value=child):
+        with patch.object(self.module.sys, 'platform', 'darwin'), patch.object(self.module.subprocess, 'Popen', return_value=child):
             self.assertNotEqual(self.module.setup(['chromium']), 0)
 
     def test_browser_timeout_kills_and_reaps_the_download_group(self):
@@ -74,7 +74,7 @@ class BrowserSetupTest(unittest.TestCase):
         child.wait.side_effect = [subprocess.TimeoutExpired('download', 180), 0]
         process = MagicMock()
         process.__enter__.return_value = child
-        with patch.object(self.module.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)), patch.object(self.module.subprocess, 'Popen', return_value=process), patch.object(self.module.os, 'killpg') as kill:
+        with patch.object(self.module.sys, 'platform', 'darwin'), patch.object(self.module.subprocess, 'Popen', return_value=process), patch.object(self.module.os, 'killpg') as kill:
             self.assertNotEqual(self.module.setup(['chromium']), 0)
         kill.assert_called_once_with(12345, self.module.signal.SIGKILL)
         self.assertEqual(child.wait.call_count, 2)
