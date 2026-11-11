@@ -9,7 +9,7 @@ import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from "./browser-harness.mjs";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
-import { detailFixture } from "./fixtures/tour-navigation/detail.ts";
+import { bindParityNavigation } from "./fixtures/tour-navigation/detail.ts";
 import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
 
@@ -330,19 +330,6 @@ test("accepted Tour exposes an unlocated stop without offering coordinate naviga
   assert.equal(await page.locator('.itinerary-pin').count(), 1);
 });
 
-function bindParityNavigation(fixture) {
-  const route = fixture.routes.find(route => route.accepted);
-  const navigation = detailFixture().routes[0].navigation;
-  const template = navigation.evidence.stops[0];
-  Object.assign(navigation.evidence, { route_version_id: route.id, route_version: route.route_version,
-    projection_id: fixture.projection_id, stops: route.stops.map(stop => ({ ...structuredClone(template),
-      route_stop_id: stop.id, property_id: stop.property_id, route_sequence: stop.route_sequence,
-      route_label: stop.route_label, position: { latitude: stop.position.latitude, longitude: stop.position.longitude } })) });
-  navigation.evidence.promotion.route_version = route.route_version;
-  fixture.component_registry_version = navigation.evidence.promotion.component_registry_version;
-  fixture.canonical_dataset_version = navigation.evidence.promotion.canonical_dataset_version;
-  route.navigation = navigation;
-}
 function parityFixture() {
   const fixture = structuredClone(detail), route = fixture.routes[0];
   const [first, second] = route.stops;

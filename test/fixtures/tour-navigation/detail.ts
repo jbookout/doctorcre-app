@@ -54,3 +54,47 @@ export function detailFixture() {
     routes: [{ id: navigation.evidence.route_version_id, route_version: 1, accepted: true, navigation, stops }],
   };
 }
+
+type ParityFixture = {
+  projection_id: string;
+  component_registry_version?: string;
+  canonical_dataset_version?: string;
+  routes: {
+    accepted: boolean;
+    id: string;
+    route_version: number;
+    navigation?: ReturnType<typeof detailFixture>["routes"][number]["navigation"];
+    stops: {
+      id: string;
+      property_id: string;
+      route_sequence: number;
+      route_label: string;
+      position: { latitude: number; longitude: number };
+    }[];
+  }[];
+};
+
+export function bindParityNavigation(fixture: ParityFixture) {
+  const route = fixture.routes.find((route) => route.accepted);
+  if (!route) throw Error("Parity fixture requires an accepted route");
+  const navigation = detailFixture().routes[0]?.navigation;
+  const template = navigation?.evidence.stops[0];
+  if (!navigation || !template) throw Error("Parity fixture requires navigation evidence with one stop");
+  Object.assign(navigation.evidence, {
+    route_version_id: route.id,
+    route_version: route.route_version,
+    projection_id: fixture.projection_id,
+    stops: route.stops.map((stop) => ({
+      ...structuredClone(template),
+      route_stop_id: stop.id,
+      property_id: stop.property_id,
+      route_sequence: stop.route_sequence,
+      route_label: stop.route_label,
+      position: { latitude: stop.position.latitude, longitude: stop.position.longitude },
+    })),
+  });
+  navigation.evidence.promotion.route_version = route.route_version;
+  fixture.component_registry_version = navigation.evidence.promotion.component_registry_version;
+  fixture.canonical_dataset_version = navigation.evidence.promotion.canonical_dataset_version;
+  route.navigation = navigation;
+}
