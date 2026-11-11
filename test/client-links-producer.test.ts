@@ -20,8 +20,6 @@ test("client-link response recordings match the exact CARR production projectors
   execFileSync("git", ["-C", root, "diff", "--quiet", "HEAD", "--", "mcp-server/src"]);
   const producer = await import(pathToFileURL(root + "/mcp-server/src/tour-sharing.js").href);
   if (process.env.RECORD_CLIENT_LINKS_CONTRACT === "1") {
-    for (const name of ["packet", "nearMiss"])
-      recorded.responses[name] = producer.projectTourClientPacket(recorded.inputs[name]);
     for (const name of ["active", "viewOnly"])
       recorded.responses[name] = producer.projectTourClientFeedback(recorded.inputs[name]);
     await writeFile(
@@ -29,8 +27,6 @@ test("client-link response recordings match the exact CARR production projectors
       `${JSON.stringify(recorded, null, 2)}\n`,
     );
   }
-  for (const name of ["packet", "nearMiss"])
-    assert.deepEqual(producer.projectTourClientPacket(recorded.inputs[name]), recorded.responses[name]);
   for (const name of ["active", "viewOnly"])
     assert.deepEqual(producer.projectTourClientFeedback(recorded.inputs[name]), recorded.responses[name]);
   const { createReportsWebHandler } = await import(pathToFileURL(root + "/mcp-server/src/reports-web.ts").href);
@@ -148,4 +144,26 @@ test("test fixtures never hand-set the producer download capability", async () =
     visit(source);
   }
   assert.deepEqual(violations, [], "Replay recorded producer responses instead of choosing can_download in a fixture");
+});
+
+test("packet recordings match the pinned 2.1.0 producer independently of feedback", {
+  skip:
+    !process.env.CARR_CLIENT_PACKET_PRODUCER_CHECKOUT &&
+    "Set CARR_CLIENT_PACKET_PRODUCER_CHECKOUT to verify packet recordings",
+}, async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { pathToFileURL } = await import("node:url");
+  const recorded = JSON.parse(
+    await readFile(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"),
+  );
+  const root = process.env.CARR_CLIENT_PACKET_PRODUCER_CHECKOUT;
+  assert.ok(root);
+  assert.equal(
+    execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+    recorded.packet_source_commit,
+  );
+  execFileSync("git", ["-C", root, "diff", "--quiet", "HEAD", "--", "mcp-server/src"]);
+  const producer = await import(pathToFileURL(root + "/mcp-server/src/tour-sharing.js").href);
+  for (const name of ["packet", "nearMiss"])
+    assert.deepEqual(producer.projectTourClientPacket(recorded.inputs[name]), recorded.responses[name]);
 });

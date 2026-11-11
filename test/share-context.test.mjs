@@ -4,6 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
 const root=new URL('../',import.meta.url);
+const packetRecording=JSON.parse(await readFile(new URL('test/fixtures/packet-parity/share.json',root),'utf8'));
+function packetForContext(target) {
+ const value=structuredClone(packetRecording);
+ value.stops=value.stops.slice(0,1);value.presentation.stops=value.presentation.stops.slice(0,1);
+ for(const stop of [value.stops[0],value.presentation.stops[0]]) {stop.property_ref=`property:public:synthetic_property_${target}`;stop.name=`Private projection ${target}`;}
+ return value;
+}
 const bundle=await build({entryPoints:[new URL('reports/share.js',root).pathname],external:['/vendor/*'],bundle:true,write:false,format:'iife'});
 const html=await readFile(new URL('reports/share.html',root),'utf8');
 const flush=async()=>{for(let i=0;i<12;i++)await new Promise(r=>setTimeout(r,0));};
@@ -23,7 +30,7 @@ async function open(t,{token='',state=null,flip=false,sameProjection=false,missi
    const target=cookie;reads++;
    if(path === missingScope) return {ok:false,status:404,json:async()=>({error:'not_found'})};
    if(flip && path==='/api/share/map')cookie='B';
-   const data=path==='/api/share/report'?{stops:[{property_ref:`property:public:synthetic_property_${target}`,name:`Private projection ${target}`}]}:path==='/api/share/map'?{points:[]}:{projection_ref:`projection:public:synthetic_projection_${sameProjection?'common':target}`,permission_scopes:[],items:[]};
+   const data=path==='/api/share/report'?packetForContext(target):path==='/api/share/map'?{points:[]}:{projection_ref:`projection:public:synthetic_projection_${sameProjection?'common':target}`,permission_scopes:[],items:[]};
    return {ok:true,json:async()=>({data})};
  };
  win.eval(bundle.outputFiles[0].text);

@@ -138,7 +138,7 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
             } else {
               assert.equal(
                 await page.locator("#report-summary").textContent(),
-                `${expected.rows.length} ${expected.rows.length === 1 ? "property" : "properties"} in this report.`,
+                `${expected.rows.length} ${expected.rows.length === 1 ? "property" : "properties"} in tour order.`,
               );
               const rows = await page.locator(".report-item").evaluateAll((nodes) =>
                 nodes.map((node) => ({
