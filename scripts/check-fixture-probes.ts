@@ -120,9 +120,11 @@ export function checkFixtureProbes(sources: Map<string, string>): string[] {
       }
     }
     const processNames = new Set(["spawn", "fork"]);
+    const forkNames = new Set(["fork"]);
     const timerNames = new Set(["setTimeout", "setInterval", "delay"]);
     for (const value of data.nodes) {
       if (value.type === "ImportSpecifier" && node(value.imported) && node(value.local)) {
+        if (forkNames.has(String(value.imported.name))) forkNames.add(String(value.local.name));
         if (processNames.has(String(value.imported.name))) processNames.add(String(value.local.name));
         if (timerNames.has(String(value.imported.name))) timerNames.add(String(value.local.name));
       }
@@ -138,7 +140,7 @@ export function checkFixtureProbes(sources: Map<string, string>): string[] {
               ? String(init.property.name ?? init.property.value)
               : ""
           : "";
-        for (const names of [processNames, timerNames])
+        for (const names of [processNames, forkNames, timerNames])
           if (names.has(name) && !names.has(alias)) {
             names.add(alias);
             aliasesChanged = true;
@@ -171,11 +173,11 @@ export function checkFixtureProbes(sources: Map<string, string>): string[] {
         if (source && /fixture-server|browser-harness|fixture-probe/.test(source)) inlineFixture = true;
       });
       const args = Array.isArray(value.arguments) ? value.arguments : [];
-      let input: unknown = name === "fork" ? args[0] : args[1];
+      let input: unknown = forkNames.has(name) ? args[0] : args[1];
       if (node(input) && input.type === "Identifier") input = data.bindings.get(String(input.name));
       const elements =
         node(input) && input.type === "ArrayExpression" && Array.isArray(input.elements) ? input.elements : [];
-      const first = name === "fork" ? input : elements[0];
+      const first = forkNames.has(name) ? input : elements[0];
       let target = text(first, data.bindings);
       if (!target && node(first))
         walk(first, (entry) => {

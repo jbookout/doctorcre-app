@@ -116,6 +116,13 @@ const reviewerCases = [
       ["test/consumer.ts", "import {fork} from 'node:child_process';fork('./fixture-worker.ts');"],
     ],
   ],
+  [
+    "aliased fork external worker",
+    [
+      ["test/fixture-worker.ts", "import {fixtureServer} from './browser-harness.mjs';await fixtureServer();"],
+      ["test/consumer.ts", "import {fork as launch} from 'node:child_process';launch('./fixture-worker.ts');"],
+    ],
+  ],
 ] as const;
 for (const [name, sources] of reviewerCases) {
   test(`fixture probe guard refuses reviewer ${name}`, () => {
