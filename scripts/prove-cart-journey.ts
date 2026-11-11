@@ -108,7 +108,9 @@ export async function proveJourney(options: {
       await page.goto(
         `${origin}/deals?deal=${encodeURIComponent(options.dealId)}&tab=tours&tour=${encodeURIComponent(options.tourId)}`,
       );
-      const editor = page.frameLocator('iframe[title="Tour shortlist, route and packet"]');
+      const editor = page.frameLocator(
+        `iframe[title="Tour shortlist, route and packet"][src*="deal=${encodeURIComponent(options.dealId)}&"][src$="tour=${encodeURIComponent(options.tourId)}"]`,
+      );
       const panel = editor.getByRole("region", { name: "Saved space searches", exact: true });
       try {
         await panel.locator(`[data-search-id="${options.searchId}"]`).waitFor();
@@ -166,9 +168,9 @@ export async function proveJourney(options: {
       const chosen = receipt.selected_property_ids.map(String);
       compareJourney(search.result_property_ids, parsed.cart.property_ids, routeIds, chosen);
       await page.reload();
+      await editor.locator("#composer-badge").filter({ hasText: "Accepted" }).waitFor({ state: "attached" });
       frame = page.frames().find((f) => f.url().includes("/tours/route-editor.html"));
       if (!frame) throw unavailable("Reopened Tour frame unavailable");
-      await editor.locator("#composer-badge").filter({ hasText: "Accepted" }).waitFor({ state: "attached" });
       await editor.locator("#route-editing > summary").click();
       assert.deepEqual(
         await editor

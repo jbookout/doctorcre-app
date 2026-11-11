@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { chromium as driver } from "playwright";
+import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { proveJourney } from "../scripts/prove-cart-journey.ts";
@@ -24,7 +25,7 @@ for (const mode of ["ready", "wrong-order", "deadline"] as const) {
       env: { APP_ENV: "production", GIT_SHA: commit, CARR: { fetch: async () => new Response("synthetic") } },
     });
     t.after(() => server.close());
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
     t.after(() => browser.close());
     const page = await browser.newPage();
     const detail = structuredClone(recorded.detail.data);
@@ -139,7 +140,10 @@ for (const mode of ["ready", "wrong-order", "deadline"] as const) {
     });
     t.diagnostic(JSON.stringify(result));
     assert.equal(result.exitCode, mode === "ready" ? 0 : mode === "wrong-order" ? 1 : 78);
-    if (mode === "deadline") assert.match(result.error, /Total proof deadline exceeded/);
+    if (mode === "deadline") {
+      assert.equal(typeof result.error, "string");
+      assert.match(result.error || "", /Total proof deadline exceeded/);
+    }
     assert.ok(libraries >= 3);
     assert.equal(page.isClosed(), true);
   });
