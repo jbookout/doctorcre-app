@@ -28,7 +28,7 @@ test('proof CLI help, bad arguments and exact declaration command against fixtur
     assert.equal(result.code, 0, result.stderr);
     const receipt = JSON.parse(result.stdout);
     assert.equal(receipt.origin, server.origin);
-    assert.ok(receipt.loaded_module_urls.includes(`${server.origin}/js/ui-market.js`));
+    assert.ok(receipt.loaded_module_urls.includes(`${server.origin}/js/ui-market.generated.js`));
     assert.equal(receipt.assertions.length, 5);
     await mkdir('out/test-artifacts/market-terms-recovery', { recursive: true });
     await writeFile('out/test-artifacts/market-terms-recovery/proof-receipt.json', result.stdout);
@@ -37,7 +37,7 @@ test('proof CLI help, bad arguments and exact declaration command against fixtur
 
 test('proof CLI fails on missing export, unavailable identity, timeout and broken UI', async () => {
   for (const mode of ['export','release','timeout','assertion']) {
-    const routes = new Map([['/app-release',{status:mode==='release'?503:200,contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'a'.repeat(40)}),...(mode==='timeout'?{hold:'timeout'}:{})}],['/js/ui-market.js',{contentType:'text/javascript',body:mode==='export'?'export const missing = true;':'export function mountMarketTerms() { return { dispose() {} }; }'}]]);
+    const routes = new Map([['/app-release',{status:mode==='release'?503:200,contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'a'.repeat(40)}),...(mode==='timeout'?{hold:'timeout'}:{})}],['/js/ui-market.generated.js',{contentType:'text/javascript',body:mode==='export'?'export const missing = true;':'export function mountMarketTerms() { return { dispose() {} }; }'}]]);
     const server = await startFixture({routes});
     try {
       const result = await cli(['--origin',server.origin,'--timeout-ms', mode === 'timeout' ? '1000' : '3000']);

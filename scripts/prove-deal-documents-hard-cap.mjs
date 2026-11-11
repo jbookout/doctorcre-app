@@ -73,7 +73,7 @@ try {
           return { ok: true, schema_version: 'deal-documents.v1', documents, has_more: true, next_cursor: String(offset) };
         } },
       });
-    }, new URL('/js/ui-deal-documents.js', origin).href);
+    }, new URL('/js/ui-deal-documents.generated.js', origin).href);
     for (let index = 1; index <= 10; index++) {
       await page.waitForFunction(count => document.querySelectorAll('[data-document-id]').length === count, index * 49);
       await page.getByRole('button', { name: 'Load more documents', exact: true }).click();

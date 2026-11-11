@@ -71,18 +71,18 @@ test("proof CLI uses declared flags, fetched bytes, bounded failures and timeout
       routes.set(`/${path}`, { contentType: "text/javascript", body });
     }
     if (scenario === "failed")
-      routes.set("/js/ui-queue.js", {
+      routes.set("/js/ui-queue.generated.js", {
         body: "export function createBriefQueueView(){return {renderMenu(){},dispose(){}}}",
         contentType: "text/javascript",
       });
     if (scenario === "foreign")
-      routes.set("/js/ui-queue.js", {
+      routes.set("/js/ui-queue.generated.js", {
         body: 'import "https://example.invalid/evil.js"',
         contentType: "text/javascript",
       });
     if (scenario === "cap")
       for (let index = 0; index < 21; index++)
-        routes.set(index === 0 ? "/js/ui-queue.js" : `/js/ui-shared-${index}.generated.js`, {
+        routes.set(index === 0 ? "/js/ui-queue.generated.js" : `/js/ui-shared-${index}.generated.js`, {
           body: `import './ui-shared-${index + 1}.generated.js'`,
           contentType: "text/javascript",
         });

@@ -19,12 +19,12 @@ async function fixture(t, mode) {
   const fixtureAssets = mode === 'broken' ? broken : assets;
   for (const [path, original] of fixtureAssets) {
     let body = original;
-    if (mode === 'no-entry' || mode === 'no-chunk' && path !== 'js/ui-answers.js') continue;
+    if (mode === 'no-entry' || mode === 'no-chunk' && path !== 'js/ui-answers.generated.js') continue;
     if (mode === 'foreign') body = 'import "https://example.invalid/foreign.js";';
     responses.set('/' + path, { body, contentType: 'text/javascript' });
   }
   if (mode === 'cap') {
-    responses.set('/js/ui-answers.js', { body: 'import "./ui-shared-1.generated.js";', contentType: 'text/javascript' });
+    responses.set('/js/ui-answers.generated.js', { body: 'import "./ui-shared-1.generated.js";', contentType: 'text/javascript' });
     for (let i = 1; i <= 20; i++) responses.set(`/js/ui-shared-${i}.generated.js`, { body: `import "./ui-shared-${i+1}.generated.js";`, contentType: 'text/javascript' });
   }
   responses.set('/app-release', { status: mode === 'no-release' ? 404 : 200, contentType: 'application/json', body: JSON.stringify(mode === 'invalid-release' ? {} : release) });

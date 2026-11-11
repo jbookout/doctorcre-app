@@ -4,7 +4,7 @@
   "targets": ["app"],
   "assertions": [{
     "id": "late-receipt-preserves-recipients",
-    "predicate": "Run node scripts/prove-reply-draft-recipient-race.ts --origin https://app.doctorcre.com --timeout-ms 30000 --commit MERGED_COMMIT from installed app dependencies. Read /app-release and require the source_commit to equal or descend from the expected merged build. Import deployed /js/ui-email-actions.js and its chunks in an isolated browser context. Synthetic draft storage retains To-only and Cc-only newer edits after an old receipt, removes matching snapshots, and isolates actors and proposals. No natural-data occurrence is established.",
+    "predicate": "Run node scripts/prove-reply-draft-recipient-race.ts --origin https://app.doctorcre.com --timeout-ms 30000 --commit MERGED_COMMIT from installed app dependencies. Read /app-release and require the source_commit to equal or descend from the expected merged build. Import deployed /js/ui-email-actions.generated.js and its chunks in an isolated browser context. Synthetic draft storage retains To-only and Cc-only newer edits after an old receipt, removes matching snapshots, and isolates actors and proposals. No natural-data occurrence is established.",
     "runner": "app-release-live-walk.v1",
     "expected_result": "Exit 0 with a JSON receipt naming the matching deployed release, loaded module URLs and all synthetic assertions. A protected asset, missing identity/export, timeout or failed assertion exits nonzero. The coordinator runs this after deployment.",
     "input_class": "read-only deployed module with isolated synthetic storage",

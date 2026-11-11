@@ -111,7 +111,7 @@ export async function proveExact({
         );
         const independent: unknown = await page.evaluate(async (ref) => {
           const { createMcpRequests } = await import(String("/js/mcp-requests.mjs"));
-          const { parseExactCard, parseDraft } = await import(String("/js/ui-action.js"));
+          const { parseExactCard, parseDraft } = await import(String("/js/ui-action.generated.js"));
           const result = await createMcpRequests()("resolve-action-link-v2", { ref }, { timeoutMs: 10000 });
           if (result.kind !== "payload" || result.isError) return null;
           const parsed = parseExactCard(result.payload, ref) || parseDraft(result.payload, ref);

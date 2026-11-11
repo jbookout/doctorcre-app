@@ -119,7 +119,7 @@ export async function prove({ origin, timeout = 30000, fixture = false }) {
     });
     const page = await context.newPage(); page.setDefaultTimeout(timeout);
     await page.goto(`${origin}/__labels__`);
-    const assertions = await labelAssertions(page, `${origin}/js/ui-ideal-client-profile.js`);
+    const assertions = await labelAssertions(page, `${origin}/js/ui-ideal-client-profile.generated.js`);
     const after = await readAppRelease(origin, read);
     assert.equal(before.source_commit, after.source_commit, 'stable app identity');
     const receipt = { status: fixture ? 'fixture_pass' : 'insufficient_evidence', app_release: after, assertions,

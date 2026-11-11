@@ -28,8 +28,8 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
       if (mode === 'timeout') responses.set(path, { ...response, hold: 'timeout' });
       else if (mode === 'protected') responses.set(path, { status: 403 });
       else if (mode === 'signin') responses.set(path, { status: 302, headers: { location: '/sign-in' } });
-      else if (path !== APP_RELEASE_PATH && mode === 'chunk-protected' && path !== '/js/ui-calendar-panels.js') responses.set(path, { status: 401 });
-      else if (mode === 'broken' && path === '/js/ui-calendar-panels.js') responses.set(path, { contentType: 'text/javascript', body: 'export async function mountCalendarPanels(left) { return { render() {left.textContent="broken"}, clear() {} }; }' });
+      else if (path !== APP_RELEASE_PATH && mode === 'chunk-protected' && path !== '/js/ui-calendar-panels.generated.js') responses.set(path, { status: 401 });
+      else if (mode === 'broken' && path === '/js/ui-calendar-panels.generated.js') responses.set(path, { contentType: 'text/javascript', body: 'export async function mountCalendarPanels(left) { return { render() {left.textContent="broken"}, clear() {} }; }' });
     }
     const server = await startFixture({ routes: responses });
     t.after(() => server.close());
@@ -47,7 +47,7 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
         `/${escape.replaceAll('..', '%2e%2e')}`,
         `/${escape.replaceAll('..', '%2E%2E')}`,
         `/${escape.replaceAll('/', '\\')}`, '/js/%5c..%5coutside-marker.txt',
-        '/js/ui-calendar-panels.js%00', '/js/%ZZ',
+        '/js/ui-calendar-panels.generated.js%00', '/js/%ZZ',
       ]) await t.test(`refuses raw request ${path}`, async () => {
         const response = await new Promise((resolve, reject) => {
           get(`${origin}`, { path }, res => {

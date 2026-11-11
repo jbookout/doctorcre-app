@@ -269,7 +269,7 @@ async function mountedWatch(t: TestContext, kind: "deal" | "lease", subjectId = 
     return finish(response(current));
   });
   await page.evaluate(async (subject) => {
-    const { mountWatchControl } = await import(String("/js/ui-watches.js"));
+    const { mountWatchControl } = await import(String("/js/ui-watches.generated.js"));
     const host = document.getElementById("host");
     if (!host) throw Error("Host missing");
     Object.assign(window, { control: mountWatchControl(host, { subject }) });
@@ -472,7 +472,7 @@ test("fixture-only record identities do not expose server watch controls", async
 test("radar confirms complete lists, preserves focus, fails closed and fences sign-out", async (t) => {
   const { page } = await mountedWatch(t, "lease");
   await page.evaluate(async (subject) => {
-    const { mountRadarWatches } = await import(String("/js/ui-watches.js"));
+    const { mountRadarWatches } = await import(String("/js/ui-watches.generated.js"));
     const host = document.createElement("section");
     host.id = "radar";
     const button = document.createElement("button");
@@ -531,7 +531,7 @@ for (const phase of ["Confirmed", "Unavailable"] as const)
     const { page } = await mountedWatch(t, "lease");
     await page.evaluate(
       async ({ id, phase }) => {
-        const { mountRadarWatches } = await import(String("/js/ui-watches.js"));
+        const { mountRadarWatches } = await import(String("/js/ui-watches.generated.js"));
         const host = document.createElement("section");
         const status = document.createElement("small");
         status.dataset.radarWatch = id;
@@ -560,7 +560,7 @@ for (const phase of ["Confirmed", "Unavailable"] as const)
 test("radar rejects a regressing lifecycle version and permits a new generation", async (t) => {
   const { page, sample } = await mountedWatch(t, "lease");
   await page.evaluate(async (sample) => {
-    const { mountRadarWatches } = await import(String("/js/ui-watches.js"));
+    const { mountRadarWatches } = await import(String("/js/ui-watches.generated.js"));
     const host = document.createElement("section");
     const status = document.createElement("small");
     status.dataset.radarWatch = sample.subject_id;
@@ -584,7 +584,7 @@ test("radar rejects a regressing lifecycle version and permits a new generation"
 test("radar superseded list cannot replace a newer confirmation", async (t) => {
   const { page, sample } = await mountedWatch(t, "lease");
   await page.evaluate(async (sample) => {
-    const { mountRadarWatches } = await import(String("/js/ui-watches.js"));
+    const { mountRadarWatches } = await import(String("/js/ui-watches.generated.js"));
     const host = document.createElement("section");
     const status = document.createElement("small");
     status.dataset.radarWatch = sample.subject_id;

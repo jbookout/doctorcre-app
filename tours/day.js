@@ -323,6 +323,6 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   return { ready, refresh, get notes() { return notes; }, get recorder() { return recorder; }, dispose() { disposed = true; ++epoch; updates.dispose(); recorder.dispose(); map?.destroy(); document.removeEventListener("visibilitychange", hide); window.removeEventListener("pagehide", leave); window.removeEventListener("doctorcre-offline-session-revoked", revoked); window.removeEventListener("storage", storageRevoked); close(); } };
 }
 if (typeof document !== "undefined" && document.querySelector("#tour-day")) {
-  const { navigationFromEvidence } = await import("../js/ui-tour-navigation.js");
+  const { navigationFromEvidence } = await import("../js/ui-tour-navigation.generated.js");
   mountTourDay({ document, window, navigationFromEvidence });
 }

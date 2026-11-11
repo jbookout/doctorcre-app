@@ -22,7 +22,7 @@ for (const width of [390,1280]) for (const colorScheme of ['light','dark']) {
         const value=structuredClone(p.payload);
         return p.hold ? new Promise(resolve=>p.pending.push(()=>resolve(value))) : Promise.resolve(value);
       }});
-    },{url:`${server.url}/js/ui-ideal-client-profile.js`,recorded});
+    },{url:`${server.url}/js/ui-ideal-client-profile.generated.js`,recorded});
     const host=page.locator('main'), rows=host.locator('tbody tr');
     const settle=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const expand=()=>host.locator('summary').first().click();

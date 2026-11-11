@@ -6,7 +6,7 @@
     "id": "malformed-terms-recover",
     "predicate": "The deployed mountMarketTerms refuses rows=[null], retains usable filters and the workspace, and shows a subsequent valid comparison after one explicit retry without page errors.",
     "runner": "app-release-live-walk.v1",
-    "expected_result": "node scripts/prove-market-terms-response-recovery.mjs --origin https://app.doctorcre.com --timeout-ms 30000 exits zero and emits a release-bound synthetic receipt using deployed ui-market.js and dependency chunks. Match the release source_commit to the merged build before live-proven.",
+    "expected_result": "node scripts/prove-market-terms-response-recovery.mjs --origin https://app.doctorcre.com --timeout-ms 30000 exits zero and emits a release-bound synthetic receipt using deployed ui-market.generated.js and dependency chunks. Match the release source_commit to the merged build before live-proven.",
     "input_class": "read-only deployed app release and synthetic injected read ports in isolated storage",
     "deadline_seconds": 30
   }],

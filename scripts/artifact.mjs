@@ -101,7 +101,7 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
     let content = await readSource(path);
     if (path === "workspace.html") {
       await init;
-      const dependencies = new Set(['js/ui-inbox.js']);
+      const dependencies = new Set(['js/ui-inbox.generated.js']);
       const visit = async module => {
         const [imports] = parse((await readSource(module)).toString());
         for (const entry of imports.filter(entry => entry.d === -1 && entry.n?.startsWith('.'))) {
@@ -111,7 +111,7 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
           await visit(dependency);
         }
       };
-      await visit('js/ui-inbox.js');
+      await visit('js/ui-inbox.generated.js');
       const preload = [...dependencies].map(module => `<link rel="modulepreload" href="/${module}">`).join('\n');
       content = Buffer.from(content.toString().replace('</head>', `${preload}\n</head>`));
     }

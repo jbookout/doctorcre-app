@@ -103,7 +103,7 @@ test('natural CLI release ancestry and deadline exit matrix', async t => {
     const routes = new Map([
       ['/app-release', mode === 'unreadable' ? {status:503} : mode === 'changed'
         ? {sequence:[identity(release),identity(descendant)]} : identity(release)],
-      ['/', { contentType:'text/html', body:`<!doctype html><button id="accountSignOut">Sign out</button><main></main><script type="module">import {mountAnswerBlocks} from '/js/ui-answers.js';mountAnswerBlocks(document.querySelector('main'),${JSON.stringify(blocks.populated)},'recorded');</script>` }],
+      ['/', { contentType:'text/html', body:`<!doctype html><button id="accountSignOut">Sign out</button><main></main><script type="module">import {mountAnswerBlocks} from '/js/ui-answers.generated.js';mountAnswerBlocks(document.querySelector('main'),${JSON.stringify(blocks.populated)},'recorded');</script>` }],
     ]);
     server = await startFixture({assets:snapshot,routes});
     origin = server.origin; snapshotKey = key;

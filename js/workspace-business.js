@@ -114,7 +114,7 @@ let vendorClientNeedsGeneration = 0;
 async function syncVendorClientNeeds(host, vendor) {
   const generation = vendorClientNeedsGeneration;
   try {
-    const { mountVendorClientNeeds } = await import('./ui-vendor-client-needs.js');
+    const { mountVendorClientNeeds } = await import('./ui-vendor-client-needs.generated.js');
     if (generation !== vendorClientNeedsGeneration || !host.isConnected) return;
     const { createMcpRequests } = await import('./mcp-requests.mjs');
     if (generation !== vendorClientNeedsGeneration || !host.isConnected) return;
@@ -163,9 +163,9 @@ async function syncQuietVendors() {
   host.style.position = 'relative';
   document.querySelector('.business-controls').before(host);
   try {
-    const { mountQuietVendors } = await import('./ui-quiet-vendors.js');
+    const { mountQuietVendors } = await import('./ui-quiet-vendors.generated.js');
     if (generation !== quietVendorsGeneration) return;
-    const { mountVendorMeetings } = await import('./ui-vendor-meetings.js');
+    const { mountVendorMeetings } = await import('./ui-vendor-meetings.generated.js');
     const { createMcpRequests } = await import('./mcp-requests.mjs');
     if (generation !== quietVendorsGeneration) return;
     vendorMeetingsHost = document.createElement('div');
@@ -186,7 +186,7 @@ async function syncQuietVendors() {
         navigate(`${url.pathname}${url.search}`);
       },
     });
-    const { mountVendorMarkets } = await import('./ui-vendor-markets.js');
+    const { mountVendorMarkets } = await import('./ui-vendor-markets.generated.js');
     if (generation !== quietVendorsGeneration) return;
     vendorMarketsHost = document.createElement('div');
     document.querySelector('.result-heading').append(vendorMarketsHost);

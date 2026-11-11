@@ -71,7 +71,7 @@ test("declaration command parses and proves the actual built fixture module", as
   const receipt = JSON.parse(result.stdout);
   assert.equal(receipt.fixture, true);
   assert.equal(receipt.release.service, "doctorcre-app");
-  assert.ok(receipt.loaded_module_urls.includes(fixture.url + "/js/ui-email-actions.js"));
+  assert.ok(receipt.loaded_module_urls.includes(fixture.url + "/js/ui-email-actions.generated.js"));
   assert.deepEqual(receipt.assertions, [
     "to-only edit retained",
     "cc-only edit retained",
@@ -121,7 +121,7 @@ for (const mode of [
                 ? "await fetch('/business-write', { method: 'POST' });"
                 : "export const createReplyDeviceDrafts = () => ({ save: () => true, remove() {}, restore: () => null });";
       const descriptor = { contentType: "text/javascript", body, status: mode === "protected asset" ? 401 : 200 };
-      routes.set("/js/ui-email-actions.js", descriptor);
+      routes.set("/js/ui-email-actions.generated.js", descriptor);
       routes.set("/js/read.js", descriptor);
     }
     const server = await startFixture({ routes });

@@ -184,7 +184,7 @@ test("approved needs expire at the earliest deadline and on panel resume without
           await page.route("**/js/needs-clock-probe.js", (route) =>
             route.fulfill({
               contentType: "application/javascript",
-              body: `import { mountVendorClientNeeds } from '/js/ui-vendor-client-needs.js';
+              body: `import { mountVendorClientNeeds } from '/js/ui-vendor-client-needs.generated.js';
               import { mountLocalTicker } from '/js/visibility-poll.mjs';
               import { createMcpRequests } from '/js/mcp-requests.mjs';
               const request = createMcpRequests({ fetchImpl: fetch });

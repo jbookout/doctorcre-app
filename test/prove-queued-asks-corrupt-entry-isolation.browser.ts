@@ -28,7 +28,7 @@ async function origin(t: TestContext, mode = "valid") {
     ],
   ]);
   if (mode !== "valid" && mode !== "stale" && mode !== "signin")
-    assets.set("/js/ui-host.js", {
+    assets.set("/js/ui-host.generated.js", {
       contentType: "text/javascript",
       body: Buffer.from(
         mode === "missing"
@@ -39,8 +39,8 @@ async function origin(t: TestContext, mode = "valid") {
       ),
     });
   if (mode === "protected") {
-    assets.delete("/js/ui-host.js");
-    routes.set("/js/ui-host.js", { contentType: "text/plain", status: 403, body: "protected" });
+    assets.delete("/js/ui-host.generated.js");
+    routes.set("/js/ui-host.generated.js", { contentType: "text/plain", status: 403, body: "protected" });
   }
   const server = await startWorkerFixture({ assets, routes });
   t.after(() => server.close());
@@ -60,7 +60,7 @@ test("proof CLI imports served modules and proves isolated composer at both widt
   ]);
   const result = JSON.parse(stdout);
   assert.equal(result.assertions.length, 4);
-  assert.ok(result.modules.includes(`${base}/js/ui-host.js`));
+  assert.ok(result.modules.includes(`${base}/js/ui-host.generated.js`));
   assert.ok(result.modules.length > 1);
   assert.equal(result.release.source_commit, revision);
 });

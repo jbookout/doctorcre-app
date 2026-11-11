@@ -22,7 +22,7 @@ async function fixture(t, mode) {
   const responses = await loadFixtureAssets({ root, manifest: new Map(manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
   const release = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: '1'.repeat(40) });
   responses.set('/app-release', { contentType: release.headers.get('content-type'), status: release.status, body: await release.text() });
-  if (mode === 'broken') responses.set('/js/ui-calendar-panels.js', { body: 'export async function mountCalendarPanels(left) {return {render(){left.textContent="old behavior"},clear(){}}}', contentType: 'text/javascript' });
+  if (mode === 'broken') responses.set('/js/ui-calendar-panels.generated.js', { body: 'export async function mountCalendarPanels(left) {return {render(){left.textContent="old behavior"},clear(){}}}', contentType: 'text/javascript' });
   const fixture = await startFixture({ routes: responses });
   t.after(() => fixture.close());
   return fixture.origin;

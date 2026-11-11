@@ -41,7 +41,7 @@ test("review, clear, refresh, keep, save and reopen preserve client provenance a
         await page.evaluate(
           async ({ fixture, client, theme }) => {
             document.documentElement.dataset.theme = theme;
-            const { mountSavedSearches } = await import("/js/ui-deal-space-searches.js");
+            const { mountSavedSearches } = await import("/js/ui-deal-space-searches.generated.js");
             let saved = structuredClone(fixture.saved.search);
             const host = document.querySelector("#view");
             if (!host) throw Error("No host");

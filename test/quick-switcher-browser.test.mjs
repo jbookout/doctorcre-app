@@ -110,7 +110,7 @@ test('loading, retry, access narrowing, outside close and session retirement', a
     await page.goto(server.url);
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
     await page.evaluate(async () => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       sessionStorage.setItem('doctorcre.quick-switcher.recents.v1', JSON.stringify(['deal:forbidden', 'page:/calendar']));
       let attempt = 0;
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: async () => {
@@ -134,7 +134,7 @@ test('loading, retry, access narrowing, outside close and session retirement', a
     await page.mouse.click(5, 5);
     await page.getByRole('combobox').waitFor({ state: 'detached' });
     await page.evaluate(async () => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [], read: () => new Promise(resolve => { window.finishSwitcherRead = resolve; }) });
     });
     await page.getByText('Loading accessible items…').waitFor();
@@ -208,7 +208,7 @@ for (const fallback of [false, true]) test(`composing Enter preserves switcher b
     await page.goto(server.url);
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
     await page.evaluate(async () => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: async () => ({ board: { deals: [] }, network: { nodes: [] } }) });
     });
     const input = page.getByRole('combobox');
@@ -267,7 +267,7 @@ for (const query of ['needle', 'absent']) test(`held read completes with ${query
     await page.goto(server.url);
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
     await page.evaluate(async () => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: () => new Promise(resolve => { window.finishSwitcherRead = resolve; }) });
     });
     const input = page.getByRole('combobox');
@@ -291,7 +291,7 @@ for (const phase of ['loading', 'error', 'open_empty', 'typing', 'no_results']) 
     const opener = page.getByRole('button', { name: 'Quick switcher' });
     await opener.waitFor();
     await page.evaluate(async phase => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: () => phase === 'loading' ? new Promise(() => {}) : phase === 'error' ? Promise.reject(Error('Unavailable')) : Promise.resolve({ board: { deals: [] }, network: { nodes: [] } }) });
     }, phase);
     const input = page.getByRole('combobox');
@@ -316,7 +316,7 @@ for (const phase of ['loading', 'error']) test(`${phase} page result navigates w
     await page.goto(server.url);
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
     await page.evaluate(async phase => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: () => phase === 'loading' ? new Promise(() => {}) : Promise.reject(Error('Unavailable')) });
     }, phase);
     await page.getByText(phase === 'loading' ? 'Loading accessible items…' : 'Deals and contacts unavailable. Pages are still available.').waitFor();
@@ -332,7 +332,7 @@ test('arrow selection wraps exactly and Tab excludes background controls', async
     await page.goto(server.url);
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
     await page.evaluate(async () => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }, { label: 'Deals', href: '/deals' }], read: async () => ({ board: { deals: [] }, network: { nodes: [] } }) });
     });
     const input = page.getByRole('combobox');
