@@ -203,3 +203,97 @@ test("new need creates once, pagination advances, unavailable reads reload and n
     assert.equal(denied.state.kind, "listing");
   }
 });
+
+for (const state of ["draft", "approved", "edited_lapsed", "stale", "withdrawn"])
+  test(`saved ${state} evidence can be edited without automatic approval`, async () => {
+    const row = { ...need, state };
+    const verbs: string[] = [];
+    const model = createNeedAuthor({
+      deal: id,
+      client,
+      changed() {},
+      call: async (verb, args) => {
+        verbs.push(verb);
+        if (verb.startsWith("read")) return page([row]);
+        assert.equal(args.base_version, 1);
+        return {
+          schema_version: "client-needs.v1",
+          need: { ...need, revision: 2, version: 2, state: "edited_lapsed" },
+        };
+      },
+    });
+    await model.load();
+    model.edit(id);
+    await model.save({ ...need, vendor: id, withdrawn: false });
+    assert.equal(model.rows[0]?.state, "edited_lapsed");
+    assert.deepEqual(verbs, ["read-deal-client-needs-v1", "record-deal-client-need-v1"]);
+  });
+for (const state of ["draft", "approved", "edited_lapsed", "stale"])
+  test(`${state} need withdraws through its displayed version`, async () => {
+    const model = createNeedAuthor({
+      deal: id,
+      client,
+      changed() {},
+      call: async (verb, args) => {
+        if (verb.startsWith("read")) return page([{ ...need, state }]);
+        assert.equal(args.need, id);
+        assert.equal(args.base_version, 1);
+        assert.ok(
+          args.fields &&
+            typeof args.fields === "object" &&
+            "withdrawn" in args.fields &&
+            args.fields.withdrawn === true,
+        );
+        return { schema_version: "client-needs.v1", need: { ...need, state: "withdrawn", version: 2 } };
+      },
+    });
+    await model.load();
+    await model.withdraw(id);
+    assert.equal(model.rows[0]?.state, "withdrawn");
+  });
+for (const screen of ["listing", "editing", "reviewing", "pending", "unknown", "conflict"])
+  test(`session retirement fences ${screen} and drops its private rows`, async () => {
+    let release: (v: unknown) => void = () => {};
+    let writes = 0;
+    const model = createNeedAuthor({
+      deal: id,
+      client,
+      changed() {},
+      call: async (verb) => {
+        if (verb.startsWith("read")) return page();
+        ++writes;
+        if (screen === "unknown") throw Error("lost");
+        if (screen === "conflict") return { error: "version_conflict" };
+        return new Promise((r) => {
+          release = r;
+        });
+      },
+    });
+    await model.load();
+    if (screen === "editing") {
+      model.edit();
+      model.cancel();
+      model.edit(id);
+    } else if (screen !== "listing") {
+      model.review(id);
+    }
+    let pending: Promise<void> | undefined;
+    if (["pending", "unknown", "conflict"].includes(screen)) {
+      pending = model.approve();
+      if (screen !== "pending") await pending;
+    }
+    assert.equal(String(model.state.kind), screen);
+    model.retire();
+    const count = writes;
+    await model.load();
+    model.edit();
+    model.review(id);
+    await model.approve();
+    await model.check();
+    await model.withdraw(id);
+    assert.equal(writes, count);
+    assert.deepEqual(model.rows, []);
+    release({ schema_version: "client-needs.v1", need });
+    await pending;
+    assert.equal(String(model.state.kind), "retired");
+  });
