@@ -1,3 +1,4 @@
+import sharePackets from './fixtures/share-browser-packets.json' with { type: 'json' };
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -96,7 +97,7 @@ test('S1 browser: simultaneous public links keep their own context and a refresh
  await app.context.route('**/api/share/{report,map,feedback}',async route=>{
    const target=/synthetic-share=([^;]+)/.exec(route.request().headers().cookie||'')?.[1];
    const path=new URL(route.request().url()).pathname;
-   const data=path.endsWith('/report')?{stops:[{property_ref:`property:public:synthetic_property_${target}`,name:`Synthetic projection ${target}`}]}:path.endsWith('/map')?{points:[]}:{projection_ref:projection(target),permission_scopes:[],items:[]};
+   const data=path.endsWith('/report')?sharePackets.responses[target]:path.endsWith('/map')?{points:[]}:{projection_ref:projection(target),permission_scopes:[],items:[]};
    return route.fulfill({json:{data}});
  });
  await Promise.all([a.goto(`${app.origin}/share#${tokens.A}`),b.goto(`${app.origin}/share#${tokens.B}`)]);

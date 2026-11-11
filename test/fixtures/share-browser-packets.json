@@ -1,0 +1,415 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "source_commit": "7cf35ff3c45af3e5f9318035251b07db01d6c4ae",
+  "main_presentation_commit": "9a5ed468c83fd6150b81f3096c256f342245777b",
+  "note": "Recorded projectTourClientPacket outputs from the same pinned producer as packet-parity. Current main has presentation 2.0.0 but lacks the 2.1.0 envelope and explicit nulls required by this PR. Reuse the PR pinned CARR 3189 producer; retain draft.",
+  "inputs": {
+    "qa": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_qa_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Demo Meadow Medical",
+          "address": "100 Example Meadow Way",
+          "suite": "Suite 101"
+        },
+        {
+          "property_ref": "property:public:synthetic_qa_property_02",
+          "route_sequence": 2,
+          "route_label": "B",
+          "name": "Demo Harbor Offices",
+          "address": "200 Sample Harbor Lane",
+          "suite": "Suite 202"
+        }
+      ]
+    },
+    "empty": {
+      "stops": []
+    },
+    "A": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_A",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic projection A",
+          "address": "Synthetic address A"
+        }
+      ]
+    },
+    "B": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_B",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic projection B",
+          "address": "Synthetic address B"
+        }
+      ]
+    }
+  },
+  "responses": {
+    "qa": {
+      "contract_version": "2.1.0",
+      "renderer_version": "2.0.0",
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_qa_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Demo Meadow Medical",
+          "address": "100 Example Meadow Way",
+          "suite": "Suite 101",
+          "appointment_start": null,
+          "appointment_end": null
+        },
+        {
+          "property_ref": "property:public:synthetic_qa_property_02",
+          "route_sequence": 2,
+          "route_label": "B",
+          "name": "Demo Harbor Offices",
+          "address": "200 Sample Harbor Lane",
+          "suite": "Suite 202",
+          "appointment_start": null,
+          "appointment_end": null
+        }
+      ],
+      "presentation": {
+        "version": "2.0.0",
+        "brand": "CARR Healthcare Real Estate",
+        "map": "Tour map",
+        "title": "Your property tour",
+        "overview": "Tour day at a glance",
+        "properties": "Properties",
+        "notes": "My Notes",
+        "unknown": "Unknown",
+        "fields": [
+          [
+            "suite",
+            "Suite"
+          ],
+          [
+            "property_type",
+            "Property type"
+          ],
+          [
+            "size",
+            "Size"
+          ],
+          [
+            "asking_economics",
+            "Asking economics"
+          ],
+          [
+            "availability",
+            "Availability"
+          ],
+          [
+            "parking",
+            "Parking"
+          ]
+        ],
+        "contractVersion": "2.1.0",
+        "summary": "2 properties in tour order.",
+        "stops": [
+          {
+            "property_ref": "property:public:synthetic_qa_property_01",
+            "route_sequence": 1,
+            "route_label": "A",
+            "name": "Demo Meadow Medical",
+            "address": "100 Example Meadow Way",
+            "appointment": null,
+            "public_packet_note": null,
+            "facts": [
+              {
+                "label": "Suite",
+                "value": "Suite 101"
+              },
+              {
+                "label": "Property type",
+                "value": "Unknown"
+              },
+              {
+                "label": "Size",
+                "value": "Unknown"
+              },
+              {
+                "label": "Asking economics",
+                "value": "Unknown"
+              },
+              {
+                "label": "Availability",
+                "value": "Unknown"
+              },
+              {
+                "label": "Parking",
+                "value": "Unknown"
+              }
+            ]
+          },
+          {
+            "property_ref": "property:public:synthetic_qa_property_02",
+            "route_sequence": 2,
+            "route_label": "B",
+            "name": "Demo Harbor Offices",
+            "address": "200 Sample Harbor Lane",
+            "appointment": null,
+            "public_packet_note": null,
+            "facts": [
+              {
+                "label": "Suite",
+                "value": "Suite 202"
+              },
+              {
+                "label": "Property type",
+                "value": "Unknown"
+              },
+              {
+                "label": "Size",
+                "value": "Unknown"
+              },
+              {
+                "label": "Asking economics",
+                "value": "Unknown"
+              },
+              {
+                "label": "Availability",
+                "value": "Unknown"
+              },
+              {
+                "label": "Parking",
+                "value": "Unknown"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "empty": {
+      "contract_version": "2.1.0",
+      "renderer_version": "2.0.0",
+      "stops": [],
+      "presentation": {
+        "version": "2.0.0",
+        "brand": "CARR Healthcare Real Estate",
+        "map": "Tour map",
+        "title": "Your property tour",
+        "overview": "Tour day at a glance",
+        "properties": "Properties",
+        "notes": "My Notes",
+        "unknown": "Unknown",
+        "fields": [
+          [
+            "suite",
+            "Suite"
+          ],
+          [
+            "property_type",
+            "Property type"
+          ],
+          [
+            "size",
+            "Size"
+          ],
+          [
+            "asking_economics",
+            "Asking economics"
+          ],
+          [
+            "availability",
+            "Availability"
+          ],
+          [
+            "parking",
+            "Parking"
+          ]
+        ],
+        "contractVersion": "2.1.0",
+        "summary": "0 properties in tour order.",
+        "stops": []
+      }
+    },
+    "A": {
+      "contract_version": "2.1.0",
+      "renderer_version": "2.0.0",
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_A",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic projection A",
+          "address": "Synthetic address A",
+          "appointment_start": null,
+          "appointment_end": null
+        }
+      ],
+      "presentation": {
+        "version": "2.0.0",
+        "brand": "CARR Healthcare Real Estate",
+        "map": "Tour map",
+        "title": "Your property tour",
+        "overview": "Tour day at a glance",
+        "properties": "Properties",
+        "notes": "My Notes",
+        "unknown": "Unknown",
+        "fields": [
+          [
+            "suite",
+            "Suite"
+          ],
+          [
+            "property_type",
+            "Property type"
+          ],
+          [
+            "size",
+            "Size"
+          ],
+          [
+            "asking_economics",
+            "Asking economics"
+          ],
+          [
+            "availability",
+            "Availability"
+          ],
+          [
+            "parking",
+            "Parking"
+          ]
+        ],
+        "contractVersion": "2.1.0",
+        "summary": "1 property in tour order.",
+        "stops": [
+          {
+            "property_ref": "property:public:synthetic_property_A",
+            "route_sequence": 1,
+            "route_label": "A",
+            "name": "Synthetic projection A",
+            "address": "Synthetic address A",
+            "appointment": null,
+            "public_packet_note": null,
+            "facts": [
+              {
+                "label": "Suite",
+                "value": "Unknown"
+              },
+              {
+                "label": "Property type",
+                "value": "Unknown"
+              },
+              {
+                "label": "Size",
+                "value": "Unknown"
+              },
+              {
+                "label": "Asking economics",
+                "value": "Unknown"
+              },
+              {
+                "label": "Availability",
+                "value": "Unknown"
+              },
+              {
+                "label": "Parking",
+                "value": "Unknown"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "B": {
+      "contract_version": "2.1.0",
+      "renderer_version": "2.0.0",
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_B",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic projection B",
+          "address": "Synthetic address B",
+          "appointment_start": null,
+          "appointment_end": null
+        }
+      ],
+      "presentation": {
+        "version": "2.0.0",
+        "brand": "CARR Healthcare Real Estate",
+        "map": "Tour map",
+        "title": "Your property tour",
+        "overview": "Tour day at a glance",
+        "properties": "Properties",
+        "notes": "My Notes",
+        "unknown": "Unknown",
+        "fields": [
+          [
+            "suite",
+            "Suite"
+          ],
+          [
+            "property_type",
+            "Property type"
+          ],
+          [
+            "size",
+            "Size"
+          ],
+          [
+            "asking_economics",
+            "Asking economics"
+          ],
+          [
+            "availability",
+            "Availability"
+          ],
+          [
+            "parking",
+            "Parking"
+          ]
+        ],
+        "contractVersion": "2.1.0",
+        "summary": "1 property in tour order.",
+        "stops": [
+          {
+            "property_ref": "property:public:synthetic_property_B",
+            "route_sequence": 1,
+            "route_label": "A",
+            "name": "Synthetic projection B",
+            "address": "Synthetic address B",
+            "appointment": null,
+            "public_packet_note": null,
+            "facts": [
+              {
+                "label": "Suite",
+                "value": "Unknown"
+              },
+              {
+                "label": "Property type",
+                "value": "Unknown"
+              },
+              {
+                "label": "Size",
+                "value": "Unknown"
+              },
+              {
+                "label": "Asking economics",
+                "value": "Unknown"
+              },
+              {
+                "label": "Availability",
+                "value": "Unknown"
+              },
+              {
+                "label": "Parking",
+                "value": "Unknown"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
