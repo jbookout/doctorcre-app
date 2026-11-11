@@ -29,6 +29,20 @@ test("Home brief stays inline with inbox and restores priority focus in both the
           document.documentElement.dataset.theme = value;
         }, theme);
         const brief = page.locator("#homeBrief #docMorningBrief");
+        if (width === 390) {
+          const toggle = page.getByRole("button", { name: "Morning brief Open brief" });
+          await toggle.waitFor();
+          const firstRow = page.locator(".inbox-row").first();
+          await firstRow.waitFor();
+          await page.waitForFunction(() => {
+            const mail = document.querySelector('.home-inbox > [aria-label="Mail priorities"]');
+            return mail && getComputedStyle(mail).order === "1";
+          });
+          await page.evaluate(() => document.fonts.ready);
+          const box = await firstRow.boundingBox();
+          assert.ok(box && box.y < 750, "Inbox work is within the first phone screen");
+          await toggle.click();
+        }
         await brief.waitFor();
         await brief.locator("[data-brief-record]").first().waitFor();
         assert.equal(await page.locator("dialog[open]").count(), 0);
@@ -45,6 +59,14 @@ test("Home brief stays inline with inbox and restores priority focus in both the
         await brief.locator(".morning-record").waitFor();
         await page.locator("#morningBack").click();
         assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-brief-key")), key);
+        if (width === 390) {
+          await page.locator("#morningRefresh").click();
+          assert.equal(await page.locator(".home-brief-toggle").getAttribute("aria-expanded"), "true");
+          await page.locator(".home-brief-toggle").click();
+          assert.equal(await brief.isVisible(), false);
+          await page.locator(".home-brief-toggle").click();
+          assert.equal(await brief.isVisible(), true);
+        }
         assert.equal(await checkbox.isChecked(), true);
         assert.equal(await reason.inputValue(), "Keep this synthetic draft");
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

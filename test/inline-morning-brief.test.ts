@@ -80,3 +80,27 @@ test("rail and inline owner coalesce reads and retire late private responses", a
     dom.window.close();
   }
 });
+
+test("explicit refresh bypasses a recent brief while ordinary readers coalesce", async () => {
+  const { readMorningBrief } = await import(new URL("../js/morning-brief.js", import.meta.url).href);
+  const dom = new JSDOM("", { url: "http://localhost/" });
+  const section = { state: "empty", items: [] };
+  let reads = 0;
+  const read = async () => ({
+    sponsor: "joe",
+    observed_at: `2026-11-11T12:00:0${++reads}Z`,
+    sections: { today: section, deals: section, loops: section },
+  });
+  try {
+    const first = await readMorningBrief(dom.window.document, read);
+    assert.equal(await readMorningBrief(dom.window.document, read), first);
+    const refresh = readMorningBrief(dom.window.document, read, { fresh: true });
+    const ordinary = readMorningBrief(dom.window.document, read);
+    assert.equal(await ordinary, await refresh);
+    assert.equal(reads, 2);
+    assert.notEqual(await refresh, first);
+    assert.equal((await refresh).observed_at, "2026-11-11T12:00:02Z");
+  } finally {
+    dom.window.close();
+  }
+});
