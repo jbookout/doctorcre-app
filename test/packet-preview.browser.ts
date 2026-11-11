@@ -279,16 +279,19 @@ test("packet proof waits for the final PDF page after every property stop is cou
       return asset ? route.fulfill(asset) : route.abort();
     });
     await page.addInitScript(() => {
-      const setAttribute = Element.prototype.setAttribute;
-      Element.prototype.setAttribute = function (name, value) {
-        if (this instanceof HTMLCanvasElement && name === "aria-label" && value.startsWith("Packet page 3 ")) {
-          Object.defineProperty(this, "dataset", { value: {} });
+      const postMessage = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function (message, options) {
+        if (message?.action === "GetOperatorList" && message.data?.pageIndex === 2) {
+          Reflect.set(window, "releaseFinalPacketPage", () => postMessage.call(this, message, options));
+          return;
         }
-        return setAttribute.call(this, name, value);
+        return postMessage.call(this, message, options);
       };
     });
     await page.goto(`https://app.test/tours/packet-preview.html?render_job_id=${job}`);
     await page.waitForFunction(() => document.querySelectorAll('canvas[data-rendered="true"]').length === 2);
+    await page.waitForFunction(() => typeof Reflect.get(window, "releaseFinalPacketPage") === "function");
+    assert.equal(await page.locator("canvas").nth(2).getAttribute("data-rendered"), null);
     let ready = false;
     const observation = observePacketPreview(page, pdf).then((stops) => {
       ready = true;
@@ -301,10 +304,8 @@ test("packet proof waits for the final PDF page after every property stop is cou
       );
       assert.equal(ready, false, "two property stops cannot certify all three PDF pages ready");
     } finally {
-      await page
-        .locator("canvas")
-        .nth(2)
-        .evaluate((canvas) => canvas.setAttribute("data-rendered", "true"));
+      await page.waitForFunction(() => typeof Reflect.get(window, "releaseFinalPacketPage") === "function");
+      await page.evaluate(() => Reflect.get(window, "releaseFinalPacketPage")());
       assert.equal((await observation).length, packet.stops.length);
     }
     assert.equal(ready, true);

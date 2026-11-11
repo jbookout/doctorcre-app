@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { PDFDocument } from "pdf-lib";
 import type { Page } from "playwright";
 import { readPacketPresentation } from "../src/ui/packet-facts.ts";
 import { packetFixturePdf } from "./packet-fixture.ts";
@@ -10,13 +11,14 @@ import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
 
 export async function observePacketPreview(page: Page, bytes: Uint8Array) {
   const previewStops = await observePdf(bytes);
+  const pageCount = (await PDFDocument.load(bytes)).getPageCount();
   await page.waitForFunction((count) => {
     const pages = Array.from(document.querySelectorAll("canvas[data-rendered=true]"));
     return (
       pages.length === count &&
       pages.every((canvas) => canvas instanceof HTMLCanvasElement && canvas.width > 0 && canvas.height > 0)
     );
-  }, previewStops.length);
+  }, pageCount);
   return previewStops;
 }
 

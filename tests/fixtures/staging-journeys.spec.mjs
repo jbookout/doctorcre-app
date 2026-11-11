@@ -1,5 +1,6 @@
 import { test } from '@playwright/test';
 import { readPacketPresentation } from '../../src/ui/packet-facts.ts';
+import recordedPacket from '../../test/fixtures/packet-parity/share.json' with { type: 'json' };
 import assert from 'node:assert/strict';
 import { get } from 'node:http';
 import { temporaryDirectory } from '../../scripts/temp-directory.mjs';
@@ -16,7 +17,7 @@ export const fixture = {
   lease: { id: 'aa000000-0000-4000-8000-000000000001', client_id: 'aa000000-0000-4000-8000-000000000002', client_name: 'Synthetic staging QA lease' },
   tour: { id: detail.id, name: 'Synthetic staging QA accepted tour', route_id: detail.routes[0].id,
     property_ids: detail.stops.map(stop => stop.property_id), stop_ids: detail.stops.map(stop => stop.id),
-    property_names: detail.stops.map(stop => stop.property_name), projection_id: 'aa000000-0000-4000-8000-000000000003',
+    property_names: recordedPacket.stops.map(stop => stop.name), projection_id: 'aa000000-0000-4000-8000-000000000003',
     unrelated_property_id: 'aa000000-0000-4000-8000-000000000004' },
 };
 
@@ -29,9 +30,14 @@ export async function localFixture(browser, {denyShortlist = false} = {}) {
   tour.routes[0].acceptance_digest = 'sha256:' + 'a'.repeat(64);
   const lease = leaseRadarFixture();
   Object.assign(lease.leases[0], fixture.lease);
-  const publicRef = property => 'property:public:' + createHash('sha256').update(`carr-internal:${fixture.tour.projection_id}:${property}`).digest('hex').slice(0, 32);
-  const packet = { stops: tour.stops.map(stop => ({ name: stop.property_name, address: stop.property_address,
-    property_ref: publicRef(stop.property_id), route_label: stop.route_label, route_sequence: stop.route_sequence })) };
+  const packet = structuredClone(recordedPacket);
+  const presentation = readPacketPresentation(packet);
+  assert.ok(presentation, 'recorded share packet must satisfy the production presentation parser');
+  assert.equal(presentation.stops.length, tour.stops.length);
+  tour.stops.forEach((stop, index) => {
+    stop.property_name = presentation.stops[index].name;
+    stop.property_address = presentation.stops[index].address;
+  });
   const projectionRef = 'projection:public:abcdefghijklmnop';
   const assets = await appAssetSnapshot();
   const server = await startWorkerFixture({ assets, env:{ APP_ENV:'staging', CARR:{fetch:async req => {
