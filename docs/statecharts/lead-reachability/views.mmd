@@ -1,0 +1,25 @@
+stateDiagram-v2
+  [*] --> Loading
+  Loading --> All: board arrives
+  Loading --> Unavailable: first source response is refused
+  Unavailable --> All: retry returns a valid board
+  All --> Reachable: choose Reachable
+  All --> Research: choose Research
+  Reachable --> Research: choose Research
+  Research --> Reachable: choose Reachable
+  Reachable --> All: choose All leads
+  Research --> All: choose All leads
+  All --> All: change filters or select lead
+  Reachable --> Reachable: filter or compatible refresh
+  Research --> Research: filter or source replacement
+  All --> Stale: refresh fails
+  Reachable --> Stale: refresh fails
+  Research --> Stale: refresh fails
+  Stale --> All: retry succeeds with All selected
+  Stale --> Reachable: retry succeeds with Reachable selected
+  Stale --> Research: retry succeeds with Research selected
+  All --> Refused: session refused
+  Reachable --> Refused: session refused
+  Research --> Refused: session refused
+  Stale --> Refused: session refused
+  Refused --> Loading: sign in again

@@ -53,7 +53,7 @@ for (const width of [390, 768, 1280, 1440]) for (const theme of ['dark', 'light'
     await page.goto('http://localhost/leads');
     await page.locator('.lead-card').first().waitFor();
     const claim = await page.locator('#leadBoard [data-claim]').first().boundingBox();
-    assert.ok(claim.y >= 0 && claim.y + claim.height < 900, 'Claim is visible without scrolling');
+    assert.ok(claim.y >= 0 && claim.y + claim.height < 900, `Claim is visible without scrolling ${JSON.stringify(claim)}`);
     await capture(page, `${width}-${theme}-board`, { claim });
     await page.locator('#stageFilter').selectOption('qualified');
     const layout = await page.evaluate(() => {
