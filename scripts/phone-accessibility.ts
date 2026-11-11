@@ -337,7 +337,6 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       .filter((property) => /^\d+$/.test(property.name))
       .flatMap((property) => (property.value?.objectId ? [property.value.objectId] : []));
     const events = new Set(["click", "pointerdown", "pointerup", "touchstart", "touchend"]);
-    const verifyOwnership: (() => Promise<void>)[] = [];
     const analyzeListeners: (() => Promise<void>)[] = [];
     // Bound protocol concurrency independently of document size.
     for (let offset = 0; offset < elementIds.length; offset += 16) {
@@ -457,29 +456,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
                   refusals.push("Phone delegation has unknown target dispatch semantics");
                 for (const selector of listenerSelectors) selectors.add(selector);
               }
-              if (refusals.length)
-                verifyOwnership.push(async () => {
-                  const { result: ownership, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
-                    objectId: targetCollection,
-                    functionDeclaration: `function(owner) {
-                  const contains = (child) => {
-                    for (let current = child; current;) {
-                      const root = current.getRootNode();
-                      current = current.parentElement || (root instanceof ShadowRoot ? root.host : null);
-                      if (current === owner) return true;
-                    }
-                    return false;
-                  };
-                  const self = this.get(owner);
-                  return !!self && self.sources.some(source => source !== "listener") &&
-                    ![...this.keys()].some(element => element !== owner && contains(element));
-                }`,
-                    arguments: [{ objectId }],
-                    returnByValue: true,
-                  });
-                  if (exceptionDetails) throw Error("Could not determine phone listener ownership");
-                  if (!ownership.value) throw Error(refusals[0]);
-                });
+              if (refusals.length) throw Error(refusals[0]);
               if (selectors.size) {
                 const { exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
                   objectId: targetCollection,
@@ -499,7 +476,6 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       );
     }
     for (const analyze of analyzeListeners) await analyze();
-    for (const verify of verifyOwnership) await verify();
     const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
       objectId: targetCollection,
       functionDeclaration: measureTargets.toString(),
