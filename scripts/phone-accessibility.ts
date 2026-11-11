@@ -349,18 +349,26 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
           if (!object.objectId) throw Error("Listener target has no main-world DOM object");
           const { listeners } = await cdp.send("DOMDebugger.getEventListeners", { objectId: object.objectId });
           const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
-            objectId,
+            objectId: object.objectId,
             functionDeclaration: `function() {
-            return this.matches('a[href],button,input:not([type="hidden"]),select,textarea,summary,[tabindex]:not([tabindex="-1"]),label[for]') ||
-              (this.matches('label') && !!this.querySelector('input:not([type="hidden"]),select,textarea,button'));
-          }`,
+              const keys = Object.keys(this);
+              const props = keys.find(key => key.startsWith('__reactProps$'));
+              return {
+                native: this.matches('a[href],button,input:not([type="hidden"]),select,textarea,summary,[tabindex]:not([tabindex="-1"]),label[for]') ||
+                  (this.matches('label') && !!this.querySelector('input:not([type="hidden"]),select,textarea,button')),
+                rendered: this.checkVisibility({ checkVisibilityCSS: true, visibilityProperty: true, contentVisibilityAuto: true }),
+                reactRoot: keys.some(key => key.startsWith('__reactContainer$')),
+                reactTarget: props && ['onClick','onPointerDown','onPointerUp','onTouchStart','onTouchEnd'].some(event => typeof this[props][event] === 'function')
+              };
+            }`,
             returnByValue: true,
           });
-          if (exceptionDetails) throw Error("Could not identify native phone tap element");
-          if (result.value) await collect(objectId, "native");
+          if (exceptionDetails || !result.value) throw Error("Could not identify native phone tap element");
+          if (result.value.native) await collect(objectId, "native");
+          if (result.value.reactTarget) await collect(objectId, "delegated");
           const activationListeners = listeners.filter((listener) => events.has(listener.type));
           if (activationListeners.length) await collect(objectId, "listener");
-          if (activationListeners.length && !result.value) {
+          if (activationListeners.length && !result.value.native && result.value.rendered) {
             const selectors = new Set<string>();
             for (const listener of activationListeners) {
               const listenerSelectors = new Set<string>();
@@ -368,6 +376,12 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
               if (!source) throw Error("Phone delegation needs inspectable listener source");
               const field = (value: unknown, key: string): unknown =>
                 value && typeof value === "object" ? Reflect.get(value, key) : undefined;
+              const expression = parseExpression(source);
+              const parameters = field(expression, "params");
+              const names = new Set(
+                Array.isArray(parameters) ? parameters.map((parameter) => field(parameter, "name")) : [],
+              );
+              const frameworkRoot = result.value.reactRoot && names.size > 1;
               const aliases = new Set<string>();
               let readsTarget = false;
               const visit = (value: unknown, parent?: unknown, grandparent?: unknown) => {
@@ -412,6 +426,15 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
                     );
                 }
                 if (type === "CallExpression" || type === "OptionalCallExpression") {
+                  const argumentsValue = field(value, "arguments");
+                  if (
+                    !frameworkRoot &&
+                    Array.isArray(argumentsValue) &&
+                    argumentsValue.some(
+                      (argument) => field(argument, "type") === "Identifier" && names.has(field(argument, "name")),
+                    )
+                  )
+                    throw Error("Phone target dispatch uses an opaque delegated helper");
                   const property = field(field(value, "callee"), "property");
                   const method = field(property, "name") || field(property, "value");
                   if (method === "closest" || method === "matches") {
@@ -425,7 +448,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
                 }
                 for (const child of Object.values(value)) visit(child, value, parent);
               };
-              visit(parseExpression(source));
+              visit(expression);
               if (readsTarget && !listenerSelectors.size)
                 throw Error("Phone delegation has unknown target dispatch semantics");
               for (const selector of listenerSelectors) selectors.add(selector);
