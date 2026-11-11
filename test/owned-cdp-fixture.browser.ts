@@ -250,3 +250,24 @@ test("ready fixture disposes after owned process death", async () => {
   assert.equal(fixture.browser.isConnected(), false);
   assert.deepEqual(ownedBrowserProcesses(fixture.profile), []);
 });
+
+
+test("fixture closes owned resources when transport disposal fails", async () => {
+  const fixture = await ownedCdpFixture({
+    connect: async (endpoint, options) => {
+      const browser = await chromium.connectOverCDP(endpoint, options);
+      const close = browser.close.bind(browser);
+      browser.close = async () => {
+        await close();
+        throw Error("transport disposal failed");
+      };
+      return browser;
+    },
+  });
+  await assert.rejects(fixture.close(), /transport disposal failed/);
+  assert.equal(existsSync(fixture.profile), false);
+  assert.deepEqual(ownedBrowserProcesses(fixture.profile), []);
+  const pid = fixture.pid;
+  assert.throws(() => process.kill(pid, 0), /ESRCH/);
+  await fixture.closed;
+});

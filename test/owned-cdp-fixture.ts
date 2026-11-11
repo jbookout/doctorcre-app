@@ -117,12 +117,15 @@ export async function ownedCdpFixture({
       child?.kill();
       const disposing = (async () => {
         await acquiring.catch(() => {});
-        await browser?.close();
-        child?.kill();
-        await terminated;
-        removeProfile();
-        phase = "Closed";
-        finishClosed();
+        try {
+          await browser?.close();
+        } finally {
+          child?.kill();
+          await terminated;
+          removeProfile();
+          phase = "Closed";
+          finishClosed();
+        }
       })();
       closing = new Promise<void>((resolve, reject) => {
         const cleanupTimer = setTimeout(() => reject(failure("cleanup deadline")), cleanupTimeoutMs);
