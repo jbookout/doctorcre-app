@@ -4,11 +4,10 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { chromium as driver } from "playwright";
-import { startFixture } from "../scripts/fixture-http.mjs";
 import { signedInReplyEngine } from "../scripts/prove-reply-action-link.ts";
 import { prove } from "../scripts/prove-tour-stop-drag.ts";
 import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
-import { fixtureDeal, tourDragRoutes } from "./tour-stop-drag-proof-fixture.ts";
+import { fixtureDeal, startTourDragFixture, tourDragRoutes } from "./tour-stop-drag-proof-fixture.ts";
 
 const commit = "1".repeat(40);
 const exec = promisify(execFile);
@@ -17,7 +16,7 @@ for (const mode of ["pass", "near-miss", "legacy", "unreachable"] as const)
     const routes = await tourDragRoutes(mode === "near-miss" ? mode : "pass");
     if (mode === "legacy")
       routes.set("/tours/route-editor.html", { contentType: "text/html", body: "<h1>Synthetic legacy Tour</h1>" });
-    const server = await startFixture({ routes });
+    const server = await startTourDragFixture(routes);
     t.after(() => server.close());
 
     const browserFixture = await ownedCdpFixture();
@@ -64,7 +63,7 @@ for (const mode of ["pass", "near-miss", "legacy", "unreachable"] as const)
 
 for (const scenario of ["late page", "late launch", "stalled evaluation"] as const)
   test(`Tour proof deadline cleans ${scenario} without closing shared tabs`, async (t) => {
-    const server = await startFixture({ routes: await tourDragRoutes() });
+    const server = await startTourDragFixture(await tourDragRoutes());
     t.after(() => server.close());
 
     const browserFixture = await ownedCdpFixture();

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { requireContainingRelease } from "../scripts/containing-release.ts";
+import { classifyRelease, requireContainingRelease } from "../scripts/containing-release.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 
 test("containing release accepts equal and descendant, refuses older unrelated and unknown commits", async (t) => {
@@ -19,6 +19,14 @@ test("containing release accepts equal and descendant, refuses older unrelated a
   git("checkout", "--orphan", "unrelated");
   git("commit", "--allow-empty", "-qm", "unrelated");
   const unrelated = git("rev-parse", "HEAD");
+  for (const [observed, expected] of [
+    [merge, "containing"],
+    [descendant, "containing"],
+    [older, "older"],
+    [unrelated, "unrelated"],
+    ["a".repeat(40), "unknown"],
+  ])
+    assert.equal(await classifyRelease(merge, String(observed), { cwd }), expected);
   await requireContainingRelease(merge, merge, { cwd });
   await requireContainingRelease(merge, descendant, { cwd });
   for (const observed of [older, unrelated, "a".repeat(40)]) {
