@@ -175,14 +175,22 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
         findArea(areaSelector).scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         const area = findArea(areaSelector);
-        const rect = await new Promise<DOMRectReadOnly>((resolve) => {
-          const observer = new IntersectionObserver(([entry]) => {
-            if (!entry) return;
-            observer.disconnect();
-            resolve(entry.intersectionRect);
-          });
-          observer.observe(area);
-        });
+        const [size, rect] = await Promise.all(
+          [{ root: document, rootMargin: `${margin}px` }, {}].map(
+            (options) =>
+              new Promise<DOMRectReadOnly>((resolve) => {
+                const observer = new IntersectionObserver(([entry]) => {
+                  if (!entry) return;
+                  observer.disconnect();
+                  resolve(entry.intersectionRect);
+                }, options);
+                observer.observe(area);
+              }),
+          ),
+        );
+        if (!size || !rect) throw Error("Phone target geometry unavailable");
+        description.width = size.width;
+        description.height = size.height;
         let hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
         while (hit?.shadowRoot) {
           const inner = hit.shadowRoot.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);

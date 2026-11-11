@@ -77,7 +77,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       await page.route("http://phone.test/", (route) =>
         route.fulfill({
           contentType: "text/html",
-          body: `<!doctype html><html lang="en"><head><title>Phone proof fixture</title></head><body><main><h1>Phone proof</h1><button style="width:100px;height:${values["fixture-case"] === "pass" ? 44 : 20}px;color:black;background:white">Open</button></main></body></html>`,
+          body: `<!doctype html><html lang="en"><head><title>Phone proof fixture</title></head><body><main><h1>Phone proof</h1><button style="width:100px;height:${values["fixture-case"] === "pass" ? 44 : 43}px;color:black;background:white">Open</button></main></body></html>`,
         }),
       );
       await page.goto("http://phone.test/");

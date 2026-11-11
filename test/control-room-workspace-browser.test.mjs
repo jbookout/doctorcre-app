@@ -16,8 +16,8 @@ after(() => assetServer.close());
 const roomTime=new Date('2026-10-02T12:00:00Z');
 const reads={'calendar-meeting-prep':'calendarMeetingPrep','list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
 async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData,unobservedSchedule=false}={}){
- const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height},timezoneId:'UTC',reducedMotion:'reduce'});
+ const browser=await chromium.launch();let page;t.after(async()=>{try{await page?.unrouteAll({behavior:'wait'});}finally{await browser.close();}});
+ page=await browser.newPage({viewport:{width,height},timezoneId:'UTC',reducedMotion:'reduce'});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
  if(countIncidentClicks)await page.addInitScript(()=>{
   window.incidentClickCallbacks={filters:0,incidents:0};
