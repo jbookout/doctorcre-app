@@ -34,6 +34,10 @@ test("handwritten UI names stay visible to Git", () => {
     "js/ui-facts-helper.js",
     "js/ui-shared-handwritten.js",
     "js/ui-shared-handwritten.generated.js",
+    "js/ui-shared-ABC1234.generated.js",
+    "js/ui-shared-ABC123456.generated.js",
+    "js/ui-shared-abc12345.generated.js",
+    "js/ui-shared-ABC12345.js",
     "js/nested/ui-facts.js",
   ];
   const result = spawnSync("git", ["check-ignore", "--no-index", "-v", "--stdin"], {
