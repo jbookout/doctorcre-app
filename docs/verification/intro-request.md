@@ -10,6 +10,10 @@ System design: one typed review module owns form state and the retained request.
 stateDiagram-v2
   [*] --> selected
   selected --> reviewing: Open offered path
+  selected --> changed_source: Offered path unavailable
+  reviewing --> changed_source: Offered path unavailable
+  refused --> changed_source: Offered path unavailable
+  confirmed --> changed_source: Offered path unavailable
   reviewing --> submitting: Review and record
   submitting --> changed_source: Fresh path differs
   submitting --> refused: Server refuses
@@ -19,6 +23,8 @@ stateDiagram-v2
   confirmed --> confirmed: Refresh shows requested
   changed_source --> reviewing: Reopen current path
   refused --> reviewing: Reopen current path
+  confirmed --> reviewing: Review another offered path
+  selected --> retired: Session ends
   reviewing --> retired: Session ends
   submitting --> retired: Session ends
   unknown --> retired: Session ends
@@ -38,11 +44,13 @@ Transition-to-test mapping:
 | Selected to reviewing, reviewing to submitting to confirmed | selected path requires explicit review and preserves exact party identities |
 | Submitting to changed source | fresh source refuses restricted/hold/stale/changed/removed/already-requested |
 | Changed source to reviewing | changed source requires reopening and explicitly reviewing its current identities |
+| Selected/reviewing/refused/confirmed/changed source to changed source on open | unavailable offered path stays unwritable from each review state |
+| Confirmed to reviewing | a recorded request can return to review without duplicating its write |
 | Submitting to refused, refused to reviewing | server refusal remains refused and reopening requires a new review |
 | Submitting to unknown, unknown to submitting to confirmed | lost response blocks replacement and recovers with identical key after reopening |
 | Confirmed to confirmed on refresh | V03 explicitly reviews and records the exact introduction, all widths/themes |
 | Submitting to retired | retirement suppresses a late receipt and all later sends |
-| Other active states to retired | retirement clears reviewing/unknown/refused/confirmed/changed_source review and prevents further sends |
+| Other active states to retired | retirement clears selected/reviewing/unknown/refused/confirmed/changed_source review and prevents further sends |
 | Transport session change to retired | transport session refusal retires and clears the retained review; V03 changed-session recovery sends no second write and clears private review identities |
 | Read-only proof and cancel | V03 proof observation passes exact identity |
 | Proof identity mismatch | V03 proof observation rejects near-miss identity |

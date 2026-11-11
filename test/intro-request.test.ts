@@ -192,10 +192,10 @@ test("invalid dates, empty notes, missing review, and double submission send no 
   assert.equal(h.calls.length, 1);
 });
 
-for (const state of ["reviewing", "unknown", "refused", "confirmed", "changed_source"])
+for (const state of ["selected", "reviewing", "unknown", "refused", "confirmed", "changed_source"])
   test(`retirement clears ${state} review and prevents further sends`, async () => {
     const h = harness();
-    h.model.open(h.network, offerId);
+    if (state !== "selected") h.model.open(h.network, offerId);
     if (state === "unknown") h.lost();
     if (state === "refused") h.refuse();
     if (state === "changed_source") h.network.suggestions = [];
@@ -295,4 +295,34 @@ test("review selects the named offered path and preserves the exact note", async
   assert.equal(h.model.view().status, "confirmed");
   assert.equal(h.calls[0]?.to_party, otherId);
   assert.equal(h.calls[0]?.note, note);
+});
+
+for (const state of ["selected", "reviewing", "refused", "confirmed", "changed_source"])
+  test(`unavailable offered path stays unwritable from ${state}`, async () => {
+    const h = harness();
+    if (state !== "selected") h.model.open(h.network, offerId);
+    if (state === "refused") h.refuse();
+    if (state === "changed_source") h.network.suggestions = [];
+    if (["refused", "confirmed", "changed_source"].includes(state)) await h.model.submit("2026-11-10", "Note", true);
+    assert.equal(h.model.view().status, state);
+    const unavailable = fixture();
+    unavailable.valid_until = "2000-01-01T00:00:00Z";
+    const count = h.calls.length;
+    h.model.open(unavailable, offerId);
+    assert.equal(h.model.view().status, "changed_source");
+    await h.model.submit("2026-11-10", "Note", true);
+    assert.equal(h.calls.length, count);
+  });
+
+test("a recorded request can return to review without duplicating its write", async () => {
+  const h = harness(),
+    earlier = structuredClone(h.network);
+  h.model.open(h.network, offerId);
+  await h.model.submit("2026-11-10", "Note", true);
+  assert.equal(h.model.view().status, "confirmed");
+  h.model.open(earlier, offerId);
+  assert.equal(h.model.view().status, "reviewing");
+  await h.model.submit("2026-11-10", "Note", true);
+  assert.equal(h.model.view().status, "changed_source");
+  assert.equal(h.calls.length, 1);
 });
