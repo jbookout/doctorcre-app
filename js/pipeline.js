@@ -1374,6 +1374,8 @@ function paintPanel(detail) {
       } finally { documentsLoading = false; }
     },
     refresh() { return documentsMounted?.refresh(); },
+    hasUnsavedChanges() { return documentsMounted?.hasUnsavedChanges() || false; },
+    confirmLeave() { return documentsMounted?.confirmLeave() ?? true; },
     dispose() { documentsDisposed = true; documentsMounted?.dispose(); },
   };
   selectWorkspaceTab(workspaceTab);
@@ -1381,6 +1383,7 @@ function paintPanel(detail) {
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
+  if (!fromHistory && dealDocumentsPanel && !dealDocumentsPanel.confirmLeave()) return;
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   disposeChecklist();
   disposeWatchControl();
@@ -1437,6 +1440,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   }
 }
 async function closeWorkspace({ fromHistory = false } = {}) {
+  if (!fromHistory && dealDocumentsPanel && !dealDocumentsPanel.confirmLeave()) return;
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   disposeChecklist();
   disposeWatchControl();
@@ -1708,7 +1712,7 @@ function wire() {
       if (destinationIndex !== workspaceHistoryIndex) { history.go(workspaceHistoryIndex - destinationIndex); return; }
       const restored = restoreTourHistory; restoreTourHistory = null; restored(); return;
     }
-    if (dealToursPanel?.hasUnsavedChanges()) {
+    if (dealToursPanel?.hasUnsavedChanges() || dealDocumentsPanel?.hasUnsavedChanges()) {
       const distance = destinationIndex - workspaceHistoryIndex;
       if (!distance) return;
       const restored = new Promise(resolve => { restoreTourHistory = resolve; });
@@ -1716,7 +1720,7 @@ function wire() {
       if (departurePending) return;
       departurePending = true;
       await restored;
-      const leave = await dealToursPanel?.confirmLeave();
+      const leave = (dealDocumentsPanel?.confirmLeave() ?? true) && (await dealToursPanel?.confirmLeave() ?? true);
       departurePending = false;
       if (leave) history.go(distance);
       return;

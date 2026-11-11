@@ -1,0 +1,11 @@
+# Public tour packet
+
+The share session reads sealed public facts through `/api/share/report` and verified points through `/api/share/map`. CARR owns sourcing, sealing, safety, grants and packet presentation 2.0.0. The app owns DOM layout, print styling and interactions. The presentation contract supplies section captions, ordered stops, field labels, formatted values and visible unknowns. The app refuses missing or incompatible versions, and verifies presentation membership against the raw public stop envelope before matching map identities, sequences and labels.
+
+Two interfaces were considered. A copied static schema would retain independent field and metric formatters. A producer-owned presentation behind the existing authenticated read concentrates formatting and ordering in CARR, so PDF and web adapters consume the same values. The app has no CARR database access or runtime source import. CARR PR 3182 must deploy before this consumer.
+
+Parsing is synchronous and bounded to 50 properties. No cache, write, queue, retry or external call is added. Existing parallel reads have a 15-second deadline and no retry. Each page performs constant-count reads without N+1 requests. Read, contract or membership failures refuse output. Map-only grants retain their existing behavior and cannot print a packet. The existing session lifecycle remains owned by reports/share.js.
+
+Browser printing uses the same property DOM and a low-ink, one-property-per-page layout. CARR's server PDF uses the shared presentation with one overview and one complete property page per stop. Server storage, QC, human review and publication remain separately governed. Exact text parity does not prove visual map coordinates.
+
+The proof CLI extracts actual PDF bytes and compares facts and section text with the producer presentation. Fixture mode builds PDF bytes in memory with pinned pdf-lib and the public presentation fixture; its near-miss appends extra to the first Suite. The privacy checker remains unchanged and can inspect every fixture source string. No binary PDF fixtures are committed. Separately, actual CARR renderTourPacketPdf bytes were validated against the app parser and PDF extractor at CARR 5ed8eeec0c9bf0015a4b4a14fa8eadf76bbe0312. Fixtures need no browser installation; production observation retains the shared browser and HTTP reader lifecycle.

@@ -175,7 +175,7 @@ test("proof CLI requires equal or descendant release ancestry", async (t) => {
           assert.equal(receipt.expectedCommit, expectedCommit);
           assert.equal(receipt.assertions.length, 4);
         } else {
-          assert.match(result.output, /Containing release evidence unavailable/);
+          assert.equal(result.output, `${name} release evidence unavailable\n`);
           assert.deepEqual(
             server.requests.map((request) => request.path),
             ["/app-release"],

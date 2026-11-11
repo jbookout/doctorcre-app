@@ -1,33 +1,14 @@
 import { parse as parseYaml } from 'yaml';
-import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { startFixture } from '../scripts/fixture-http.mjs';
-import { readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import test from 'node:test';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { join } from 'node:path';
 
 const workflow = () => parseYaml(readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'));
-
-test('production accepts same-repository main push CI wakes and resolves current main', () => {
-  const document = workflow();
-  const events = document.on ?? document.true;
-  assert.deepEqual(events.workflow_run, { workflows: ['CI'], types: ['completed'] });
-  assert.deepEqual(Object.keys(events), ['workflow_run']);
-  const job = document.jobs.production;
-  for (const clause of ["head_branch == 'main'", "event == 'push'", 'head_repository.full_name == github.repository']) assert.ok(job.if.includes(clause));
-  assert.equal(job.environment, 'production');
-  assert.equal(job.concurrency['cancel-in-progress'], false);
-  assert.equal(document.permissions.contents, 'read');
-  assert.equal(document.permissions.actions, 'read');
-  assert.equal(document.env?.CLOUDFLARE_API_TOKEN, undefined);
-  assert.equal(job.env?.CLOUDFLARE_API_TOKEN, undefined);
-  const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
-  assert.equal(checkout.with.ref, 'main');
-  assert.equal(checkout.with['fetch-depth'], 0);
-  assert.equal(checkout.with['persist-credentials'], false);
-});
 
 test('production smoke reads each page and refuses a sign-in redirect for another page', async t => {
   async function snapshot(wrongPage = false) {
@@ -67,94 +48,116 @@ test('production waits for successful CI on that source and uses the existing pu
   assert.equal(steps[ci].run, 'python3 scripts/production-candidate.py');
   assert.match(steps[deploy].run, /node scripts\/release-production\.mjs/);
   assert.equal(steps[deploy].env.CLOUDFLARE_API_TOKEN, '${{ secrets.CLOUDFLARE_API_TOKEN }}');
-  assert.match(steps[readback].run, /verify-app-release\.mjs.*"\$SOURCE_COMMIT" production/);
+  assert.match(steps[readback].run, /verifyAppRelease\('https:.*process.env.SOURCE_COMMIT, 'production'/);
   assert.match(steps[smoke].run, /node node_modules\/e2e\/dist\/cli\/bin\.js run --config e2e\.production\.config\.ts --target chromium/);
   for (const [index, step] of steps.entries()) {
     if (index !== deploy) assert.equal(step.env?.CLOUDFLARE_API_TOKEN, undefined);
   }
 });
 
-test('production refreshes main before publication and refuses a staged source after main advances', t => {
-  const steps = workflow().jobs.production.steps;
-  const gate = steps.findIndex(step => step.name === 'Require current main source');
-  const deploy = steps.findIndex(step => step.name === 'Deploy production');
-  const verify = steps.findIndex(step => step.run === 'npm run artifact:verify');
-  assert.ok(gate > verify && gate + 1 === deploy, 'refresh main immediately before publication');
-  assert.equal(steps[gate].env.SOURCE_COMMIT, '${{ steps.candidate.outputs.source_commit }}');
-  const root = temporaryDirectory('production-main-');
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const origin = join(root, 'origin');
-  const checkout = join(root, 'checkout');
-  const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
-  git(root, ['init', '--initial-branch=main', origin]);
-  const commit = () => git(origin, ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'Synthetic source']);
-  commit();
-  const source = git(origin, ['rev-parse', 'HEAD']);
-  git(root, ['clone', origin, checkout]);
-  git(checkout, ['checkout', '--detach', source]);
-  const run = sourceCommit => spawnSync('bash', ['-e', '-c', steps[gate].run], {
-    cwd: checkout, encoding: 'utf8', env: { PATH: process.env.PATH, SOURCE_COMMIT: sourceCommit },
-  });
-  const current = run(source);
-  assert.equal(current.status, 0, current.stderr);
-  assert.notEqual(run('0'.repeat(40)).status, 0, 'refuse a different staged source');
-  commit();
-  assert.equal(git(checkout, ['rev-parse', 'origin/main']), source, 'checkout still has the old remote reference');
-  assert.notEqual(run(source).status, 0, 'refuse stale source after fetching the advanced main');
-  git(checkout, ['remote', 'set-url', 'origin', join(root, 'missing')]);
-  assert.notEqual(run(source).status, 0, 'fail closed when main cannot be fetched');
+
+test('exact successful completion selects its SHA and stale completions emit superseded receipts', () => {
+  const script = new URL('../scripts/production-candidate.py', import.meta.url).pathname;
+  const harness = `
+import importlib.util, json, os, tempfile
+from pathlib import Path
+from unittest.mock import patch
+spec=importlib.util.spec_from_file_location('candidate', ${JSON.stringify(script)})
+module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+sha='b'*40
+run=dict(id=123, run_attempt=1, name='CI', path='.github/workflows/ci.yml', head_sha=sha, head_branch='main', event='push', status='completed', conclusion='success', head_repository=dict(full_name='synthetic/app'), repository=dict(full_name='synthetic/app'))
+def execute(event=None, current=sha, latest=None, broken=None):
+ with tempfile.TemporaryDirectory() as tmp:
+  event=event or dict(action='completed', repository=dict(full_name='synthetic/app'), workflow_run=run)
+  Path(tmp,'event').write_text(json.dumps(event)); Path(tmp,'output').write_text('')
+  def call(args, **kwargs):
+   if broken and args[0]==broken: raise RuntimeError('fixture unavailable')
+   if args[:2]==['gh','api']:
+    assert args[2]=='repos/'+event['repository']['full_name']+'/actions/runs/'+str(event['workflow_run']['id'])
+    return json.dumps(latest or run)
+   if args[:2]==['git','fetch']: return ''
+   if args==['git','rev-parse','HEAD']: return event['workflow_run']['head_sha']
+   if args==['git','rev-parse','origin/main']: return current
+   raise AssertionError(args)
+  with patch.dict(os.environ, dict(GITHUB_EVENT_PATH=tmp+'/event', GITHUB_OUTPUT=tmp+'/output', GITHUB_REPOSITORY=event['repository']['full_name'], RUNNER_TEMP=tmp)), patch.object(module.subprocess,'check_output',side_effect=call):
+   try: module.candidate(); code=0
+   except (Exception,SystemExit): code=1
+  return code, Path(tmp,'output').read_text(), json.loads(Path(tmp,'production-candidate.json').read_text()) if Path(tmp,'production-candidate.json').exists() else None
+code, output, receipt=execute()
+assert code==0 and 'source_commit='+sha in output and 'ready=true' in output
+assert receipt['ci_run_id']==123 and receipt['ci_run_attempt']==1 and receipt['disposition']=='eligible'
+assert execute(current='c'*40)[2]['disposition']=='superseded'
+assert execute(current='unknown')[0]!=0
+# Revalidation after build observes a later main and suppresses the publisher.
+assert execute()[2]['disposition']=='eligible'
+assert execute(current='c'*40)[2]['disposition']=='superseded'
+for field,value in [('event','pull_request'),('event','merge_group'),('head_branch','feature'),('status','in_progress'),('conclusion','failure'),('conclusion','cancelled'),('conclusion','timed_out'),('head_repository',dict(full_name='fork/app'))]:
+ altered=dict(run); altered[field]=value
+ assert execute(dict(action='completed',repository=dict(full_name='synthetic/app'),workflow_run=altered))[0]!=0, (field,value)
+for altered in [dict(run,run_attempt=2,status='in_progress',conclusion=None),dict(run,run_attempt=2,conclusion='failure'),dict(run,head_sha='a'*40),dict(run,path='.github/workflows/other.yml')]:
+ assert execute(latest=altered)[0]!=0
+for broken in ['gh','git']: assert execute(broken=broken)[0]!=0
+for order in [('a','b'),('b','a')]:
+ published=[]
+ for candidate in order:
+  event=dict(action='completed',repository=dict(full_name='synthetic/app'),workflow_run=dict(run,head_sha=candidate*40))
+  code, output, receipt=execute(event,current=sha,latest=event['workflow_run'])
+  assert code==0
+  if 'ready=true' in output: published.append(receipt['source_commit'])
+ assert published==[sha]
+recorded=json.loads(${JSON.stringify(readFileSync(new URL('./fixtures/workflow-run-main-success.json', import.meta.url),'utf8'))})
+recorded_run=recorded['workflow_run']
+# The same production parser contract-checks the recorded transport shape.
+run=recorded_run
+assert execute(recorded,current=recorded_run['head_sha'],latest=recorded_run)[0]==0
+print('candidate transitions passed')
+`;
+  const result = spawnSync('python3', ['-c', harness], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
 });
 
-
-test('queued completion wakes reconcile current main even when older or failed CI finishes last', t => {
-  const document = workflow();
-  const job = document.jobs.production;
-  assert.ok(!job.if.includes("conclusion == 'success'"), 'failed older completions must still reconcile green current main');
-  assert.equal(document.concurrency, undefined, 'unrelated skipped workflows cannot replace a pending main job');
-  assert.equal(job.concurrency.group, 'doctorcre-app-production');
-  assert.equal(job.concurrency['cancel-in-progress'], false);
-  assert.equal(job.steps[0].with.ref, 'main');
-  const candidate = job.steps.find(step => step.id === 'candidate');
-  assert.ok(candidate);
-  const root = temporaryDirectory('production-candidate-');
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
-  git('init', '--initial-branch=main');
-  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'Synthetic main');
-  const sha = git('rev-parse', 'HEAD');
-  const gh = join(root, 'gh');
-  writeFileSync(gh, '#!/usr/bin/env python3\nimport os,sys\nassert "--commit" in sys.argv and sys.argv[sys.argv.index("--commit")+1] == os.environ["FIXTURE_SHA"]\nprint(os.environ["FIXTURE_RUNS"])\n');
-  chmodSync(gh, 0o755);
-  const run = (runs, trigger = { head_sha: 'a'.repeat(40), conclusion: 'success' }) => {
-    const event = join(root, 'event.json');
-    writeFileSync(event, JSON.stringify({ workflow_run: trigger }));
-    const output = join(root, 'output');
-    writeFileSync(output, '');
-    const script = candidate.run.replace('scripts/production-candidate.py', new URL('../scripts/production-candidate.py', import.meta.url).pathname);
-    const result = spawnSync('bash', ['-e', '-c', script], { cwd: root, encoding: 'utf8', env: {
-      PATH: `${root}:${process.env.PATH}`, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'jbookout/doctorcre-app',
-      FIXTURE_SHA: sha, FIXTURE_RUNS: JSON.stringify(runs),
-    } });
-    return { ...result, output: readFileSync(output, 'utf8') };
+test('native max queue retains B when older A completes and exposes capacity exhaustion', () => {
+  const queueMode = workflow().jobs.production.concurrency.queue;
+  const drain = (mode, arrivals) => {
+    const pending = [];
+    const canceled = [];
+    for (const item of arrivals) {
+      if (mode !== 'max') canceled.push(...pending.splice(0));
+      if (pending.length === 100) canceled.push(item); else pending.push(item);
+    }
+    return { pending, canceled };
   };
-  const green = { headSha: sha, status: 'completed', conclusion: 'success' };
-  for (const trigger of [{ head_sha: 'a'.repeat(40), conclusion: 'success' }, { head_sha: 'b'.repeat(40), conclusion: 'failure' }, { head_sha: sha, conclusion: 'success' }]) {
-    const result = run([green], trigger);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.output, /ready=true/);
-    assert.ok(result.output.includes(`source_commit=${sha}`));
+  assert.deepEqual(drain('single', ['B', 'A']).pending.filter(sha => sha === 'B'), []);
+  for (const arrivals of [['A', 'B'], ['B', 'A']]) {
+    assert.deepEqual(drain(queueMode, arrivals).pending.filter(sha => sha === 'B'), ['B']);
   }
-  for (const runs of [[], [{ ...green, status: 'in_progress', conclusion: '' }], [{ ...green, conclusion: 'failure' }], [{ ...green, headSha: 'a'.repeat(40) }]]) {
-    const result = run(runs);
-    assert.notEqual(result.status, 0, 'a deployment that cannot select green main must not report success');
-    assert.match(result.output, /ready=false/);
-  }
-  writeFileSync(gh, '#!/bin/sh\nexit 1\n');
-  assert.notEqual(run([green]).status, 0, 'GitHub failure refuses publication without retry');
-  const build = job.steps.findIndex(step => step.run === 'npm run build');
-  for (const step of job.steps.slice(job.steps.indexOf(candidate) + 1)) {
-    if (step.if === 'failure()') continue;
-    assert.match(step.if, /steps.candidate.outputs.ready == 'true'/, step.name || step.run || step.uses);
-  }
-  assert.equal(job.steps[build].env.DOCTORCRE_SOURCE_COMMIT, '${{ steps.candidate.outputs.source_commit }}');
+  assert.equal(drain(queueMode, Array.from({ length: 101 }, (_, i) => i)).canceled.length, 1);
+});
+
+test('release identity produces a durable receipt and rejects a mismatched provider version', async t => {
+  const root = temporaryDirectory('production-receipt-', t);
+  const sha = 'b'.repeat(40), version = '0f1e2d3c-4b5a-4968-8776-655443322110';
+  const fixture = await startFixture({ routes: new Map([['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: sha, provider_version_id: version }) }]]) });
+  t.after(() => fixture.close());
+  writeFileSync(join(root, 'production-candidate.json'), JSON.stringify({ source_commit: sha, ci_run_id: 123, ci_run_attempt: 1 }));
+  const step = workflow().jobs.production.steps.find(step => step.name === 'Verify production release identity');
+  const run = async providerVersion => {
+    const child = spawn('bash', ['-e', '-c', step.run.replaceAll('https://app.doctorcre.com', fixture.origin)], { env: {
+      PATH: process.env.PATH, RUNNER_TEMP: root, SOURCE_COMMIT: sha, PROVIDER_VERSION_ID: providerVersion,
+      PUBLICATION_OBSERVED_AT: '2026-11-11T09:00:00Z', DISPOSITION: 'already-live', GITHUB_RUN_ID: '456', GITHUB_RUN_ATTEMPT: '1',
+    } });
+    let errors = '';
+    child.stderr.on('data', bytes => { errors += bytes; });
+    const [status] = await once(child, 'close');
+    return { status, errors };
+  };
+  assert.equal((await run(version)).status, 0);
+  const receipt = JSON.parse(readFileSync(join(root, 'production-release.json'), 'utf8'));
+  assert.equal(receipt.disposition, 'already-live');
+  assert.equal(receipt.publication_observed_at, '2026-11-11T09:00:00Z');
+  assert.equal(receipt.release.source_commit, sha);
+  assert.equal(receipt.release.provider_version_id, version);
+  rmSync(join(root, 'production-release.json'));
+  assert.notEqual((await run('another-version')).status, 0);
+  assert.throws(() => readFileSync(join(root, 'production-release.json')));
 });
