@@ -546,7 +546,7 @@ test('blocking 12: account transitions clear private queries, filters and closed
  await s.app.readDetail(id(1));s.d.getElementById('leadDetail').close();await s.app.openReview(id(1),'qualified');s.d.getElementById('stageDialog').close();
  const search=s.d.getElementById('leadSearch');search.value='Distinctive synthetic private query';search.dispatchEvent(new s.w.Event('input'));
  const specialty=s.d.getElementById('specialtyFilter');specialty.value='Dental';specialty.dispatchEvent(new s.w.Event('change'));
- s.setActor('new-example-actor');await s.app.refresh();assert.equal(specialty.value,'');assert.equal(search.value,'');assert.deepEqual(s.app.state.filters,{search:'',owner:'',stage:'',market:'',specialty:''});
+ s.setActor('new-example-actor');await s.app.refresh();assert.equal(specialty.value,'');assert.equal(search.value,'');assert.deepEqual(s.app.state.filters,{reachability:'',search:'',owner:'',stage:'',market:'',specialty:''});
  assert.equal(s.d.getElementById('detailTitle').textContent,'');assert.equal(s.d.getElementById('stageTitle').textContent,'');assert.equal(s.app.state.trigger,null);
  }finally{s.close()}
 });

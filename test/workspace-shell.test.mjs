@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { uiBundle } from '../scripts/ui-bundle.mjs';
 import { readFile, mkdir } from 'node:fs/promises';
 import { handleDoctorcreRequest } from '../src/worker.js';

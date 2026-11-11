@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, componentDocument, fixtureServer, waitForAsync } from './browser-harness.mjs';
+import { chromium, componentDocument, waitForAsync } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 const id='11111111-1111-4111-8111-111111111111';
 const recordings=JSON.parse(await readFile(new URL('./fixtures/activity-attribution-panel/recordings.json',import.meta.url)));
 const provenance=JSON.parse(await readFile(new URL('./fixtures/activity-attribution-panel/provenance.json',import.meta.url)));

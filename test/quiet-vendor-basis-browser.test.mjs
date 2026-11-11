@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 import { validateQuietFollowUps } from '../js/leads-client.js';
 const meetingRecordings = JSON.parse(readFileSync(new URL('./fixtures/vendor-meetings/recordings.json', import.meta.url)));

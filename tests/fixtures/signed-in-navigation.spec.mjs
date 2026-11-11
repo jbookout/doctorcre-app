@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { startFixtureServer } from '../../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from '../../test/fixture-probe.ts';
 
 const origin = 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev';
 test.use({ baseURL: origin });

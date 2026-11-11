@@ -62,7 +62,8 @@ test('valid leap days offsets and fractional seconds preserve Chicago and elapse
 });
 
 test('email source unavailable labels retain keyboard retry at phone and desktop widths', async t => {
-  const { chromium, fixtureServer } = await import('./browser-harness.mjs');
+  const { chromium } = await import('./browser-harness.mjs');
+  const { ownedFixtureServer: fixtureServer } = await import('./fixture-probe.ts');
   const { buildArtifact } = await import('../scripts/artifact.mjs');
   const { temporaryDirectory } = await import('../scripts/temp-directory.mjs');
   const { rm } = await import('node:fs/promises');

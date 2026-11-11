@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { componentDocument, chromium, fixtureServer, pausedClock } from './browser-harness.mjs';
+import { componentDocument, chromium, pausedClock } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { observeExcerpts } from '../scripts/prove-fact-excerpt-invalid-expiry.mjs';
 
 for (const width of [390, 1440]) {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { assertChartGaps } from '../scripts/prove-answer-chart-missing-value-gaps.mjs';
 
 test('answer gaps and inspection transitions at phone and desktop widths in both themes',async t=>{

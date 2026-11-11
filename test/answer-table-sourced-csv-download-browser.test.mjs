@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { assertSourcedCsv } from '../scripts/prove-answer-table-sourced-csv-download.mjs';
 const recordings = JSON.parse(await readFile(new URL('./fixtures/answer-table-sourced-csv-download/recordings.json', import.meta.url)));
 test('sourced CSV selection, lifecycle, escaping and zero business calls', async t => {

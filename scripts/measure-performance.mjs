@@ -7,7 +7,7 @@ import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { profile, screens, tasks, runTaskScenario, applyPhoneProfile } from './performance-scenarios.mjs';
-import { startFixtureServer } from './fixture-server.mjs';
+import { ownedServer as startFixtureServer } from '../test/fixture-probe.ts';
 import { directoryFixture } from '../test/fixtures/vendor-directory.synthetic.mjs';
 
 export function collectScriptResponses(page) {

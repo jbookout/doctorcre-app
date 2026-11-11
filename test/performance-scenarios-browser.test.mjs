@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { chromium } from './browser-harness.mjs';
 import { profile, screens } from '../scripts/performance-scenarios.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 
 test('the phone Relationships performance scenario opens the visible connection detail', async t => {
   const outDir=await temporaryDirectory('doctorcre-perf-artifact-');

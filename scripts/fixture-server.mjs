@@ -1,3 +1,4 @@
+import { requireFixtureCapability } from '../test/fixture-probe.ts';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -6,7 +7,8 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 // Starts scripts/serve.mjs on an OS-picked port. The exit promise exists before
 // startup can fail, so a server that dies early is reaped instead of awaited
 // forever, and stop() is bounded even when the child ignores SIGTERM.
-export async function startFixtureServer({ args = ['scripts/serve.mjs'], env = {}, startupMs = 15000, stopMs = 5000 } = {}) {
+export async function startFixtureServer({ args = ['scripts/serve.mjs'], env = {}, startupMs = 15000, stopMs = 5000 } = {}, capability) {
+  requireFixtureCapability(capability);
   const child = spawn(process.execPath, args, { cwd: root, env: { ...process.env, PORT: '0', ...env },
     stdio: ['ignore', 'pipe', 'inherit'] });
   const exited = new Promise(resolve => {

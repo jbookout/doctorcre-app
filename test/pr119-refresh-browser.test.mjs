@@ -1,7 +1,8 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium, fixtureServer, settles, waitForAsync } from './browser-harness.mjs';
+import { chromium, settles, waitForAsync } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 let server, origin;

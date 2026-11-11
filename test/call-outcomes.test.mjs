@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { JSDOM } from 'jsdom';
-import { componentDocument, chromium, fixtureServer, settles } from './browser-harness.mjs';
+import { componentDocument, chromium, settles } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { callChangeText, callOutcomesHtml, mountCallOutcomes, undoRefusal } from '../js/call-outcomes.js';
 
 async function callDocument(page, origin) {

@@ -2,7 +2,8 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { routeLeads } from './leads-browser-fixture.mjs';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 let server, browser;
 before(async () => { server = await fixtureServer(); browser = await chromium.launch(); });
@@ -48,6 +49,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`sh
       assert.equal(await card.locator('.work-card-body .lead-timing').count(), 1, 'ordinary leads show compact timing');
       assert.ok((await card.locator('.lead-timing').boundingBox()).height <= 90, 'ordinary lead timing stays compact');
     }
+    if (surface === 'leads') assert.match(await card.locator('.lead-reachability').textContent(), /^Research · Unknown reachability$/, 'legacy leads explain their unknown reachability');
     if (surface === 'brief') {
       assert.equal(await card.locator('.work-card-body, .work-card-status').count(), 0, 'brief dates belong in meta');
       assert.match(await card.locator('.work-card-meta').textContent(), /Due|No due date/);

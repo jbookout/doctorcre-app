@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, fixtureServer, pausedClock } from './browser-harness.mjs';
+import { chromium, pausedClock } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { detail, tourId } from './fixtures/tour-day.synthetic.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 

@@ -5,7 +5,8 @@ import test, { after, before } from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildArtifact } from "../scripts/artifact.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
-import { chromium, fixtureServer } from "./browser-harness.mjs";
+import { chromium } from "./browser-harness.mjs";
+import { ownedFixtureServer as fixtureServer } from "./fixture-probe.ts";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 
 function fixtureDetail() {
