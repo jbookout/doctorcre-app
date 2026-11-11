@@ -1,0 +1,30 @@
+stateDiagram-v2
+  state DownloadAccess {
+    state Permission {
+      [*] --> Unverified
+      Unverified --> Allowed: Verified feedback permits download
+      Unverified --> Denied: View-only or absent capability
+      Unverified --> Unavailable: Session becomes unavailable
+      Allowed --> Unavailable: Session becomes unavailable
+      Denied --> Unavailable: Session becomes unavailable
+    }
+    --
+    state Control {
+      [*] --> Hidden
+      Hidden --> Ready: Verified feedback permits download [when Unverified]
+      %% when Unverified
+      Hidden --> Hidden: View-only or absent capability
+      Ready --> Downloading: Client selects Download PDF [when Allowed]
+      %% when Allowed
+      Downloading --> Ready: Download completes or ordinary failure [when Allowed]
+      %% when Allowed
+      Ready --> Retired: Session becomes unavailable
+      Downloading --> Retired: Session becomes unavailable
+      Hidden --> Retired: Session becomes unavailable
+      Retired --> Retired: Late download settles
+    }
+  }
+  %% never UnverifiedReady: Unverified & Ready -- Only verified producer permission enables Download PDF.
+  %% never DeniedReady: Denied & Ready -- View-only access never enables Download PDF.
+  %% never UnavailableReady: Unavailable & Ready -- Unavailable access never restores download controls.
+  %% never UnavailableDownloading: Unavailable & Downloading -- Unavailable access retires pending downloads.

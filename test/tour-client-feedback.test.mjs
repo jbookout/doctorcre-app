@@ -18,6 +18,7 @@ const css = readFileSync(new URL("../reports/share.css", import.meta.url), "utf8
 const tours = readFileSync(new URL("../tours/app.js", import.meta.url), "utf8");
 const tourHtml = readFileSync(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 
+const recorded = JSON.parse(readFileSync(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"));
 const tourScript = await buildToursAppScript();
 const propertyRef = "property:public:synthetic_property_01";
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -138,7 +139,7 @@ test("automatic refresh updates selected Tour details and preserves unsaved note
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Updated response/);
 });
 
-async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"], fastTimeout = false } = {}) {
+async function openShare({ refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, feedbackKind = "feedback", fastTimeout = false } = {}) {
   const dom = openDom(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
   dom.window.history.replaceState({doctorcreShare:'projection:public:synthetic_projection',doctorcreShareContext:'synthetic-exchange'}, '', '/share');
   dom.window.localStorage.setItem('doctorcre-public-share-context-v1','synthetic-exchange');
@@ -155,7 +156,8 @@ async function openShare({ items = [], refuseOnce = false, properties = [{ prope
         const response = await feedbackRead(options);
         if (response) return response;
       }
-      data = { projection_ref: "projection:public:synthetic_projection", permission_scopes: permissionScopes, ...(items === null ? {} : { items }) };
+      const response = recorded.responses[feedbackKind];
+      return new Response(JSON.stringify(response.body), { status: response.status });
     }
     else if (path === "/api/share/shortlist" || path === "/api/share/comment") {
       writes.push({ path, ...JSON.parse(options.body) });
@@ -175,14 +177,13 @@ async function openShare({ items = [], refuseOnce = false, properties = [{ prope
 }
 
 test("reopening a private saved shortlist offers deliberate add and remove without inventing a prior choice", async t => {
-  // projectTourClientFeedback at pinned CARR 0cc6fe2538a81521bf8c25b0df58aa4063ed614b
+  // projectTourClientFeedback at pinned CARR a90886e741f8d8d390c2427080da08e904ece7d8
   // returns only property_ref in each item, even when shortlisted is saved true.
-  const responseItems = [{ property_ref: propertyRef }];
-  const first = await openShare({ items: responseItems });
+  const first = await openShare({ feedbackKind: "feedbackSaved" });
   shortlistAction(first.doc).click(); await settle();
   assert.equal(first.writes[0].shortlisted, true);
 
-  const reopened = await openShare({ items: responseItems });
+  const reopened = await openShare({ feedbackKind: "feedbackSaved" });
   assert.match(reopened.doc.querySelector(".shortlist-state")?.textContent || "", /Previous shortlist choices are not shown/);
   assert.equal(reopened.doc.querySelectorAll("button[aria-pressed]").length, 0);
   assert.ok(shortlistAction(reopened.doc));
@@ -263,7 +264,7 @@ test("an unavailable projection identity clears the whole share and requires reo
 });
 
 test("a successful grant without feedback scopes stays read-only without an outage or retry", async t => {
-  const app = await openShare({ permissionScopes: [] });
+  const app = await openShare({ feedbackKind: "feedbackReadOnly" });
   assert.equal(app.doc.querySelectorAll(".feedback-controls").length, 0);
   assert.equal(app.doc.querySelector("#status").textContent, "Report and map loaded.");
   assert.equal(app.doc.querySelector("#feedback-status").textContent, "");
@@ -271,7 +272,7 @@ test("a successful grant without feedback scopes stays read-only without an outa
 });
 
 test("a first comment appears even when the feedback response omits property rows", async t => {
-  const app = await openShare({ items: null });
+  const app = await openShare();
   const input = app.doc.querySelector("textarea");
   const comment = "Demo: please check the parking.";
   input.value = comment;
@@ -358,4 +359,25 @@ for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stal
   assert.match(app.doc.querySelector("#status").textContent, /unavailable/);
   assert.equal(signals[0]?.aborted, true);
   assert.equal(app.dom.window.history.state, null);
+});
+
+test("download control stays hidden without permission and retires on unavailable", async () => {
+  for (const feedbackKind of ["feedback", "feedbackDownload", "expired", "revoked", "missingScope"]) {
+    const app = await openShare({ feedbackKind });
+    const download = [...app.doc.querySelectorAll("button")].find(button => button.textContent === "Download PDF");
+    assert.equal(download.hidden, feedbackKind !== "feedbackDownload", feedbackKind);
+    if (["expired", "revoked"].includes(feedbackKind)) {
+      assert.match(app.doc.querySelector("#status").textContent, /unavailable/);
+      assert.equal(app.doc.querySelectorAll(".report-item").length, 0);
+    }
+    if (feedbackKind === "feedbackDownload") {
+      app.dom.window.dispatchEvent(new app.dom.window.StorageEvent("storage", {
+        key: "doctorcre-public-share-context-v1", newValue: "another-exchange",
+      }));
+      assert.equal(download.hidden, true);
+      assert.equal(download.disabled, true);
+      assert.match(app.doc.querySelector("#status").textContent, /unavailable/);
+    }
+    app.dom.window.close();
+  }
 });

@@ -1,0 +1,24 @@
+stateDiagram-v2
+  state Proof {
+    state Observation {
+      [*] --> Checking
+      Checking --> Opening: Release contains merge [when Checking]
+      Checking --> Insufficient: Release unavailable or unrelated
+      Opening --> Passed: Exact values and permissions agree
+      Opening --> Failed: Values or permissions disagree
+      Opening --> Insufficient: Browser or evidence unavailable
+    }
+    --
+    state Resources {
+      [*] --> Closed
+      Closed --> Acquired: Release contains merge [when Checking]
+      %% when Checking
+      Acquired --> Closed: Exact values and permissions agree
+      Acquired --> Closed: Values or permissions disagree
+      Acquired --> Closed: Browser or evidence unavailable
+    }
+  }
+  %% never UnreleasedBrowser: Checking & Acquired -- Browsers open only after the release gate.
+  %% never PassedLeak: Passed & Acquired -- Passing closes every acquired browser.
+  %% never FailedLeak: Failed & Acquired -- Assertion failure closes every acquired browser.
+  %% never UnavailableLeak: Insufficient & Acquired -- Missing evidence closes every acquired browser.

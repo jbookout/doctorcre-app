@@ -473,8 +473,8 @@ test("PR111 #5: outcome read failure remains retryable from the receipt dock", a
 
 test("Dot 2 follow-through: a late confidential link cannot reappear under another Tour", async () => {
   const $=elements();$("#share-expiry").value="2026-10-02";$("#receipt-digest").value="sha256:"+"a".repeat(64);
-  const state={tour:{id:"A"},projectionId:"projection-A",shareGrantId:"",rawShareToken:""};const pending=deferred();
-  const h=handlers("tours/app.js","  async function issueShare(","  async function revokeShare(",{state,$,document:{querySelectorAll:()=>[{value:"view_packet"}]},newShareToken:()=>"synthetic-token",sha256:async()=>"digest",digest:()=>true,uuid:()=>"key",post:()=>pending.promise,text:(value,fallback)=>value||fallback,status:noop},["issueShare"]);
+  const state={tour:{id:"A"},projectionId:"projection-A",shareGrantId:"",rawShareToken:"",shareGrants:[]};const pending=deferred();
+  const h=handlers("tours/app.js","  async function issueShare(","  async function revokeShare(",{state,$,document:{querySelectorAll:()=>[{value:"view_packet"}]},prepareClientGrant:async ({projectionId, scopes, expiresAt, grantId})=>({token:"synthetic-token",payload:{projection_id:projectionId,permission_scopes:scopes,expires_at:expiresAt,token_digest:"digest",receipt_digest:"sha256:"+"a".repeat(64),idempotency_key:"key",...(grantId?{share_grant_id:grantId}:{})}}),digest:()=>true,uuid:()=>"key",post:()=>pending.promise,text:(value,fallback)=>value||fallback,status:noop,renderShareGrants:noop},["issueShare"]);
   const issuing=h.issueShare();await tick();state.tour={id:"B"};state.projectionId="projection-B";$("#share-link").hidden=true;
   pending.resolve({share_grant_id:"grant-A"});await issuing;
   assert.equal($("#share-link").hidden,true);assert.equal($("#share-url").value,"");assert.equal(state.rawShareToken,"");
@@ -483,8 +483,8 @@ test("Dot 2 follow-through: a late confidential link cannot reappear under anoth
 const grantId="00000000-0000-4000-8000-000000000002";
 function shareHarness(receipt,rotate=false) {
   const $=elements();$("#share-expiry").value="2026-10-02";$("#receipt-digest").value="sha256:"+"a".repeat(64);$("#share-link").hidden=true;
-  const state={tour:{id:"A"},projectionId:"projection-A",shareGrantId:rotate ? grantId : "",rawShareToken:""};const calls=[];
-  const h=handlers("tours/app.js","  async function issueShare(","  async function revokeShare(",{state,$,document:{querySelectorAll:()=>[{value:"view_packet"}]},newShareToken:()=>"synthetic-token",sha256:async()=>"digest",digest:()=>true,id:value=>typeof value==="string"&&/^[0-9a-f-]{36}$/.test(value),uuid:()=>"key",post:async(path,args)=>{calls.push({path,args});return typeof receipt==="function" ? receipt(calls.length) : receipt;},text:(value,fallback)=>value||fallback,status:noop},["issueShare"]);
+  const state={tour:{id:"A"},projectionId:"projection-A",shareGrantId:rotate ? grantId : "",rawShareToken:"",shareGrants:[]};const calls=[];
+  const h=handlers("tours/app.js","  async function issueShare(","  async function revokeShare(",{state,$,document:{querySelectorAll:()=>[{value:"view_packet"}]},prepareClientGrant:async ({projectionId, scopes, expiresAt, grantId})=>({token:"synthetic-token",payload:{projection_id:projectionId,permission_scopes:scopes,expires_at:expiresAt,token_digest:"digest",receipt_digest:"sha256:"+"a".repeat(64),idempotency_key:"key",...(grantId?{share_grant_id:grantId}:{})}}),digest:()=>true,id:value=>typeof value==="string"&&/^[0-9a-f-]{36}$/.test(value),uuid:()=>"key",post:async(path,args)=>{calls.push({path,args});return typeof receipt==="function" ? receipt(calls.length) : receipt;},text:(value,fallback)=>value||fallback,status:noop,renderShareGrants:noop},["issueShare"]);
   return {h,state,$,calls};
 }
 for(const receipt of [{},null,{share_grant_id:9},{share_grant_id:"invalid"}]) for(const rotate of [false,true]) test(`PR111 #12: ${rotate?"rotation":"issue"} requires valid grant receipt ${JSON.stringify(receipt)}`,async()=>{
@@ -495,7 +495,7 @@ for(const receipt of [{},null,{share_grant_id:9},{share_grant_id:"invalid"}]) fo
 for(const rotate of [false,true]) test(`PR111 #13: lost ${rotate?"rotation":"issue"} receipt replays its retained token and request`,async()=>{
   const successor="00000000-0000-4000-8000-000000000003";
   const {h,state,$,calls}=shareHarness(n=>{if(n===1)throw new Error("committed; reply lost");return {ok:true,share_grant_id:successor};},rotate);let tokens=0,keys=0;
-  h.newShareToken=()=>`token-${++tokens}`;h.uuid=()=>`key-${++keys}`;h.sha256=async raw=>`digest-${raw}`;
+  h.prepareClientGrant=async ({projectionId,scopes,expiresAt,grantId})=>({token:`token-${++tokens}`,payload:{projection_id:projectionId,permission_scopes:scopes,expires_at:expiresAt,token_digest:`digest-${tokens}`,receipt_digest:"sha256:"+"a".repeat(64),idempotency_key:`key-${++keys}`,...(grantId?{share_grant_id:grantId}:{})}});
   await assert.rejects(h.issueShare(rotate));assert.ok(state.pendingShare);assert.match($("#share-state").textContent,/unknown/i);
   $("#share-expiry").value="2026-11-10";
   await h.issueShare(!rotate);assert.equal(calls.length,2);assert.deepEqual(calls[1],calls[0]);assert.equal(tokens,1);assert.equal(keys,1);assert.equal(state.rawShareToken,"token-1");assert.equal(state.shareGrantId,successor);assert.equal(state.pendingShare,null);
@@ -534,13 +534,13 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
 
 for (const rotate of [false,true]) test(`PR111 R2: corrected ${rotate ? "rotation" : "issue"} follows a typed validation refusal`, async () => {
   const {h,state,$}=shareHarness(null,rotate);const requests=[];let tokens=0,keys=0;
-  h.newShareToken=()=>`token-${++tokens}`;h.uuid=()=>`key-${++keys}`;
+  h.prepareClientGrant=async ({projectionId,scopes,expiresAt,grantId})=>({token:`token-${++tokens}`,payload:{projection_id:projectionId,permission_scopes:scopes,expires_at:expiresAt,token_digest:`digest-${tokens}`,receipt_digest:"sha256:"+"a".repeat(64),idempotency_key:`key-${++keys}`,...(grantId?{share_grant_id:grantId}:{})}});
   $("#receipt-digest").value="sha256:"+"A".repeat(64);
   const transport=handlers("tours/app.js","  async function request(","  function validateDetail(",{
     state,sessionBinding:"binding",AbortController,
     fetch:async(path,init)=>{
       const payload=JSON.parse(init.body);requests.push({path,payload});
-      return /^[a-f0-9]{64}$/.test(payload.receipt_digest.slice(7))
+      return requests.length > 1 && /^[a-f0-9]{64}$/.test(payload.receipt_digest.slice(7))
         ? new Response(JSON.stringify({data:{share_grant_id:grantId}}))
         : new Response(JSON.stringify({error:"invalid_payload"}),{status:400});
     },
