@@ -1,3 +1,4 @@
+import { cdpEndpoint } from "./cdp-fixture.ts";
 import { execFileSync } from 'node:child_process';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
@@ -127,16 +128,10 @@ test('unreachable CDP and page acquisition refusal are insufficient evidence', a
 test('late CDP page is drained before disconnect and preserves existing tabs', async t => {
   const { chromium } = await import('../scripts/proof-browser.mjs');
   const { chromium: driver } = await import('playwright');
-  const { readFile } = await import('node:fs/promises');
-  const { resolve } = await import('node:path');
   const browser = await chromium.launch({ args: ['--remote-debugging-port=0', '--enable-automation'] });
   t.after(() => browser.close());
   const sentinel = await browser.newPage(); await sentinel.setContent('<title>Preserved tab</title>');
-  const session = await browser.newBrowserCDPSession();
-  const { arguments: args } = await session.send('Browser.getBrowserCommandLine'); await session.detach();
-  const profile = args.find(arg => arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length);
-  const [port] = String(await readFile(resolve(profile, 'DevToolsActivePort'))).split('\n');
-  const endpoint = `http://127.0.0.1:${port}`, before = browser.contexts()[0].pages().length;
+  const endpoint = await cdpEndpoint(browser), before = browser.contexts()[0].pages().length;
   let acquired = false;
   const engine = { connectOverCDP: async (...args) => {
     const connection = await driver.connectOverCDP(...args), context = connection.contexts()[0], newPage = context.newPage.bind(context);

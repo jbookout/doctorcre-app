@@ -132,7 +132,7 @@ function domain() {
   return { tours, calls, transitions, fetch, fail(path, kind) { fault = { path, kind }; } };
 }
 async function open(store, storage = {}, query = "") {
-  const dom = openDom(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only" }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
+  const dom = openDom(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only", pretendToBeVisual: true }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
   if (store.fastTimeout) { const timeout = dom.window.setTimeout.bind(dom.window); dom.window.setTimeout = (fn, delay) => timeout(fn, delay === 15000 ? 0 : delay); }
   for (const [key, value] of Object.entries(storage)) dom.window.sessionStorage.setItem(key, value);
   const deal = new URLSearchParams(query).get("deal") || fixtureDeal;
@@ -1420,4 +1420,139 @@ test('a changed Tour read keeps the guarded unsaved composer visible',async()=>{
   assert.match(doc.querySelector('#status').textContent,/Save or reconcile the displayed draft/);
   assert.equal(doc.querySelector('#tour-panel').hidden,false);
  }finally{dom.window.close();}
+});
+
+function dragStop(dom, doc, source, target, ending = 'pointerup') {
+  const handle = doc.querySelector(`[data-property-id="${source}"] [data-stop-drag]`);
+  const hit = doc.querySelector(`#route-stops [data-property-id="${target}"]`);
+  doc.elementFromPoint = () => hit;
+  function pointer(type, node) {
+    const event = new dom.window.Event(type, { bubbles: true, cancelable: true });
+    Object.assign(event, { pointerId: 1, button: 0, isPrimary: true, clientX: 20, clientY: 200 });
+    node.dispatchEvent(event);
+  }
+  pointer('pointerdown', handle); pointer('pointermove', doc);
+  pointer(ending, doc);
+}
+test('cancelled drag can restart and complete without a write', async () => {
+  const store = domain(), {dom, doc} = await open(store);
+  try {
+    await create(doc); await addCart(doc);
+    const before = store.calls.filter(call => call.body).length;
+    dragStop(dom, doc, propA, propB, 'pointercancel');
+    assert.deepEqual([...doc.querySelectorAll('#route-stops > li')].map(row => row.dataset.propertyId), [propA, propB]);
+    dragStop(dom, doc, propA, propB);
+    assert.deepEqual([...doc.querySelectorAll('#route-stops > li')].map(row => row.dataset.propertyId), [propB, propA]);
+    assert.equal(store.calls.filter(call => call.body).length, before);
+  } finally { dom.window.close(); }
+});
+for (const phase of ['idle', 'dirty', 'cancelled', 'undo', 'saving', 'unknown', 'reconciled', 'reviewed']) test(`session retirement from ${phase} removes Tour edits and refuses writes`, async () => {
+  const store = domain(), normalFetch = store.fetch;
+  let release;
+  store.fetch = async (path, options) => {
+    const result = await normalFetch(path, options);
+    if (phase === 'saving' && path === '/api/tours/route-stop') await new Promise(resolve => { release = resolve; });
+    return result;
+  };
+  const {dom, doc} = await open(store);
+  try {
+    await create(doc); await addCart(doc);
+    if (phase === 'idle') await saveAndAccept(doc);
+    if (phase === 'saving') {
+      doc.querySelector('#save-composer').click(); await settle(); assert.equal(typeof release, 'function');
+    }
+    if (phase === 'unknown') {
+      store.fail('/api/tours/route-stop', 'lost'); doc.querySelector('#save-composer').click(); await settle();
+      assert.match(doc.querySelector('#composer-state').textContent, /Outcome unknown/);
+    }
+    if (phase === 'cancelled') dragStop(dom, doc, propA, propB, 'pointercancel');
+    if (phase === 'undo') { dragStop(dom, doc, propA, propB); doc.querySelector('#undo-route').click(); }
+    if (phase === 'reconciled') {
+      store.fail('/api/tours/route-stop', 'lost'); doc.querySelector('#save-composer').click(); await settle();
+      assert.match(doc.querySelector('#composer-state').textContent, /Outcome unknown/);
+      doc.querySelector('#reconcile-composer').click(); await settle();
+      assert.equal(doc.querySelector('#retry-composer').hidden, false);
+    }
+    if (phase === 'reviewed') {
+      doc.querySelector('#save-composer').click(); await settle(); doc.querySelector('#route-reviewed').click();
+      assert.equal(doc.querySelector('#accept-route').disabled, false);
+    }
+    const before = store.calls.filter(call => call.body).length;
+    dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+    for (const id of ['save-composer', 'retry-composer', 'accept-route', 'undo-route']) doc.querySelector(`#${id}`).click();
+    doc.dispatchEvent(new dom.window.Event('pointerup', {bubbles:true})); release?.(); await settle();
+    assert.equal(doc.querySelectorAll('[data-stop-drag]').length, 0);
+    assert.equal(doc.querySelector('#tour-name').textContent, '');
+    assert.match(doc.querySelector('#tour-recovery').textContent, /Sign in/i);
+    assert.equal(store.calls.filter(call => call.body).length, before);
+  } finally { dom.window.close(); }
+});
+for (const ending of ['pointerup', 'pointercancel']) test(`drag ${ending} preserves identities and one undo restores order without a write`, async () => {
+  const store = domain(), { dom, doc } = await open(store);
+  await create(doc); await addCart(doc);
+  const before = store.calls.filter(c => c.body).length;
+  dragStop(dom, doc, propA, propB, ending);
+  assert.deepEqual([...doc.querySelectorAll('#route-stops > li')].map(n => n.dataset.propertyId), ending === 'pointerup' ? [propB, propA] : [propA, propB]);
+  assert.equal(store.calls.filter(c => c.body).length, before);
+  if (ending === 'pointerup') { doc.querySelector('#undo-route').click(); assert.deepEqual([...doc.querySelectorAll('#route-stops > li')].map(n => n.dataset.propertyId), [propA, propB]); }
+  dom.window.close();
+});
+test('drag retires on session invalidation and cannot change or save the old Tour', async () => {
+  const store = domain(), { dom, doc } = await open(store);
+  await create(doc); await addCart(doc);
+  const handle = doc.querySelector('[data-stop-drag]');
+  const start = new dom.window.Event('pointerdown', { bubbles: true });
+  Object.assign(start, { pointerId: 1, button: 0, isPrimary: true }); handle.dispatchEvent(start);
+  const before = store.calls.filter(c => c.body).length;
+  dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+  doc.dispatchEvent(new dom.window.Event('pointerup', { bubbles: true }));
+  assert.equal(doc.querySelectorAll('[data-stop-drag]').length, 0);
+  assert.equal(store.calls.filter(c => c.body).length, before);
+  dom.window.close();
+});
+
+test('drag and keyboard produce identical save mapping, review digest and acceptance', async () => {
+  const store = domain(), { dom, doc } = await open(store);
+  await create(doc); await addCart(doc); await saveAndAccept(doc);
+  const order = () => [...doc.querySelectorAll('#route-stops > li')].map(n => n.dataset.propertyId);
+  doc.querySelector(`[data-property-id="${propB}"] .stop-controls button`).click();
+  const keyboard = order(); doc.querySelector('#undo-route').click();
+  dragStop(dom, doc, propB, propA);
+  assert.deepEqual(order(), keyboard);
+  doc.querySelector('#save-composer').click(); await settle();
+  const draft = [...store.tours.values()][0].routes[0];
+  assert.deepEqual(draft.stops.map(s => s.property_id), keyboard);
+  assert.deepEqual(store.transitions.filter(t => t.new_route_version_id === draft.id).map(t => t.disposition), ['reordered', 'reordered']);
+  doc.querySelector('#route-reviewed').click(); doc.querySelector('#accept-route').click(); await settle();
+  assert.equal(draft.accepted, true);
+  assert.equal(store.calls.filter(c => c.path === '/api/tours/route-accept').at(-1).body.acceptance_digest, fixtureReviewDigest(draft));
+  dom.window.close();
+});
+test('fixed, held and excluded stops keep their slots and timing during flexible reorder', async () => {
+  const { reorderFlexibleStops } = await import('../src/ui/tour-stop-drag.ts');
+  const rows = ['a', 'fixed', 'held', 'excluded', 'b', 'c'].map(property_id => ({ property_id, stop_state: ['held', 'excluded'].includes(property_id) ? property_id : 'active', locked_appointment: property_id === 'fixed', appointment_start: '2030-01-02T10:00:00Z', dwell_minutes: 30, buffer_minutes: 10 }));
+  const result = reorderFlexibleStops(rows, 'a', 'c');
+  assert.deepEqual(result.map(r => r.property_id), ['b', 'fixed', 'held', 'excluded', 'c', 'a']);
+  for (let i = 1; i < 4; i++) assert.equal(result[i], rows[i]);
+  assert.deepEqual(result.find(r => r.property_id === 'a'), rows[0]);
+  for (const anchor of ['fixed', 'held', 'excluded']) { assert.equal(reorderFlexibleStops(rows, anchor, 'a'), rows); assert.equal(reorderFlexibleStops(rows, 'a', anchor), rows); }
+});
+
+for (const ending of ['Escape', 'outside', 'unchanged', 'lostcapture']) test(`drag cancellation covers Escape, outside drop, unchanged drop and lost capture: ${ending}`, async () => {
+  const store = domain(), { dom, doc } = await open(store);
+  await create(doc); await addCart(doc);
+  const before = store.calls.filter(c => c.body).length;
+  const handle = doc.querySelector('[data-stop-drag]');
+  const pointer = type => { const e = new dom.window.Event(type, { bubbles: true, cancelable: true }); Object.assign(e, { pointerId: 1, isPrimary: true, button: 0, clientX: 20, clientY: 200 }); return e; };
+  handle.dispatchEvent(pointer('pointerdown'));
+  doc.elementFromPoint = () => doc.querySelector(`[data-property-id="${ending === 'unchanged' ? propA : propB}"]`);
+  doc.dispatchEvent(pointer('pointermove'));
+  if (ending === 'Escape') doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  if (ending === 'outside') doc.elementFromPoint = () => doc.body;
+  if (ending === 'lostcapture') handle.dispatchEvent(pointer('lostpointercapture'));
+  doc.dispatchEvent(pointer('pointerup'));
+  assert.deepEqual([...doc.querySelectorAll('#route-stops > li')].map(n => n.dataset.propertyId), [propA, propB]);
+  assert.equal(store.calls.filter(c => c.body).length, before);
+  assert.equal(doc.querySelector('.stop-dragging'), null);
+  dom.window.close();
 });

@@ -1,3 +1,4 @@
+import { cdpEndpoint } from "./cdp-fixture.ts";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
@@ -74,14 +75,10 @@ test('CDP proof closes its acquired page and preserves the shared browser and ex
   t.after(()=>browser.close());
   const sentinel=await browser.newPage();
   await sentinel.setContent('<title>Owned synthetic shared page</title>');
-  const session=await browser.newBrowserCDPSession();
-  const {arguments:args}=await session.send('Browser.getBrowserCommandLine');
-  await session.detach();
-  const profile=args.find(arg=>arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length);
-  const [port]=String(await readFile(resolve(profile,'DevToolsActivePort'))).split('\n');
+  const endpoint=await cdpEndpoint(browser);
   const origin=await server(t);
   const before=browser.contexts()[0].pages().length;
-  assert.equal((await prove({origin,expectedCommit:expected,cdpUrl:`http://127.0.0.1:${port}`})).status,'passed');
+  assert.equal((await prove({origin,expectedCommit:expected,cdpUrl:endpoint})).status,'passed');
   assert.equal(browser.isConnected(),true);
   assert.equal(await sentinel.title(),'Owned synthetic shared page');
   assert.equal(browser.contexts()[0].pages().length,before);
@@ -106,12 +103,8 @@ test('CDP deadline waits for a late page before disconnecting and leaves no borr
   t.after(()=>browser.close());
   const sentinel=await browser.newPage();
   await sentinel.setContent('<title>Preserved shared page</title>');
-  const session=await browser.newBrowserCDPSession();
-  const {arguments:args}=await session.send('Browser.getBrowserCommandLine');
-  await session.detach();
-  const profile=args.find(arg=>arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length);
-  const [port]=String(await readFile(resolve(profile,'DevToolsActivePort'))).split('\n');
-  const cdpUrl=`http://127.0.0.1:${port}`;
+  const endpoint=await cdpEndpoint(browser);
+  const cdpUrl=endpoint;
   const connect=driver.connectOverCDP.bind(driver);
   const baseline=browser.contexts()[0].pages().length;
   let acquired=false;
