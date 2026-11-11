@@ -1,3 +1,4 @@
+import { unreachableCdpEndpoint } from "./unreachable-cdp-fixture.ts";
 import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 export const browserCases = [];
 function test(name, run) { browserCases.push([name, run]); }
@@ -7,7 +8,7 @@ import { promisify } from 'node:util';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from '../scripts/proof-browser.mjs';
-import { startFixture, startWorkerFixture } from '../scripts/fixture-http.mjs';
+import { startWorkerFixture } from '../scripts/fixture-http.mjs';
 import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { validateLeadWorkspace, validateLeadDetail } from '../js/leads-client.js';
@@ -206,9 +207,7 @@ for (const acquisition of ['unreachable', 'connection rejection', 'page rejectio
       ${acquisition === 'connection rejection' ? "throw Error('retired connection');" : "return { contexts: () => [{ newPage: async () => { throw Error('retired page'); } }], close: async () => {} };"}
     };`}
   `);
-  const reservation = await startFixture();
-  const cdpUrl = reservation.origin;
-  await reservation.close();
+  const cdpUrl = await unreachableCdpEndpoint();
   await assert.rejects(promisify(execFile)(process.execPath, [
     '--import', preload, 'scripts/prove-research-attention.mjs',
     '--origin', options.origin, '--expected-commit', options.expectedCommit, '--cdp-url', cdpUrl,

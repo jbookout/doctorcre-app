@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { chromium as cdpChromium } from 'playwright';
-import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
+import { launchProofBrowser, readAppRelease, startProofFixtureAssets } from './app-release-reader.mjs';
 import { workspace, detail } from '../test/leads-workspace-fixture.mjs';
 import { territoryFixture } from '../test/fixtures/territory-pages/fixture.mjs';
 
@@ -26,7 +25,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   const timer = setTimeout(expire, timeoutMs);
   const bounded = promise => Promise.race([promise, expired]);
   const remaining = () => Math.max(1, deadline - Date.now());
-  let browser, page, pendingBrowser, pendingLaunch;
+  let browser, page, pendingBrowser, pendingLaunch, fixtureAssets;
   const pendingPages = [];
   const release = async () => bounded(readRelease(base, { timeoutMs: remaining() }));
   async function contains(source) {
@@ -64,10 +63,10 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
       page = await bounded(acquisition);
     } catch (error) { throw unavailable(`Browser session unavailable: ${error.message}`); }
     if (fixture) {
-      const root = fileURLToPath(new URL('../', import.meta.url));
+      fixtureAssets = await bounded(startProofFixtureAssets(fileURLToPath(new URL('../', import.meta.url)), controller.signal));
       await bounded(page.route('**/*', async route => {
         const request = route.request(), url = new URL(request.url());
-        if (url.origin !== base.origin) return route.abort();
+        if (url.origin !== fixtureAssets.origin) return route.abort();
         if (url.pathname === '/mcp') {
           const params = request.postDataJSON()?.params;
           let value;
@@ -78,18 +77,14 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
         }
         if (request.method() !== 'GET') return route.abort();
         if (url.pathname.startsWith('/api/') || url.pathname === '/auth/session') return route.fulfill({ json: { actor: { slug: 'example-partner' }, csrf_token: 'synthetic-test-token', items: [], counts: {} } });
-        try {
-          const path = resolve(root, '.' + decodeURIComponent(url.pathname === '/leads' ? '/leads.html' : url.pathname));
-          if (!path.startsWith(root.endsWith(sep) ? root : root + sep)) return route.abort();
-          return route.fulfill({ body: await readFile(path), contentType: /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.html') ? 'text/html' : path.endsWith('.css') ? 'text/css' : 'application/json' });
-        } catch { return route.abort(); }
+        return route.continue();
       }));
     }
     let rpc = 0;
     page.on('request', request => { if (new URL(request.url()).pathname === '/mcp') rpc++; });
     const response = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp' && response.request().postDataJSON()?.params?.name === 'territory-state-board', { timeout: remaining() });
     void response.catch(() => {});
-    await bounded(page.goto(new URL('/leads', base).href, { timeout: remaining() }));
+    await bounded(page.goto(new URL('/leads', fixtureAssets?.origin || base).href, { timeout: remaining() }));
     const section = page.getByRole('region', { name: 'Recorded territory conditions', exact: true });
     try { await bounded(section.locator('summary').first().click({ timeout: remaining() })); }
     catch { throw unavailable('Signed-in territory panel unavailable'); }
@@ -139,6 +134,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     await page?.close().catch(() => {});
     await Promise.allSettled(pendingPages.map(pending => pending.then(acquired => acquired.close())));
     await browser?.close().catch(() => {});
+    await fixtureAssets?.close();
     if (pendingLaunch) await pendingLaunch.then(acquired => acquired.close()).catch(() => {});
     if (!browser && pendingBrowser) await pendingBrowser.then(acquired => acquired.close()).catch(() => {});
   }

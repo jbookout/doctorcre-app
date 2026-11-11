@@ -12,7 +12,7 @@ const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
 export async function prove({ origin = 'http://localhost', expectedCommit, fixture = false, timeoutMs = 30000,
   cdpUrl, engine = chromium, readRelease = readAppRelease, ancestry, recordingUrl = new URL('../test/fixtures/quiet-lead-owner-pages/recordings.json', import.meta.url) } = {}) {
   if (!/^[a-f0-9]{40}$/.test(expectedCommit || '') || /^0+$/.test(expectedCommit)) throw unavailable('Expected merge commit required');
-  let base = new URL(origin);
+  const base = new URL(origin);
   assert.ok(base.href === `${base.origin}/` && !base.username && !base.password && ['https:', 'http:'].includes(base.protocol), 'origin only');
   assert.ok(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 300000, 'bounded deadline');
   const controller = new AbortController(), deadline = Date.now() + timeoutMs;
@@ -58,10 +58,9 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     } catch (error) { throw unavailable(`Browser session unavailable: ${error.message}`); }
     if (fixture) {
       fixtureAssets = await bounded(startProofFixtureAssets(fileURLToPath(new URL('../', import.meta.url)), controller.signal));
-      base = new URL(fixtureAssets.origin);
       await bounded(page.route('**/*', async route => {
         const request = route.request(), url = new URL(request.url());
-        if (url.origin !== base.origin) return route.abort();
+        if (url.origin !== fixtureAssets.origin) return route.abort();
         if (url.pathname === '/mcp') {
           const params = request.postDataJSON()?.params;
           let value;
@@ -81,7 +80,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     });
     const response = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp' && response.request().postDataJSON()?.params?.name === 'quiet-follow-ups', { timeout: remaining() });
     void response.catch(() => {});
-    await bounded(page.goto(new URL('/leads', base).href, { timeout: remaining() }));
+    await bounded(page.goto(new URL('/leads', fixtureAssets?.origin || base).href, { timeout: remaining() }));
     const disclosure = page.locator('#quietFollowUps summary');
     if (await bounded(disclosure.count()) && !await bounded(page.locator('#quietFollowUps').evaluate(node => node.open))) await bounded(disclosure.click());
     const observed = await bounded(response);

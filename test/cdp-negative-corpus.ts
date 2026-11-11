@@ -1,7 +1,10 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 
+export const profileMarker = "DevToolsActivePort";
+
 export const rawReadCorpus = [
+  'const left="DevTools"; readFile(left+"ActivePort"); function unrelated(){const left="other";}',
   "readFile(/DevToolsActivePort/.source)",
   'import { launch as start } from "@puppeteer/browsers"; start(options)',
   'readFile("DevToolsActivePort")',
@@ -15,7 +18,7 @@ export const rawReadCorpus = [
 ];
 
 export function hideProfileMarker(profile: string): string {
-  const marker = join(profile, "DevToolsActivePort");
+  const marker = join(profile, profileMarker);
   rmSync(marker, { force: true });
   return marker;
 }

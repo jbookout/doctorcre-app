@@ -166,7 +166,7 @@ test("fixture late launch disposes the late process", async () => {
   assert.throws(() => process.kill(ownedPid, 0), /ESRCH/);
 });
 
-test("live fixture acquires without profile file and closes idempotently", async () => {
+test("live fixture acquires without profile file and closes idempotently", async (t) => {
   const fixture = await ownedCdpFixture({
     launcher: async (options) => {
       const child = launch(options);
@@ -189,6 +189,7 @@ test("live fixture acquires without profile file and closes idempotently", async
       }
     },
   });
+  t.diagnostic(`Chromium ${fixture.browser.version()} on ${process.platform}`);
   const marker = hideProfileMarker(fixture.profile);
   assert.equal(existsSync(marker), false);
   const observer = await chromium.connectOverCDP(fixture.endpoint);
@@ -204,6 +205,7 @@ test("live fixture acquires without profile file and closes idempotently", async
   await Promise.all([fixture.close(), fixture.close()]);
   assert.equal(existsSync(fixture.profile), false);
   assert.deepEqual(ownedBrowserProcesses(fixture.profile), []);
+  t.diagnostic("owned browser process survivors []");
   assert.throws(() => process.kill(pid, 0), /ESRCH/);
 });
 

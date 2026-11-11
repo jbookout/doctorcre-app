@@ -24,3 +24,13 @@ test("CDP guard mutation fails and passes after removal in a history-free reposi
     assert.equal(clean.status, 0, clean.stderr);
   }
 });
+
+test("CDP guard respects unrelated lexical shadowing", () => {
+  assert.deepEqual(
+    cdpFixtureViolations(
+      'const left="other"; function unrelated(){const left="DevTools";} readFile(left+"ActivePort");',
+      "test/new.browser.ts",
+    ),
+    [],
+  );
+});

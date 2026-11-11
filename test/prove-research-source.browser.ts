@@ -8,12 +8,13 @@ import { promisify } from "node:util";
 import type { Page } from "playwright";
 import { validateLeadDetail, validateLeadWorkspace } from "../js/leads-client.js";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
-import { startFixture, startWorkerFixture } from "../scripts/fixture-http.mjs";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium } from "../scripts/proof-browser.mjs";
 import { prove } from "../scripts/prove-research-source.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import recording from "./fixtures/research-source/recordings.json" with { type: "json" };
 import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+import { unreachableCdpEndpoint } from "./unreachable-cdp-fixture.ts";
 
 validateLeadWorkspace(recording);
 validateLeadDetail(recording.detail, recording.detail.id);
@@ -358,9 +359,7 @@ for (const acquisition of ["unreachable", "connection rejection", "page rejectio
     }
   `,
     );
-    const reservation = await startFixture();
-    const cdpUrl = reservation.origin;
-    await reservation.close();
+    const cdpUrl = await unreachableCdpEndpoint();
     await assert.rejects(
       promisify(execFile)(process.execPath, [
         "--import",
