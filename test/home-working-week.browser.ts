@@ -170,3 +170,70 @@ test("working week refreshes, replaces selected sources and refuses retired late
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   assert.equal(await week.locator("[data-week-entry]").count(), 0);
 });
+
+for (const scenario of ["partial detail", "ready day"] as const) {
+  test(`working week retires ${scenario} and refuses a late refresh`, async (t) => {
+    const server = await startWorkerFixture({ assets: await workingWeekAssets("2026-11-11") });
+    t.after(() => server.close());
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    t.after(() => page.close());
+    await page.clock.setFixedTime(new Date("2026-11-11T15:00:00Z"));
+    await page.route("**/week-test", (route) => route.fulfill({
+      contentType: "text/html", body: '<div id="left"></div><div id="right"></div><main id="week"></main>',
+    }));
+    await page.goto(`${server.origin}/week-test`);
+    await page.evaluate(async (scenario) => {
+      const { mountCalendarPanels } = await import("/js/" + "ui-calendar-panels.js");
+      const { createClient } = await import("/js/" + "client.js");
+      const { readHomeAgenda } = await import("/js/" + "home-dashboard-model.js");
+      const client = await createClient("fixture", {});
+      const source = await readHomeAgenda(client);
+      const calendar = await client.calendarMeetingPrep();
+      if (scenario === "ready day") calendar.state = "ready";
+      const panel = await mountCalendarPanels(document.querySelector("#left"), document.querySelector("#right"), document.querySelector("#week"));
+      Reflect.set(window, "weekTest", { panel, source, calendar });
+      panel.render(calendar, source);
+    }, scenario);
+    const week = page.getByRole("region", { name: "Working week", exact: true });
+    if (scenario === "partial detail") {
+      await week.getByText("Calendar coverage is incomplete. Check Outlook for changes.", { exact: true }).waitFor();
+      await week.getByRole("button", { name: /Demo practice planning/ }).click();
+      await page.getByRole("dialog").waitFor();
+    } else {
+      await week.locator("[data-week-entry]").first().waitFor();
+      assert.equal(await page.getByRole("dialog").count(), 0);
+    }
+    await page.evaluate(() => {
+      const s = Reflect.get(window, "weekTest");
+      s.panel.retire();
+      s.panel.render(s.calendar, s.source);
+    });
+    assert.equal(await page.getByRole("dialog").isVisible(), false, `${scenario} must retire`);
+    await week.getByText("Session ended. Sign in again to see your week.").waitFor();
+    assert.equal(await week.locator("[data-week-entry]").count(), 0);
+  });
+}
+
+test("working-week fixture admits producer date fields through the live adapter", async (t) => {
+  const server = await startWorkerFixture({ assets: await workingWeekAssets("2026-11-11") });
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(`${server.origin}/?fixture=1`);
+  const result = await page.evaluate(async () => {
+    const { createClient } = await import("/js/" + "client.js");
+    const client = await createClient("fixture", {});
+    return client.getHomeAgenda();
+  });
+  const dates = result.deals.flatMap((deal: { critical_dates: object[] }) => deal.critical_dates);
+  assert.ok(dates.length);
+  for (const row of dates) {
+    for (const key of ["id", "kind", "due_on", "note", "status"]) assert.ok(Object.hasOwn(row, key), `producer critical date requires ${key}`);
+    assert.equal(Object.hasOwn(row, "date"), false);
+  }
+  assert.ok((await page.evaluate(() => performance.getEntriesByType("resource").map((r) => r.name))).some((url) => url.includes("home-working-week-responses.json")), "live adapter reads admitted MCP response bytes");
+});
