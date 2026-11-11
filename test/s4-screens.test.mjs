@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 const tourId='11111111-1111-4111-8111-111111111111';

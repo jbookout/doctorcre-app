@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 const queuePage = '<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/morning-brief.css"></head><body class="has-app-layout"><button id="docOpen">Doc</button><button id="docMorning">Morning brief</button></body></html>';
 const emptyCopy = 'No eligible work in this queue.';

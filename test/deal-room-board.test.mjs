@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 test('board rows keep focus and native command values across snapshot renders', async t => {
   const server = await fixtureServer();

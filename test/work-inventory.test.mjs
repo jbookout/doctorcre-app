@@ -1,4 +1,4 @@
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from './fixture-probe.ts';
 import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import { JSDOM } from "jsdom";

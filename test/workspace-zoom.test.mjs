@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { handleDoctorcreRequest } from '../src/worker.js';
 
 async function fixture(t) {

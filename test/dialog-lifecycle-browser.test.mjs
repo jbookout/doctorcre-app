@@ -2,7 +2,8 @@ import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentDocument, chromium, fixtureServer} from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 async function open(t, width) {
   const server = await fixtureServer();
