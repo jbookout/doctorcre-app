@@ -342,6 +342,16 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 
 .workspace-grid > details > summary { display: flex; align-items: center; min-height: var(--touch); cursor: pointer; font-weight: var(--font-weight-strong); }
 
+.stop-drag-handle { touch-action: none; cursor: grab; user-select: none; min-width: 44px; min-height: 44px; }
+.stop-dragging { opacity: .65; }
+.stop-drop-target { outline: 2px solid var(--accent); outline-offset: -2px; }
+.client-grant-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding-block: var(--space-3); border-bottom: 1px solid var(--border); }
+.client-grant-row > div { min-width: 0; }
+.client-grant-row p { margin: .35rem 0 0; overflow-wrap: anywhere; }
+.client-grant-row button { flex-shrink: 0; min-height: 44px; }
+.share-form input[type="datetime-local"], .share-link input { box-sizing: border-box; width: 100%; min-width: 0; }
+.share-actions { flex-wrap: wrap; }
+@media (max-width: 480px) { .client-grant-row { align-items: flex-start; flex-direction: column; } .share-actions > button { flex: 1 1 100%; min-height: 44px; } }
 #sheet-generated, #sheet-history pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 #sheet-history summary { min-height: 44px; padding-block: 12px; cursor: pointer; }
 @media print {

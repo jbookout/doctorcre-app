@@ -9,7 +9,7 @@
   color: var(--fg);
 }
 .relationship-page h2,
-.relationship-dialog h2 {
+:is(.relationship-dialog, .introduction-review) h2 {
   margin: 0 0 var(--space-4);
   font: var(--font-weight-strong) var(--font-size-3) / var(--line-height-heading) var(--font-text);
   color: var(--fg);
@@ -18,7 +18,7 @@
 
 .relationship-page button,
 .relationship-filters button,
-.relationship-dialog button,
+:is(.relationship-dialog, .introduction-review) button,
 .relationship-tabs button {
   font: inherit;
   color: var(--fg);
@@ -31,9 +31,9 @@
   transition: background-color var(--duration-hover) var(--ease-out), border-color var(--duration-hover) var(--ease-out);
 }
 .relationship-page button:hover,
-.relationship-dialog button:hover { background: var(--surface-3); }
+:is(.relationship-dialog, .introduction-review) button:hover { background: var(--surface-3); }
 .relationship-page :focus-visible,
-.relationship-dialog :focus-visible,
+:is(.relationship-dialog, .introduction-review) :focus-visible,
 .relationship-filters :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 .relationship-filters { display: grid; gap: var(--space-3); padding: var(--space-1) 0 var(--space-5); color: var(--fg-muted); font-size: var(--font-size-1); }
@@ -140,7 +140,7 @@
 .relationship-referral .referral-fill { fill: var(--data-1); }
 .relationship-empty { padding: var(--space-6); color: var(--fg-muted); text-align: center; }
 
-.relationship-dialog {
+:is(.relationship-dialog, .introduction-review) {
   width: min(1160px, calc(100vw - 40px));
   max-width: none;
   max-height: 88dvh;
@@ -152,11 +152,23 @@
   color: var(--fg);
   box-shadow: var(--shadow-overlay);
 }
-.relationship-dialog::backdrop { background: var(--scrim); }
-.relationship-dialog > header { display: flex; justify-content: space-between; gap: var(--space-5); margin-bottom: var(--space-5); }
-.relationship-dialog h2 { margin: var(--space-1) 0 0; font-size: var(--font-size-5); overflow-wrap: anywhere; }
+:is(.relationship-dialog, .introduction-review)::backdrop { background: var(--scrim); }
+dialog.introduction-review { width: min(620px, calc(100vw - 24px)); }
+.introduction-review form { display: grid; gap: var(--space-4); }
+.introduction-review label { display: grid; gap: var(--space-2); }
+.introduction-review input:not([type="checkbox"]),
+.introduction-review textarea { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; padding: var(--space-3); color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); }
+.introduction-review .intro-reviewed { display: flex; align-items: flex-start; }
+.introduction-review dl { margin: 0; display: grid; gap: var(--space-2); }
+.introduction-review dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.introduction-review dd { margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
+.introduction-review [data-evidence] { white-space: pre-wrap; overflow-wrap: anywhere; }
+.introduction-review button { min-height: 44px; white-space: normal; }
+:is(.relationship-dialog, .introduction-review) > header { display: flex; justify-content: space-between; gap: var(--space-5); margin-bottom: var(--space-5); }
+:is(.relationship-dialog, .introduction-review) h2 { margin: var(--space-1) 0 0; font-size: var(--font-size-5); overflow-wrap: anywhere; }
 .relationship-kicker { color: var(--fg-muted); font-size: var(--font-size-1); }
 .relationship-detail-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: var(--space-6); }
+.relationship-review-action { grid-column: 1 / -1; min-height: 44px; white-space: normal; overflow-wrap: anywhere; }
 .relationship-hold { padding: var(--space-1) var(--space-3); border: 1px solid var(--hairline-strong); border-radius: var(--radius-round); font-size: var(--font-size-1); color: var(--fg-muted); }
 .relationship-hold { display: inline-block; margin-top: var(--space-4); color: var(--status-hold-ink); border-color: var(--status-hold); }
 .relationship-summary,
@@ -165,9 +177,9 @@
 .relationship-entry > span,
 .relationship-entry time { display: block; font-size: var(--font-size-1); color: var(--fg-quiet); }
 .relationship-entry > button { display: flex; justify-content: space-between; width: 100%; margin-top: var(--space-2); text-align: left; }
-.relationship-dialog details { margin-top: var(--space-3); }
-.relationship-dialog summary { cursor: pointer; min-height: var(--touch); padding: var(--space-3) 0; color: var(--fg); }
-.relationship-dialog details p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-size-1); line-height: 1.7; }
+:is(.relationship-dialog, .introduction-review) details { margin-top: var(--space-3); }
+:is(.relationship-dialog, .introduction-review) summary { cursor: pointer; min-height: var(--touch); padding: var(--space-3) 0; color: var(--fg); }
+:is(.relationship-dialog, .introduction-review) details p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-size-1); line-height: 1.7; }
 .relationship-metrics { display: flex; gap: var(--space-6); margin: var(--space-5) 0; }
 .relationship-metrics div { display: grid; gap: var(--space-2); }
 .relationship-metrics strong { font-size: var(--font-size-5); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; }
@@ -192,11 +204,11 @@
   #networkNodes .relationship-card { border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; padding: var(--space-3) 0; background: transparent; }
   #networkNodes .relationship-card:last-child { border-bottom: 0; }
   #networkNodes strong { overflow-wrap: anywhere; }
-  .relationship-dialog { width: calc(100vw - 24px); max-height: 90dvh; padding: var(--space-5); }
+  :is(.relationship-dialog, .introduction-review) { width: calc(100vw - 24px); max-height: 90dvh; padding: var(--space-5); }
   .relationship-detail-grid { grid-template-columns: 1fr; gap: var(--space-5); }
-  .relationship-dialog h2 { font-size: var(--font-size-4); }
+  :is(.relationship-dialog, .introduction-review) h2 { font-size: var(--font-size-4); }
 }
 @media (prefers-reduced-motion: reduce) {
   .relationship-page *,
-  .relationship-dialog * { transition: none !important; scroll-behavior: auto !important; }
+  :is(.relationship-dialog, .introduction-review) * { transition: none !important; scroll-behavior: auto !important; }
 }

@@ -1,4 +1,5 @@
 import { parsePublicTourPacket, packetMapPoints, appendPublicTourFacts } from "../src/ui/public-tour-packet.ts";
+import { mountTourClientDownload } from "../js/ui-tour-client-download.js";
 import { mountNavigation } from "../js/navigation.js";
 
 mountNavigation(document, location.pathname, { report: true });
@@ -10,6 +11,7 @@ mountNavigation(document, location.pathname, { report: true });
   const summary = document.querySelector("#report-summary");
   const list = document.querySelector("#report-list");
   const openButton = document.querySelector("#open-tour");
+  const setDownloadAvailable = mountTourClientDownload(openButton.parentElement, inContext);
   const feedbackStatus = document.querySelector("#feedback-status");
   let shareToken = typeof globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__ === "function"
     ? globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__() : "";
@@ -62,6 +64,7 @@ mountNavigation(document, location.pathname, { report: true });
   function showUnavailable() {
     invalidated = true; projection = null;
     printButton.hidden = true;
+    setDownloadAvailable(false);
     history.replaceState(null, '', location.pathname + location.search);
     reportProperties.clear(); pending.clear(); feedback = null;
     mapInstance?.remove(); mapInstance = null;
@@ -299,6 +302,7 @@ mountNavigation(document, location.pathname, { report: true });
     projection = expected;
     history.replaceState({doctorcreShare:projection,doctorcreShareContext:linkContext}, '', location.pathname + location.search);
     feedback = after;
+    setDownloadAvailable(!invalidated && after.can_download === true);
     const packet = reportLoaded ? parsePublicTourPacket(reportResult.value) : null;
     const points = mapLoaded ? packetMapPoints(packet, mapResult.value) : [];
     if (reportLoaded) render(packet);
