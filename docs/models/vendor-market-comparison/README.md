@@ -14,13 +14,41 @@ One bounded read returns at most 100 markets and 5,000 memberships. Rendering is
 
 `vendors.mmd` models browsing and reading as separate regions. Regenerate outside the checkout with the installed statechart skill's `from-chart` command. Set `TLA2TOOLS` to a local tla2tools.jar and `JAVA` to Java 11 or later. The model abstracts record-detail loading and producer alias normalization; browser tests cover both integration paths.
 
-| Transition | Behavior test in test/vendor-markets.browser.ts |
+| Transition | Executed behavior test in test/vendor-markets.browser.ts |
 | --- | --- |
-| Open markets; read succeeds; open market; compare all; refresh | all-market comparison preserves distinct identity and declared coverage |
-| Open vendor; return to comparison; return to market | comparison and selected market return from the existing vendor detail |
-| Registry empty; return to Category | market membership, multi-market, Regional, refresh and empty |
-| Read fails; refresh recovers | producer resolves aliases; unavailable retries; session retirement erases answers |
-| Session ends; Category switch cancels late success and failure | category switch and session retirement fence late success and failure |
+| Browse: [*] → Category | Category settles and reloads at exactly /vendors |
+| Browse: Category → Comparison (open markets) | all-market comparison preserves distinct identity and declared coverage 390 light |
+| Browse: Comparison → Selected (open market) | all-market comparison preserves distinct identity and declared coverage 390 light |
+| Browse: Selected → Comparison (compare all markets) | all-market comparison preserves distinct identity and declared coverage 390 light |
+| Browse: Comparison → Detail (open vendor) | comparison and selected market return from the existing vendor detail |
+| Browse: Selected → Detail (open vendor) | comparison and selected market return from the existing vendor detail |
+| Browse: Detail → Comparison (return to comparison) | comparison and selected market return from the existing vendor detail |
+| Browse: Detail → Selected (return to market) | comparison and selected market return from the existing vendor detail |
+| Browse: Comparison → Category (open category) | Ready comparison read returns to Category |
+| Browse: Selected → Category (open category) | Market selection then Category replaces URL state and reloads at exactly /vendors |
+| Browse: Category → Retired (session ends) | Category session retirement removes registry and fences late success; Category session retirement removes registry and fences late failure |
+| Browse: Comparison → Retired (session ends) | Comparison session retirement removes registry and fences late success; Comparison session retirement removes registry and fences late failure |
+| Browse: Selected → Retired (session ends) | Selected session retirement removes registry and fences late success; Selected session retirement removes registry and fences late failure |
+| Browse: Detail → Retired (session ends) | Detail session retirement removes the underlying comparison |
+| Reading: [*] → Idle | Category settles and reloads at exactly /vendors |
+| Reading: Idle → Loading (open markets) | all-market comparison preserves distinct identity and declared coverage 390 light |
+| Reading: Loading → Ready (read succeeds) | all-market comparison preserves distinct identity and declared coverage 390 light |
+| Reading: Loading → Empty (registry empty) | comparison unavailable and empty states recover without stale counts |
+| Reading: Loading → Unavailable (read fails) | comparison unavailable and empty states recover without stale counts |
+| Reading: Ready → Loading (refresh) | all-market comparison preserves distinct identity and declared coverage 390 light |
+| Reading: Empty → Loading (refresh) | comparison unavailable and empty states recover without stale counts |
+| Reading: Unavailable → Loading (refresh) | comparison unavailable and empty states recover without stale counts |
+| Reading: Ready → Loading (open market) | all-market comparison preserves distinct identity and declared coverage 390 light |
+| Reading: Ready → Loading (compare all markets) | all-market comparison preserves distinct identity and declared coverage 390 light |
+| Reading: Loading → Idle (open category) | category switch and session retirement fence late success and failure |
+| Reading: Ready → Idle (open category) | Ready comparison read returns to Category |
+| Reading: Empty → Idle (open category) | Empty comparison read returns to Category |
+| Reading: Unavailable → Idle (open category) | Unavailable comparison read returns to Category |
+| Reading: Idle → Closed (session ends) | Category session retirement removes registry and fences late success; Category session retirement removes registry and fences late failure |
+| Reading: Loading → Closed (session ends) | Loading session retirement removes registry and fences late success; Loading session retirement removes registry and fences late failure |
+| Reading: Ready → Closed (session ends) | Comparison session retirement removes registry and fences late success; Comparison session retirement removes registry and fences late failure |
+| Reading: Empty → Closed (session ends) | Empty session retirement removes registry and fences late success; Empty session retirement removes registry and fences late failure |
+| Reading: Unavailable → Closed (session ends) | Unavailable session retirement removes registry and fences late success; Unavailable session retirement removes registry and fences late failure |
 
 ## Production proof
 

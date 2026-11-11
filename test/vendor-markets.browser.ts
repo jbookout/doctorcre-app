@@ -407,3 +407,108 @@ test("comparison unavailable and empty states recover without stale counts", asy
   await section.getByRole("button", { name: "Refresh markets" }).click();
   await comparison.waitFor();
 });
+
+for (const state of ["Category", "Comparison", "Selected", "Loading", "Empty", "Unavailable"] as const)
+  for (const answer of ["success", "failure"] as const)
+    test(`${state} session retirement removes registry and fences late ${answer}`, async (t) => {
+      const { page } = await setup(t);
+      await page.evaluate(
+        async ({ fixture, state, answer }) => {
+          const path = "/js/ui-vendor-markets.js";
+          const { mountVendorMarkets } = await import(path);
+          history.replaceState(null, "", "/vendors");
+          const host = document.createElement("div");
+          document.body.replaceChildren(host);
+          const pending: { resolve: (value: unknown) => void; reject: (reason: Error) => void }[] = [];
+          const mounted = mountVendorMarkets(host, {
+            category: [],
+            href: () => "/vendors",
+            load: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
+          });
+          const tick = () => new Promise((resolve) => setTimeout(resolve, 25));
+          const click = (name: string) => {
+            const button = [...host.querySelectorAll("button")].find((node) => node.textContent === name);
+            if (!button) throw Error(`Missing ${name}`);
+            button.click();
+          };
+          click("Market");
+          await tick();
+          click("Category");
+          await tick();
+          if (state !== "Category") {
+            click("Market");
+            await tick();
+            if (state === "Unavailable") pending[1]?.reject(Error("Synthetic unavailable"));
+            else if (state !== "Loading") {
+              pending[1]?.resolve(
+                state === "Empty"
+                  ? { ...fixture, state: "empty", selected_market: null, markets: [], vendors: [] }
+                  : { ...fixture, selected_market: null },
+              );
+            }
+            await tick();
+            if (state === "Selected") {
+              click("Open sandestin");
+              await tick();
+              pending[2]?.resolve({ ...fixture, selected_market: "sandestin" });
+              await tick();
+            }
+          }
+          const visible = {
+            Category: '[aria-pressed="true"]',
+            Comparison: '[aria-label="All-market comparison"]',
+            Selected: '[data-market-slug="sandestin"]',
+            Loading: '[aria-busy="true"]',
+            Empty: '[role="status"]',
+            Unavailable: '[role="alert"]',
+          };
+          if (!host.querySelector(visible[state])) throw Error(`Did not reach ${state}`);
+          const controls = [...host.querySelectorAll("button")];
+          const reads = pending.length;
+          window.dispatchEvent(new Event("doctorcre-session-invalidated"));
+          if (host.childElementCount !== 0) throw Error(`${state} registry survived session end`);
+          for (const control of controls) control.click();
+          window.dispatchEvent(new Event("doctorcre-session-invalidated"));
+          for (const request of pending) {
+            if (answer === "success") request.resolve(fixture);
+            else request.reject(Error("Late failure"));
+          }
+          await tick();
+          if (host.childElementCount !== 0) throw Error(`${state} late ${answer} repainted registry`);
+          if (pending.length !== reads) throw Error("Retired controls started another read");
+          mounted.dispose();
+        },
+        { fixture, state, answer },
+      );
+    });
+
+test("Detail session retirement removes the underlying comparison", async (t) => {
+  const { page, section } = await setup(t);
+  await section.getByRole("button", { name: "Market", exact: true }).click();
+  const comparison = section.getByRole("region", { name: "All-market comparison" });
+  await comparison.getByRole("link", { name: "Synthetic multi", exact: true }).first().click();
+  await page.locator("#recordPanel").getByRole("heading", { name: "Synthetic multi", exact: true }).waitFor();
+  await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
+  assert.equal(await section.count(), 0);
+  await settle(page);
+  assert.equal(await comparison.count(), 0);
+});
+
+for (const state of ["Ready", "Empty", "Unavailable"] as const)
+  test(`${state} comparison read returns to Category`, async (t) => {
+    const { page, section, setMode } = await setup(t);
+    setMode(state === "Empty" ? "empty" : state === "Unavailable" ? "fail" : "ready");
+    await section.getByRole("button", { name: "Market", exact: true }).click();
+    if (state === "Ready") await section.getByRole("region", { name: "All-market comparison" }).waitFor();
+    else if (state === "Empty")
+      await section.getByRole("status").filter({ hasText: "No reviewed markets yet" }).waitFor();
+    else await section.getByRole("alert").waitFor();
+    await section.getByRole("button", { name: "Category", exact: true }).click();
+    await settle(page);
+    assert.equal(
+      await section.getByRole("button", { name: "Category", exact: true }).getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.equal(await section.getByRole("region", { name: "All-market comparison" }).count(), 0);
+    assert.equal(await section.locator('[role="status"], [role="alert"], [data-market-vendor]').count(), 0);
+  });
