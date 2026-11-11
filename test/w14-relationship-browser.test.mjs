@@ -581,6 +581,7 @@ test(`V03 explicitly reviews and records the exact introduction at ${width} ${th
  await page.locator('[data-review-introduction="demo-offer"]').click();
  const panel=page.locator('.introduction-review');
  assert.equal(await panel.getAttribute('data-state'),'reviewing');assert.equal(writes.length,0);
+ assert.ok((await panel.boundingBox()).width<=Math.min(620,width-24)+1,'the review panel keeps its intended width inside the app shell');
  assert.deepEqual(await panel.locator('[data-identity]').allTextContents(),['Demo Healthcare Lending (11111111-1111-4111-8111-111111111111)','Demo Practice Builders (33333333-3333-4333-8333-333333333333)','Demo Dental Expansion (22222222-2222-4222-8222-222222222222)']);
  await panel.locator('[name="date"]').fill('2026-11-10');await panel.locator('[name="note"]').fill('Please connect these practices.');
  await panel.locator('[type="submit"]').click();assert.equal(writes.length,0);

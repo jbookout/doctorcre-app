@@ -153,7 +153,7 @@
   box-shadow: var(--shadow-overlay);
 }
 :is(.relationship-dialog, .introduction-review)::backdrop { background: var(--scrim); }
-.introduction-review { width: min(620px, calc(100vw - 24px)); }
+dialog.introduction-review { width: min(620px, calc(100vw - 24px)); }
 .introduction-review form { display: grid; gap: var(--space-4); }
 .introduction-review label { display: grid; gap: var(--space-2); }
 .introduction-review input:not([type="checkbox"]),
