@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import test from "node:test";
-import { chromium } from "playwright";
-import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startFixture, startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 
 const commit = "a".repeat(40),
   deal = "11111111-1111-4111-8111-111111111111",
@@ -20,14 +19,9 @@ test("proof CLI passes exact projections, fails near misses and refuses missing 
     env: { APP_ENV: "fixture", CARR: { fetch: async () => new Response("synthetic") } },
   });
   t.after(() => server.close());
-  const slot = await startFixture();
-  const port = new URL(slot.origin).port;
-  await slot.close();
-  const context = await chromium.launchPersistentContext(`${scratch}/browser`, {
-    headless: true,
-    args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`],
-  });
-  t.after(() => context.close());
+  const browserFixture = await ownedCdpFixture();
+  t.after(() => browserFixture.close());
+  const context = browserFixture.context;
   const portal = {
     slug: "synthetic",
     materials: [],
@@ -82,7 +76,7 @@ test("proof CLI passes exact projections, fails near misses and refuses missing 
           "--evidence",
           evidencePath,
           "--cdp-url",
-          `http://127.0.0.1:${port}`,
+          browserFixture.endpoint,
           "--timeout-ms",
           "10000",
           ...extra,
