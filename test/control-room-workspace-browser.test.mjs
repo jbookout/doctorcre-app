@@ -1,4 +1,6 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
+import { startWorkerFixture } from '../scripts/fixture-http.mjs';
 import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {chromium,waitForAsync} from './browser-harness.mjs';
@@ -9,6 +11,8 @@ import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath } from '../js/progress-board-route.js';
 const root=new URL('../',import.meta.url);
+const assetServer = await startWorkerFixture({routes: await appAssetSnapshot()});
+after(() => assetServer.close());
 const roomTime=new Date('2026-10-02T12:00:00Z');
 const reads={'calendar-meeting-prep':'calendarMeetingPrep','list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
 async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData,unobservedSchedule=false}={}){
@@ -75,7 +79,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
   if(url.pathname==='/app-release'&&state.denied)return route.fulfill({status:503,body:'{}'});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
   const file=routes.routes[boardIdFromPath(url.pathname)?BOARD_ROUTE:url.pathname]||url.pathname.slice(1);
-  try{const body=await readFile(new URL(file,root));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+  return route.fulfill({response: await page.request.get(new URL(file, assetServer.origin + '/').href)});
  });
  const target=new URL(path,'http://localhost');target.searchParams.set('mode','live');
  await page.goto(target.href);
