@@ -1,11 +1,13 @@
 import test from 'node:test';
+import { parseVendorMarkets } from '../src/ui/vendor-markets-client.ts';
 import { parseNeeds } from '../src/ui/deal-client-needs-model.ts';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
+const protectedDeal = '11111111-1111-4111-8111-111111111111';
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, reducedMotion = 'no-preference', many = false, query = '' } = {}) {
+async function open(t, { width = 1440, reducedMotion = 'no-preference', many = false, query = '', canonical = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -20,6 +22,11 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
     { id: 'auto-invoice', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd20', field: 'phase', old_value: 'Closing', new_value: 'Closed', automatic: true, change_reason: 'invoice', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' }];
   seed.threads.d14 = [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-01', text: 'LOI submitted. ' + 'Full original demo entry. '.repeat(30) }];
   if (many) for (let i = 20; i < 72; i++) seed.deals.push({ ...seed.deals[9], id: 'demo-' + i, name: 'Demo Assignment ' + i, phase: 'Research', outcome:null });
+  if(canonical) {
+    const deal=seed.deals.find(d=>d.id==='d14');
+    deal.id=protectedDeal;
+    seed.threads[protectedDeal]=seed.threads.d14;
+  }
   await page.clock.install({ time: new Date('2026-10-04T17:00:00Z') });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -38,8 +45,8 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
 
 
-async function detail(page) {
- await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+async function detail(page, id = 'd14') {
+ await page.locator('.kanban-column [data-id="'+id+'"] .card-open').click();
  await page.waitForSelector('#detailUpdateForm');
 }
 async function readPanel(page) {
@@ -48,17 +55,33 @@ async function readPanel(page) {
 }
 
 // Exercise refusal through the live HTTP adapter, with synthetic authorized data.
-async function liveDetailRead(page) {
+async function liveDetailRead(page, { populated = false } = {}) {
  const wire = await page.evaluate(async () => {
    const {state}=await import('/js/pipeline.js');
-   const detail=await state.client.getDeal('d14');
-   return {...detail.deal,client_id:'demo-account-001',deal_id:'d14',thread:detail.thread,critical_dates:[],events:[]};
+   const detail=await state.client.getDeal(state.panelDeal);
+   return {...detail.deal,client_id:'demo-account-001',deal_id:detail.deal.id,thread:detail.thread,critical_dates:[],events:[]};
  });
- const reads={status:200,delayed:null,delayNext:false};
+ const directory = JSON.parse(await readFile(new URL('test/fixtures/vendor-markets.v1.json', root), 'utf8'));
+ parseVendorMarkets(directory);
+ const need = JSON.parse(await readFile(new URL('test/fixtures/client-needs/authoring.json', root), 'utf8'));
+ if(populated) Object.assign(wire,{client_id:need.client_id});
+ Object.assign(need, { deal_id: wire.id, client_id: wire.client_id, vendor_id: directory.vendors[0].id, vendor_ref: 'Protected vendor reference', description: 'Protected client need' });
+ const reads={status:200,delayed:null,delayNext:false,vendorStatus:200,delayVendor:false,vendorDelayed:null,directory};
  await page.route('**/mcp',async route=>{
    const request=route.request().postDataJSON();
+   if (request.params.name === 'read-vendor-markets-v1') {
+     const status=reads.vendorStatus;
+     const payload=structuredClone(reads.directory);
+     parseVendorMarkets(payload);
+     if(reads.delayVendor) {
+       reads.delayVendor=false;
+       await new Promise(resolve=>{reads.vendorDelayed=resolve;});
+     }
+     return route.fulfill({status,contentType:'application/json',body:JSON.stringify({jsonrpc:'2.0',id:request.id,result:{content:[{type:'text',text:JSON.stringify(payload)}]}})});
+   }
    if (request.params.name === 'read-deal-client-needs-v1') {
-     const payload = parseNeeds({schema_version:'client-needs.v1',subject:'deal',subject_id:request.params.arguments.deal,as_of:new Date().toISOString(),state:'empty',rows:[],next_offset:null},{deal:request.params.arguments.deal,client:wire.client_id,offset:0});
+     const rows=populated&&request.params.arguments.deal===protectedDeal?[need]:[];
+     const payload = parseNeeds({schema_version:'client-needs.v1',subject:'deal',subject_id:request.params.arguments.deal,as_of:new Date().toISOString(),state:rows.length?'ready':'empty',rows,next_offset:null},{deal:request.params.arguments.deal,client:wire.client_id,offset:0});
      return route.fulfill({status:reads.status,contentType:'application/json',body:JSON.stringify({jsonrpc:'2.0',id:request.id,result:{content:[{type:'text',text:JSON.stringify(payload)}]}})});
    }
    assert.equal(request.params.name,'get-deal-room');
@@ -68,7 +91,7 @@ async function liveDetailRead(page) {
      await new Promise(resolve=>{reads.delayed=resolve;});
    }
    await route.fulfill({status,contentType:'application/json',body:JSON.stringify({
-     jsonrpc:'2.0',id:request.id,result:{content:[{type:'text',text:JSON.stringify(wire)}]},
+     jsonrpc:'2.0',id:request.id,result:{content:[{type:'text',text:JSON.stringify({...wire,id:request.params.arguments.deal,deal_id:request.params.arguments.deal})}]},
    })});
  });
  await page.evaluate(async()=>{
@@ -77,11 +100,16 @@ async function liveDetailRead(page) {
    window.beforeLiveDetail=state.panelDetail;
    state.client.getDeal=createLiveClient().getDeal;
  });
+ await page.evaluate(id=>{window.expectedLiveDeal=id;},wire.id);
  await readPanel(page);
  await waitForAsync(page,async()=>{
    const {state}=await import('/js/pipeline.js');
-   return state.panelDetail!==window.beforeLiveDetail&&state.panelDetail?.deal.id==='d14';
+   return state.panelDetail!==window.beforeLiveDetail&&state.panelDetail?.deal.id===window.expectedLiveDeal;
  });
+ if(populated) {
+   await page.getByRole('button',{name:'Back to deals',exact:true}).click();
+   await detail(page,protectedDeal);
+ }
  return reads;
 }
 
@@ -346,4 +374,79 @@ test('R6 command dock reconciliation settles the retained conflict and closes it
  // A new conflict with this fixture id must start as a new choice after settlement.
  assert.equal(await page.locator('#conflictChoices input:disabled').count(),0);
  assert.deepEqual(await page.evaluate(()=>calls[0]),await page.evaluate(()=>calls[1]));
+});
+
+test('vendor directory HTTP 401 clears protected needs and vendor names without an unhandled rejection',async t=>{
+ const {page,errors}=await open(t,{canonical:true,many:true});await detail(page,protectedDeal);
+ const reads=await liveDetailRead(page,{populated:true});
+ const vendorName=reads.directory.vendors[0].name;
+ await page.getByText('Protected client need',{exact:true}).waitFor();
+ await page.getByText(vendorName,{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
+ reads.vendorStatus=401;reads.delayVendor=true;
+ await detail(page,protectedDeal);
+ await page.getByText('Protected client need',{exact:true}).waitFor();
+ assert.equal(typeof reads.vendorDelayed,'function');
+ const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/mcp'&&r.status()===401);
+ reads.vendorDelayed();await response;
+ await page.getByText('Session ended. Sign in again.',{exact:true}).waitFor();
+ const host=page.locator('[data-client-needs-host]');
+ assert.doesNotMatch(await host.textContent(),/Protected client need|Protected vendor reference/);
+ assert.equal(await host.getByText(vendorName,{exact:true}).count(),0);
+ assert.equal(await host.locator('input,textarea,select,article').count(),0);
+ await page.waitForTimeout(30);
+ assert.deepEqual(errors,[]);
+});
+
+test('vendor directory non-auth failure leaves the need panel usable with a failed picker',async t=>{
+ const {page,errors}=await open(t,{canonical:true,many:true});await detail(page,protectedDeal);
+ const reads=await liveDetailRead(page,{populated:true});
+ await page.getByText('Protected client need',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
+ reads.vendorStatus=503;
+ await detail(page,protectedDeal);
+ await page.getByText('Protected client need',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Record client need',exact:true}).click();
+ await page.getByText('Vendor directory unavailable. Reopen the deal to try again.',{exact:true}).waitFor();
+ await page.getByLabel('Need description',{exact:true}).fill('Draft remains usable');
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ await page.getByText('Protected client need',{exact:true}).waitFor();
+ assert.deepEqual(errors,[]);
+});
+
+for(const retirement of ['session','deal switch']) for(const status of [200,503])
+ test('late vendor directory HTTP '+status+' cannot write after '+retirement,async t=>{
+ const {page,errors}=await open(t,{canonical:true,many:true});await detail(page,protectedDeal);
+ const reads=await liveDetailRead(page,{populated:true});
+ await page.getByText(reads.directory.vendors[0].name,{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
+ reads.delayVendor=true;reads.vendorStatus=status;
+ await detail(page,protectedDeal);
+ await page.getByText('Protected client need',{exact:true}).waitFor();
+ assert.equal(typeof reads.vendorDelayed,'function');
+ await page.evaluate(()=>{
+   window.retiredNeedHost=document.querySelector('[data-client-needs-host]');
+ });
+ if(retirement==='session'){
+   await page.evaluate(()=>dispatchEvent(new Event('doctorcre-session-invalidated')));
+   await page.getByText('Session ended. Sign in again.',{exact:true}).waitFor();
+ } else {
+   await page.getByRole('button',{name:'Back to deals',exact:true}).click();
+   await page.locator('.kanban-column [data-id="demo-20"] .card-open').click();
+   await page.waitForSelector('#detailUpdateForm');
+   await page.getByRole('button',{name:'Record client need',exact:true}).waitFor();
+ }
+ await page.evaluate(()=>{
+   window.retiredNeedHTML=retiredNeedHost.innerHTML;
+   window.currentPanelHTML=document.querySelector('[data-client-needs-host]').innerHTML;
+   window.lateNeedMutations=[];
+   window.lateNeedObserver=new MutationObserver(records=>lateNeedMutations.push(...records.map(r=>r.type)));
+   lateNeedObserver.observe(retiredNeedHost,{subtree:true,childList:true,characterData:true,attributes:true});
+ });
+ const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/mcp'&&r.status()===status);
+ reads.vendorDelayed();await response;await page.waitForTimeout(50);
+ assert.deepEqual(await page.evaluate(()=>lateNeedMutations),[]);
+ assert.equal(await page.evaluate(()=>retiredNeedHost.innerHTML),await page.evaluate(()=>retiredNeedHTML));
+ assert.equal(await page.locator('[data-client-needs-host]').innerHTML(),await page.evaluate(()=>currentPanelHTML));
+ assert.deepEqual(errors,[]);
 });
