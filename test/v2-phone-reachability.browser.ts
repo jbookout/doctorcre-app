@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import test from "node:test";
+import { build } from "esbuild";
 import { webkit } from "playwright";
 import { inspectPhoneAccessibility } from "../scripts/phone-accessibility.ts";
 import { chromium } from "./browser-harness.mjs";
@@ -263,3 +264,53 @@ for (const dispatch of ["aliased closest", "dataset"])
     const audit = await inspectPhoneAccessibility(page);
     assert.equal(audit.small.find((target) => target.id === "small")?.width, 20);
   });
+
+test("Opaque delegated helper refuses clean evidence", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent(
+    '<ul id="owner"><li id="small" style="width:20px;height:20px">Small</li><li><button style="width:60px;height:60px">Large</button></li></ul>',
+  );
+  await page.evaluate(() => {
+    const activate = (event: Event) => {
+      if (event.target instanceof Element && event.target.id === "small") Reflect.set(window, "tapped", true);
+    };
+    document.getElementById("owner")?.addEventListener("click", (event) => activate(event));
+  });
+  await assert.rejects(inspectPhoneAccessibility(page), /opaque delegated helper/);
+});
+
+test("React delegated pointer targets retain their declared activation area", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+  await page.setContent(
+    '<html lang="en"><title>React targets</title><main><h1>Targets</h1><div id="root"></div></main></html>',
+  );
+  const bundle = await build({
+    stdin: {
+      resolveDir: process.cwd(),
+      contents: `
+      import {createElement as h} from 'react';
+      import {createRoot} from 'react-dom/client';
+      createRoot(document.getElementById('root')).render(h('ul', null,
+        h('li', {id:'small', onPointerDown:()=>window.tapped=true, style:{width:20,height:20}}, 'Small'),
+        h('li', null, h('button', {style:{width:60,height:60}}, 'Large'))));
+    `,
+    },
+    bundle: true,
+    write: false,
+    format: "iife",
+  });
+  const script = bundle.outputFiles?.[0]?.text;
+  assert.ok(script);
+  await page.addScriptTag({ content: script });
+  await page.locator("#small").waitFor();
+  const box = await page.locator("#small").boundingBox();
+  assert.ok(box);
+  await page.touchscreen.tap(box.x + 10, box.y + 10);
+  assert.equal(await page.evaluate(() => Reflect.get(window, "tapped")), true);
+  const audit = await inspectPhoneAccessibility(page);
+  assert.equal(audit.small.find((target) => target.id === "small")?.width, 20);
+});
