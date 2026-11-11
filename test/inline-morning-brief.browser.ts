@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
-import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium, webkit } from "./browser-harness.mjs";
@@ -173,7 +173,7 @@ for (const [engineName, engine] of [
       await delay(1500);
       await route.continue();
     });
-    await page.goto(`${server.origin}/`, { waitUntil: "commit" });
+    await page.goto(`${server.origin}/`);
     const checkbox = page.locator('.inbox-row input[type="checkbox"]').first();
     await checkbox.waitFor();
     const initial = await checkbox.boundingBox();

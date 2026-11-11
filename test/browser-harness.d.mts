@@ -1,5 +1,6 @@
 import type { Browser, Page } from "playwright";
 export declare const chromium: { launch(): Promise<Pick<Browser, "newPage" | "close">> };
+export declare const webkit: typeof chromium & { skip: string | false };
 export function componentDocument(
   page: Page,
   origin: string,
