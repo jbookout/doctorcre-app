@@ -1,7 +1,15 @@
 stateDiagram-v2
+  note right of Comparing
+    Each property retains its newest accepted producer as-of.
+    Selector label and displayed evidence use that same snapshot.
+  end note
+  note right of Reading
+    Retain per-property versions while evidence is hidden.
+    Accept same or newer as-of; reject older responses.
+  end note
   [*] --> Comparing: Open existing stop evidence
   Comparing --> Reading: Refresh evidence
-  Reading --> Comparing: Matching evidence arrives
+  Reading --> Comparing: Matching evidence arrives at same or newer snapshot time
   Reading --> Unavailable: Read fails
   Unavailable --> Reading: Retry read
   Comparing --> Reviewing: Submit human evidence
@@ -11,13 +19,23 @@ stateDiagram-v2
   Unknown --> Reviewing: Retry exact request
   Refused --> Reviewing: Submit corrected evidence
   Refused --> Reading: Refresh evidence
-  Comparing --> Comparing: Select another property
-  Reading --> Comparing: Select another property
-  Unavailable --> Comparing: Select another property
-  Refused --> Comparing: Select another property
+  Comparing --> Comparing: Select property with its freshest retained snapshot
+  Reading --> Comparing: Select property with its freshest retained snapshot
+  Unavailable --> Comparing: Select property with its freshest retained snapshot
+  Refused --> Comparing: Select property with its freshest retained snapshot
   Reading --> Retired: Session ends
   Comparing --> Retired: Session ends
   Reviewing --> Retired: Session ends
   Unknown --> Retired: Session ends
   Refused --> Retired: Session ends
   Unavailable --> Retired: Session ends
+
+%% Each property retains its own producer as-of version for this binding.
+%% Refresh accepts only versions at least as new as the retained version.
+%% Selection displays that property's retained version, never its initial version.
+%% Older responses take the read-failure edge and leave retained snapshots unchanged.
+%% never: Selection restores a snapshot older than the freshest accepted snapshot for that property.
+%% Freshness transition coverage in test/tour-coordinate-review.browser.ts:
+%% Matching same/newer response, selection after refresh, older response -> Unavailable,
+%% Unavailable selection, and failed-read selection: both "coordinate refresh ... survives property selection and older reads" tests.
+%% Refused selection: "coordinate review selects exact property, compares, refuses authority and retires at four viewports".

@@ -97,6 +97,9 @@ test("coordinate review selects exact property, compares, refuses authority and 
       await root.locator("input[type=checkbox]").check();
       await root.getByRole("button", { name: "Submit human verification" }).click();
       await root.getByRole("status").filter({ hasText: "Entrance review refused." }).waitFor();
+      await root.locator("select[data-coordinate-property]").selectOption(first.property_id);
+      assert.equal(await root.locator("h3").textContent(), "Synthetic Medical 1");
+      await root.locator("select[data-coordinate-property]").selectOption(second.property_id);
       await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
       assert.equal(await root.locator("[data-coordinate-candidate]").count(), 0);
       await page.close();

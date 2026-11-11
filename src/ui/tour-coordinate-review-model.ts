@@ -132,6 +132,7 @@ export function coordinateReviewSession(
   let phase: ReviewPhase = "comparing",
     review = parseCoordinateReview(initial, binding.property),
     generation = 0;
+  let latestAsOf = review ? Date.parse(review.as_of) : -Infinity;
   let pending: ReceiptInput | null = null;
   const current = (n: number) => phase !== "retired" && generation === n;
   const changed = () => io.changed();
@@ -151,7 +152,9 @@ export function coordinateReviewSession(
       try {
         const value = await io.read();
         if (!current(n)) return;
-        review = parseCoordinateReview(value, binding.property);
+        const next = parseCoordinateReview(value, binding.property);
+        review = next && Date.parse(next.as_of) >= latestAsOf ? next : null;
+        if (review) latestAsOf = Date.parse(review.as_of);
         phase = review ? "comparing" : "unavailable";
       } catch {
         if (!current(n)) return;

@@ -19,6 +19,9 @@ export function mountCoordinateReview(
     node.textContent = text;
     return node;
   };
+  const snapshots = new Map(
+    options.stops.map((stop) => [stop.property_id, parseCoordinateReview(stop.coordinate_review, stop.property_id)]),
+  );
   let selected = options.stops[0]?.property_id ?? "";
   let session: ReturnType<typeof coordinateReviewSession> | null = null;
   let retired = false;
@@ -47,7 +50,7 @@ export function mountCoordinateReview(
     const picker = el("select");
     picker.dataset.coordinateProperty = "";
     for (const stop of options.stops) {
-      const evidence = parseCoordinateReview(stop.coordinate_review, stop.property_id);
+      const evidence = snapshots.get(stop.property_id);
       const option = el("option", evidence?.property_name ?? "Property name unknown");
       option.value = stop.property_id;
       picker.append(option);
@@ -221,11 +224,13 @@ export function mountCoordinateReview(
   function select(property: string) {
     session?.retire();
     selected = property;
-    const stop = options.stops.find((stop) => stop.property_id === property);
-    session = coordinateReviewSession({ ...options.binding, property }, stop?.coordinate_review, {
+    session = coordinateReviewSession({ ...options.binding, property }, snapshots.get(property), {
       read: () => options.read(property),
       write: options.write,
-      changed: render,
+      changed: () => {
+        if (session?.review) snapshots.set(property, session.review);
+        render();
+      },
     });
     render();
   }
@@ -233,6 +238,7 @@ export function mountCoordinateReview(
   return {
     retire() {
       retired = true;
+      snapshots.clear();
       session?.retire();
       render();
     },
