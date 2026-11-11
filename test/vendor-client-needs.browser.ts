@@ -241,6 +241,11 @@ test("approved needs expire at the earliest deadline and on panel resume without
           assert.equal(await rows.count(), 0);
           assert.equal(reads, 1, "local expiry performs no network revalidation");
           assert.deepEqual(errors, []);
+          if (!resume) {
+            await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
+            assert.equal(await section.count(), 0, "session retirement clears the locally expired panel");
+            continue;
+          }
           await section.getByRole("button", { name: "Refresh client needs", exact: true }).click();
           await section.getByRole("alert").waitFor();
           assert.equal(await rows.count(), 0, "revalidating an expired producer response cannot restore rows");
