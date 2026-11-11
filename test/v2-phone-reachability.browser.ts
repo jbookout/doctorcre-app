@@ -189,3 +189,26 @@ test("Phone audit refuses coarse bounds when a nonrectangular clip may remove al
   );
   await assert.rejects(inspectPhoneAccessibility(page), /exact nonrectangular clip-path geometry/);
 });
+
+test("Mixed delegated and native targets retain the real 20 px action", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+  await page.setContent(
+    `<html lang="en"><head><title>Delegated target</title></head><body><main><h1>Targets</h1><ul id="owner" style="margin:0;padding:0;width:200px;height:100px"><li id="small" data-action="small" style="display:block;width:20px;height:20px;background:red">X</li><li style="display:block"><button style="width:60px;height:60px">Large</button></li></ul></main></body></html>`,
+  );
+  await page.evaluate(() =>
+    document.getElementById("owner")?.addEventListener("click", (event) => {
+      if (event.target instanceof Element && event.target.closest("[data-action]")) Reflect.set(window, "tapped", true);
+    }),
+  );
+  const box = await page.locator("#small").boundingBox();
+  assert.ok(box);
+  await page.touchscreen.tap(box.x + 10, box.y + 10);
+  assert.equal(await page.evaluate(() => Reflect.get(window, "tapped")), true);
+  for (const reverse of [false, false, true]) {
+    const audit = await inspectPhoneAccessibility(page, page.mainFrame(), reverse);
+    assert.equal(audit.small.find((target) => target.id === "small")?.width, 20);
+    assert.deepEqual(audit.covered, []);
+  }
+});
