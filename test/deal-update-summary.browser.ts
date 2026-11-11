@@ -94,7 +94,14 @@ test("Overview uses one source summary, exact pages, retained originals, retry, 
       assert.equal(await root.locator(".deal-note").count(), 3);
       const original = root.getByText("Read full update", { exact: true });
       await original.click();
-      assert.match((await root.locator(".note-original").textContent()) ?? "", /Synthetic retained long original/);
+      assert.equal(
+        (await root.locator(".note-original").textContent()) ?? "",
+        "Landlord offered $24.\n\n" + "Synthetic retained long original. ".repeat(50),
+      );
+      assert.deepEqual(
+        await root.locator(".deal-note > p").allTextContents(),
+        recording.history.entries.map((e: { text: string }) => e.text),
+      );
       assert.equal(await root.locator("[data-attribution-id]").count(), 1);
       await page.screenshot({ path: `/tmp/WR433.S6.J5-shots/${width}-${theme}.png`, fullPage: true });
       await root.screenshot({ path: `/tmp/WR433.S6.J5-shots/${width}-${theme}-history.png` });
