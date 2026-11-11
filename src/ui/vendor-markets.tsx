@@ -65,12 +65,25 @@ function Members({ market, page, href }: { market: VendorMarket; page: VendorMar
     </section>
   );
 }
+function replaceVendorUrl(view: "category" | "market", market: string | null) {
+  const url = new URL(location.href);
+  if (view === "market") url.searchParams.set("vendorView", "market");
+  else url.searchParams.delete("vendorView");
+  if (view === "market" && market) url.searchParams.set("vendorMarket", market);
+  else url.searchParams.delete("vendorMarket");
+  history.replaceState(history.state, "", url);
+}
 function VendorMarketsView({ options }: { options: Options }) {
   const initial = new URL(location.href).searchParams;
-  const [view, setView] = useState(initial.get("vendorView") === "market" ? "market" : "category");
+  const [view, setView] = useState<"category" | "market">(
+    initial.get("vendorView") === "market" ? "market" : "category",
+  );
   const [request, setRequest] = useState({ market: initial.get("vendorMarket") });
   const selection = request.market;
-  const setSelection = (market: string | null) => setRequest({ market });
+  const setSelection = (market: string | null) => {
+    setRequest({ market });
+    replaceVendorUrl("market", market);
+  };
   const [read, setRead] = useState<Read>({ kind: "loading" });
   useEffect(() => {
     for (const node of options.category) node.hidden = view === "market";
@@ -78,13 +91,6 @@ function VendorMarketsView({ options }: { options: Options }) {
       for (const node of options.category) node.hidden = false;
     };
   }, [view, options]);
-  useEffect(() => {
-    const url = new URL(location.href);
-    url.searchParams.set("vendorView", view);
-    if (selection) url.searchParams.set("vendorMarket", selection);
-    else url.searchParams.delete("vendorMarket");
-    history.replaceState(history.state, "", url);
-  }, [view, selection]);
   useEffect(() => {
     if (view !== "market") return;
     const controller = new AbortController();
@@ -96,7 +102,10 @@ function VendorMarketsView({ options }: { options: Options }) {
         if (!current) return;
         const page = parseVendorMarkets(value);
         if (selection && page.state === "ready" && !page.selected_market) throw Error("Unresolved producer alias");
-        if (page.selected_market !== selection) setRequest({ market: page.selected_market });
+        if (page.selected_market !== selection) {
+          setRequest({ market: page.selected_market });
+          replaceVendorUrl("market", page.selected_market);
+        }
         setRead({ kind: "ready", page });
       })
       .catch(() => {
@@ -113,8 +122,16 @@ function VendorMarketsView({ options }: { options: Options }) {
     <section className="vendor-markets" aria-label="Vendor directory view">
       <div className="market-toolbar">
         <fieldset aria-label="Browse vendors by">
-          {["category", "market"].map((v) => (
-            <button type="button" key={v} aria-pressed={view === v} onClick={() => setView(v)}>
+          {(["category", "market"] as const).map((v) => (
+            <button
+              type="button"
+              key={v}
+              aria-pressed={view === v}
+              onClick={() => {
+                replaceVendorUrl(v, selection);
+                setView(v);
+              }}
+            >
               {v === "category" ? "Category" : "Market"}
             </button>
           ))}
