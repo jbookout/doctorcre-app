@@ -5,9 +5,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { componentDocument, animationsSettled, chromium, waitForAsync } from "./browser-harness.mjs";
 import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
 import axe from "axe-core";
-import { observeIntroduction } from '../scripts/prove-introduction-review.ts';
+import { observeIntroduction, prove as proveIntroduction } from '../scripts/prove-introduction-review.ts';
+import { startFixture } from '../scripts/fixture-http.mjs';
 const root = new URL("../", import.meta.url);
-async function open(t, width = 1440) {
+const introRecording = JSON.parse(await readFile(new URL('./fixtures/introduction-request.json', import.meta.url), 'utf8'));
+async function open(t, width = 1440, origin = 'http://localhost') {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({
@@ -22,7 +24,7 @@ async function open(t, width = 1440) {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("**/*", async (r) => {
     const url = new URL(r.request().url());
-    if (url.origin !== "http://localhost") return r.abort();
+    if (url.origin !== origin) return r.abort();
     if (url.pathname === "/api/v1/business/relationships") {
       if (mode === "auth")
         return r.fulfill({
@@ -44,6 +46,9 @@ async function open(t, width = 1440) {
         for (const r of payload.referrals) r.node_id = mapping[r.node_id] || r.node_id;
         payload.edges[0].via = mapping['party:demo-build'];
         payload.suggestions[0].via = mapping['party:demo-build'];
+        for (const recorded of introRecording.snapshot.nodes) payload.nodes[payload.nodes.findIndex(node => node.id === recorded.id)] = structuredClone(recorded);
+        payload.edges[0] = structuredClone(introRecording.snapshot.edges[0]);
+        payload.suggestions[0] = structuredClone(introRecording.snapshot.suggestions[0]);
         if (recorded) { payload.edges.push(recorded); payload.suggestions = []; }
       }
       if (version) payload.nodes[0].summary = "Demo refreshed summary";
@@ -77,7 +82,7 @@ async function open(t, width = 1440) {
         writes.push(args);
         recorded = { id: 'link:44444444-4444-4444-8444-444444444444', from: `party:${args.from_party}`, to: `party:${args.to_party}`, via: args.via_party ? `party:${args.via_party}` : null, kind: 'intro_requested', detail: args.note, summary: args.note, when: `${args.occurred_on}T00:00:00Z` };
         if (mode === 'intro-lost' && writes.length === 1) return r.abort();
-        payload = { ok: true, link_id: '44444444-4444-4444-8444-444444444444', existing: writes.length > 1 };
+        payload = structuredClone(writes.length > 1 ? introRecording.replayed : introRecording.created);
       }
       if (verb === "read-home-agenda") payload = { schema_version: "home-agenda.v1", deals: [], actor: "joe" };
       if (verb === "deal-room-board") payload = { deals: [], actor: "joe" };
@@ -578,11 +583,11 @@ test(`V03 explicitly reviews and records the exact introduction at ${width} ${th
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme,walkthroughSeen:{joe:true,dell:true}})),theme);
  await page.goto('http://localhost/relationships?mode=live');
  await page.locator('#networkIntroductions [data-node]').click();
- await page.locator('[data-review-introduction="demo-offer"]').click();
+ await page.locator('[data-review-introduction]').click();
  const panel=page.locator('.introduction-review');
  assert.equal(await panel.getAttribute('data-state'),'reviewing');assert.equal(writes.length,0);
  assert.ok((await panel.boundingBox()).width<=Math.min(620,width-24)+1,'the review panel keeps its intended width inside the app shell');
- assert.deepEqual(await panel.locator('[data-identity]').allTextContents(),['Demo Healthcare Lending (11111111-1111-4111-8111-111111111111)','Demo Practice Builders (33333333-3333-4333-8333-333333333333)','Demo Dental Expansion (22222222-2222-4222-8222-222222222222)']);
+ assert.deepEqual(await panel.locator('[data-identity]').allTextContents(),['Demo Healthcare Lending (DEMO-FROM)','Demo Practice Builders (DEMO-VIA)','Demo Dental Expansion (DEMO-TO)']);
  await panel.locator('[name="date"]').fill('2026-11-10');await panel.locator('[name="note"]').fill('Please connect these practices.');
  await panel.locator('[type="submit"]').click();assert.equal(writes.length,0);
  await panel.locator('[name="reviewed"]').check();
@@ -622,4 +627,35 @@ for (const mismatch of [false,true]) test(`V03 proof observation ${mismatch ? 'r
  if(mismatch)await assert.rejects(()=>observeIntroduction(page,'http://localhost'),/Expected values to be strictly deep-equal/);
  else assert.equal((await observeIntroduction(page,'http://localhost')).status,'passed');
  assert.equal(writes.length,0);
+});
+
+for(const mismatch of [false,true])test(`V03 complete proof runner ${mismatch?'fails an exact identity mismatch':'passes all viewport and theme observations'}`,async t=>{
+ const commit='1'.repeat(40);
+ const server=await startFixture({routes:new Map([['/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:commit})}]])});
+ t.after(()=>server.close());
+ const {page,setMode,writes}=await open(t,1440,server.origin);setMode('intro');
+ if(mismatch)await page.addInitScript(()=>{
+  new MutationObserver(()=>{const n=document.querySelector('.introduction-review dd');if(n&&!n.textContent.startsWith('Wrong '))n.textContent=`Wrong ${n.textContent}`;}).observe(document,{subtree:true,childList:true});
+ });
+ const run=()=>proveIntroduction({origin:server.origin,commit,engine:{launch:async()=>({newPage:async()=>page,close:async()=>{await page.close();}})}});
+ if(mismatch)await assert.rejects(run,/Expected values to be strictly deep-equal/);
+ else {const receipt=await run();assert.equal(receipt.status,'passed');assert.equal(receipt.observations.length,4);}
+ assert.equal(writes.length,0);assert.equal(page.isClosed(),true);
+});
+
+for(const scenario of ['late launch','stalled evaluation'])test(`V03 proof deadline closes its page after ${scenario}`,async t=>{
+ const commit='1'.repeat(40);
+ const server=await startFixture({routes:new Map([['/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:commit})}]])});t.after(()=>server.close());
+ const {page,setMode}=await open(t,390,server.origin);setMode('intro');
+ let release;
+ const pending=new Promise(resolve=>{release=resolve;});
+ const evaluate=page.evaluate.bind(page);
+ if(scenario==='stalled evaluation'){page.goto=async()=>null;page.setViewportSize=async()=>{};page.evaluate=()=>pending;}
+ let closed=0;
+ const engine={launch:async()=>{
+  if(scenario==='late launch')await delay(1200);
+  return {newPage:async()=>page,close:async()=>{closed++;page.evaluate=evaluate;await page.close();release();}};
+ }};
+ await assert.rejects(()=>proveIntroduction({origin:server.origin,commit,engine,timeoutMs:1000}),error=>error.exitCode===78);
+ assert.equal(closed,1);assert.equal(page.isClosed(),true);
 });

@@ -1,34 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
+import type { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
 import { validNetwork } from "../js/relationship-network-model.js";
 import { createIntroductionRequest, parseLinkReceipt } from "../src/ui/introduction-request.ts";
+
+import recorded from "./fixtures/introduction-request.json" with { type: "json" };
+
+const offerId = recorded.snapshot.edges[0]?.id;
+assert.ok(offerId);
 
 const from = "11111111-1111-4111-8111-111111111111",
   to = "22222222-2222-4222-8222-222222222222",
   via = "33333333-3333-4333-8333-333333333333";
 function fixture() {
-  const value = relationshipNetworkFixture();
-  for (const node of value.nodes) node.restricted = false;
-  const replacements: [string, string][] = [
-    ["party:demo-lender", `party:${from}`],
-    ["party:demo-lead", `party:${to}`],
-    ["party:demo-build", `party:${via}`],
-  ];
-  for (const [old, id] of replacements) {
-    for (const n of value.nodes) if (n.id === old) n.id = id;
-    const sides: ("from" | "to" | "via")[] = ["from", "to", "via"];
-    for (const e of [...value.edges, ...value.suggestions]) for (const key of sides) if (e[key] === old) e[key] = id;
-    for (const r of value.referrals) if (r.node_id === old) r.node_id = id;
-  }
-  assert.ok(value.edges[0]);
-  assert.ok(value.suggestions[0]);
-  value.edges[0].via = `party:${via}`;
-  value.suggestions[0].via = `party:${via}`;
+  const value: ReturnType<typeof relationshipNetworkFixture> = structuredClone(recorded.snapshot);
+  value.observed_at = new Date().toISOString();
+  value.valid_until = new Date(Date.now() + 120_000).toISOString();
   assert.equal(validNetwork(value), true);
   return value;
 }
-const receipt = { ok: true, link_id: "44444444-4444-4444-8444-444444444444", existing: false };
+const receipt = recorded.created;
 type Write = NonNullable<ReturnType<ReturnType<typeof createIntroductionRequest>["view"]>["request"]>;
 function harness() {
   const network = fixture(),
@@ -86,7 +77,7 @@ function harness() {
 }
 test("selected path requires explicit review and preserves exact party identities", async () => {
   const h = harness();
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   assert.equal(h.calls.length, 0);
   await h.model.submit("2026-11-10", "Please connect these practices.", false);
   assert.equal(h.calls.length, 0);
@@ -105,11 +96,11 @@ test("selected path requires explicit review and preserves exact party identitie
 });
 test("lost response blocks replacement and recovers with identical key after reopening", async () => {
   const h = harness();
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   h.lost();
   await h.model.submit("2026-11-10", "Note", true);
   assert.equal(h.model.view().status, "unknown");
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   await h.model.submit("2026-11-11", "Changed note", true);
   assert.equal(h.calls.length, 1);
   await h.model.recover();
@@ -120,7 +111,7 @@ test("lost response blocks replacement and recovers with identical key after reo
 for (const mutation of ["restricted", "hold", "stale", "changed", "removed", "already-requested"])
   test(`fresh source refuses ${mutation}`, async () => {
     const h = harness();
-    h.model.open(h.network, "demo-offer");
+    h.model.open(h.network, offerId);
     assert.ok(h.network.nodes[0]);
     assert.ok(h.network.edges[0]);
     if (mutation === "restricted") h.network.nodes[0].restricted = true;
@@ -136,18 +127,18 @@ for (const mutation of ["restricted", "hold", "stale", "changed", "removed", "al
   });
 test("server refusal remains refused and reopening requires a new review", async () => {
   const h = harness();
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   h.refuse();
   await h.model.submit("2026-11-10", "Note", true);
   assert.equal(h.model.view().status, "refused");
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   assert.equal(h.model.view().status, "reviewing");
 });
 test("retirement suppresses a late receipt and all later sends", async () => {
   const h = harness();
   const pending = Promise.withResolvers();
   h.hold(pending.promise);
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   const sending = h.model.submit("2026-11-10", "Note", true);
   await new Promise((r) => setImmediate(r));
   h.model.retire();
@@ -162,7 +153,7 @@ test("receipt and exact canonical readback are both required", async () => {
   assert.deepEqual(parseLinkReceipt(receipt), receipt);
   const h = harness();
   h.client.linkParties = async () => receipt;
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   await h.model.submit("2026-11-10", "Note", true);
   assert.equal(h.model.view().status, "unknown");
 });
@@ -188,7 +179,7 @@ test("direct offered paths omit a separate introducer without inventing one", as
     h.network.suggestions = [];
     return receipt;
   };
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   await h.model.submit("2026-11-10", "Direct request", true);
   assert.equal(h.model.view().status, "confirmed");
   assert.equal(Object.hasOwn(h.calls[0] || {}, "via_party"), false);
@@ -196,7 +187,7 @@ test("direct offered paths omit a separate introducer without inventing one", as
 
 test("invalid dates, empty notes, missing review, and double submission send no extra request", async () => {
   const h = harness();
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   for (const [date, note, reviewed] of [
     ["2026-02-30", "Note", true],
     ["2026-11-10", "", true],
@@ -213,7 +204,7 @@ test("invalid dates, empty notes, missing review, and double submission send no 
 for (const state of ["reviewing", "unknown", "refused", "confirmed", "changed_source"])
   test(`retirement clears ${state} review and prevents further sends`, async () => {
     const h = harness();
-    h.model.open(h.network, "demo-offer");
+    h.model.open(h.network, offerId);
     if (state === "unknown") h.lost();
     if (state === "refused") h.refuse();
     if (state === "changed_source") h.network.suggestions = [];
@@ -223,7 +214,7 @@ for (const state of ["reviewing", "unknown", "refused", "confirmed", "changed_so
     assert.equal(h.model.view().path, null);
     assert.equal(h.model.view().request, null);
     const count = h.calls.length;
-    h.model.open(h.network, "demo-offer");
+    h.model.open(h.network, offerId);
     await h.model.submit("2026-11-10", "Note", true);
     await h.model.recover();
     assert.equal(h.calls.length, count);
@@ -233,7 +224,7 @@ for (const state of ["reviewing", "unknown", "refused", "confirmed", "changed_so
 test("missing restriction evidence and an altered introducer refuse before dispatch", async () => {
   for (const change of ["missing-restriction", "introducer"]) {
     const h = harness();
-    h.model.open(h.network, "demo-offer");
+    h.model.open(h.network, offerId);
     assert.ok(h.network.nodes[0]);
     assert.ok(h.network.edges[0]);
     assert.ok(h.network.suggestions[0]);
@@ -250,17 +241,27 @@ test("missing restriction evidence and an altered introducer refuse before dispa
 
 test("changed source requires reopening and explicitly reviewing its current identities", async () => {
   const h = harness();
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   assert.ok(h.network.nodes[0]);
   h.network.nodes[0].name = "Demo Updated Lending";
   await h.model.submit("2026-11-10", "Note", true);
   assert.equal(h.model.view().status, "changed_source");
   assert.equal(h.calls.length, 0);
-  h.model.open(h.network, "demo-offer");
+  h.model.open(h.network, offerId);
   assert.equal(h.model.view().status, "reviewing");
   assert.equal(h.model.view().path?.from.name, "Demo Updated Lending");
   await h.model.submit("2026-11-10", "Note", false);
   assert.equal(h.calls.length, 0);
   await h.model.submit("2026-11-10", "Note", true);
   assert.equal(h.model.view().status, "confirmed");
+});
+
+test("recorded producer receipts and snapshots pass the production parsers", () => {
+  assert.equal(recorded.producer.database_connections, 0);
+  assert.equal(recorded.producer.production_writes, 0);
+  for (const response of [recorded.created, recorded.replayed, recorded.existing])
+    assert.equal(parseLinkReceipt(response).link_id, recorded.created.link_id);
+  assert.equal(validNetwork(recorded.snapshot), true);
+  assert.equal(validNetwork(recorded.requested), true);
+  assert.equal(recorded.requested.suggestions.length, 0);
 });

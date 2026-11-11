@@ -78,11 +78,13 @@ export async function prove({
   origin,
   commit,
   cdpUrl,
+  engine,
   timeoutMs = 30000,
 }: {
   origin: string;
   commit: string;
   cdpUrl?: string | undefined;
+  engine?: Engine | undefined;
   timeoutMs?: number;
 }) {
   const url = new URL(origin);
@@ -105,8 +107,8 @@ export async function prove({
       };
       const release = await readAppRelease(origin, read);
       await requireContainingRelease(commit, release.source_commit, { signal: lifetime.signal });
-      if (!cdpUrl) throw insufficient("Supply an authorized signed-in loopback CDP session");
-      acquisition = signedInReplyEngine(cdpUrl).launch({ timeout: timeoutMs });
+      if (!cdpUrl && !engine) throw insufficient("Supply an authorized signed-in loopback CDP session");
+      acquisition = (engine || signedInReplyEngine(cdpUrl || "")).launch({ timeout: timeoutMs });
       const browser = await acquisition;
       if (lifetime.signal.aborted) throw lifetime.signal.reason;
       const page = await browser.newPage();
@@ -116,8 +118,9 @@ export async function prove({
         const request = route.request(),
           target = new URL(request.url());
         if (target.origin !== origin) return route.abort();
-        if (["GET", "HEAD"].includes(request.method())) return route.continue();
-        if (target.pathname === "/mcp")
+        if (["GET", "HEAD"].includes(request.method())) return route.fallback();
+        if (target.pathname === "/mcp") {
+          if (request.postDataJSON().params?.name === "link-parties") writes++;
           return route.fulfill({
             json: {
               jsonrpc: "2.0",
@@ -125,6 +128,7 @@ export async function prove({
               result: { isError: true, content: [{ type: "text", text: '{"error":"proof_unrelated_rpc_refused"}' }] },
             },
           });
+        }
         writes++;
         return route.abort();
       });

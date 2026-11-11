@@ -29,7 +29,7 @@ stateDiagram-v2
 
 Never send on open. Never mint a second key for an unknown request. Never apply late results to a retired view. link-parties has no source-version argument, so a pre-write read cannot provide atomic source fencing. Server authority remains unchanged.
 
-Producer shapes inspected on Studio at carr-system 9d8242f399eef0269dc0d74773b40ad98ad45685. tools.js link-parties returns ok, link_id, existing and optional backfilled. relationship-network.ts projectNetwork returns the pinned relationship-network.v1 shape. Tests use synthetic data through production parsers. No production record was written.
+Producer fixtures were recorded on Studio at carr-system 9d8242f399eef0269dc0d74773b40ad98ad45685. The real registered TOOLS link-parties handler ran with a strict synthetic query adapter and no database connection. The real projectNetwork function projected synthetic rows. test/fixtures/introduction-request.json retains new, replayed and existing receipts plus offered and requested snapshots. State and browser tests consume these through the production receipt parser, network validator and live transport. No production record was written.
 
 Transition-to-test mapping:
 
