@@ -43,11 +43,12 @@ export async function prove({
   let page: Page | undefined;
   let acquisition: Promise<Browser> | undefined;
   let pageAcquisition: Promise<Page> | undefined;
-  let assertionsStarted = false;
+  let containingRelease = false;
   const observations: unknown[] = [];
   const work = async () => {
     const release = await readAppRelease(origin, { timeoutMs: remaining() });
     await requireContainingRelease(expectedCommit, release.source_commit, { signal: controller.signal });
+    containingRelease = true;
     if (fixture)
       browser = await launchProofBrowser(
         chromium,
@@ -134,7 +135,9 @@ export async function prove({
             await section
               .getByRole("tab", { name: view === "suggested" ? "Suggested" : "Research", exact: true })
               .click({ timeout: remaining() });
-          const envelope: unknown = await (await read).json();
+          const response = await read;
+          if (!response.ok()) throw insufficient(`Authorized response unavailable (HTTP ${response.status()})`);
+          const envelope: unknown = await response.json();
           if (
             !envelope ||
             typeof envelope !== "object" ||
@@ -151,7 +154,6 @@ export async function prove({
           if (!content || typeof content.text !== "string") throw insufficient("Authorized response unavailable");
           const snapshot = parseMeetingPage(JSON.parse(content.text), { view, q: "", limit: 5 });
           await section.locator('[role="tabpanel"][aria-busy="false"]').waitFor({ timeout: remaining() });
-          assertionsStarted = true;
           assert.equal(
             await section
               .getByRole("tab", { name: view === "suggested" ? "Suggested" : "Research", exact: true })
@@ -246,8 +248,8 @@ export async function prove({
       }),
     ]);
   } catch (error) {
-    if (error instanceof Error && (!assertionsStarted || /Timeout|closed|connectOverCDP/.test(error.message)))
-      throw Object.assign(error, { exitCode: 78 });
+    if (!containingRelease || !(error instanceof assert.AssertionError))
+      throw error instanceof Error ? Object.assign(error, { exitCode: 78 }) : insufficient(String(error));
     throw error;
   } finally {
     clearTimeout(timer);
