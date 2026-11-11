@@ -91,7 +91,7 @@ export async function prove({ origin, timeoutMs }) {
         if (url.origin !== origin || request.method() !== 'GET' || url.search) throw Error('Business network refused');
         if (url.pathname === '/__task-proof') return await route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Synthetic task proof</title>' });
         const path = url.pathname.slice(1), row = files.get(path);
-        if (!/^js\/(?:ui-task-done|ui-shared-[A-Z0-9]+\.generated)\.js$/.test(path) || !row) throw Error('Unmanifested module refused');
+        if (!/^js\/(?:ui-task-done|ui-shared-[A-Z0-9]+)\.generated\.js$/.test(path) || !row) throw Error('Unmanifested module refused');
         if (!cached.has(path)) {
           const data = await get('/' + path);
           if (data.length !== row.bytes || hash(data) !== row.sha256) throw Error('Manifest asset hash mismatch');
