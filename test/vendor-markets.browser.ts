@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { startFixtureServer } from "../scripts/fixture-server.mjs";
 import { chromium } from "./browser-harness.mjs";
 import { directoryFixture } from "./fixtures/vendor-directory.synthetic.mjs";
@@ -246,4 +248,36 @@ test("canonical Market deep link restores Market and its selection", async (t) =
   assert.equal(await section.getByRole("button", { name: "Market", exact: true }).getAttribute("aria-pressed"), "true");
   assert.equal(await section.getByLabel("Reviewed market", { exact: true }).inputValue(), "sandestin");
   assert.equal(page.url(), expected);
+});
+
+test("reviewer signed-in Vendors probe settles then reloads at exactly /vendors", async (t) => {
+  const assets = await appAssetSnapshot();
+  const server = await startWorkerFixture({
+    assets,
+    env: {
+      APP_ENV: "production",
+      GIT_SHA: "1".repeat(40),
+      CARR: {
+        fetch: async (request: Request) => {
+          const url = new URL(request.url);
+          if (url.pathname.startsWith("/api/v1/business/")) return Response.json(directoryFixture(request.url));
+          if (url.pathname === "/mcp") {
+            const req = await request.json();
+            return Response.json({ jsonrpc: "2.0", id: req.id, result: { content: [{ type: "text", text: "{}" }] } });
+          }
+          return Response.json({ actor: { slug: "joe", display_name: "Joe" }, csrf_token: "synthetic-session" });
+        },
+      },
+    },
+  });
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.route(/.*/, (r) => (new URL(r.request().url()).origin === server.origin ? r.continue() : r.abort()));
+  await page.goto(`${server.origin}/vendors`);
+  await page.waitForTimeout(1000);
+  await page.reload();
+  await page.waitForTimeout(1000);
+  assert.equal(page.url(), `${server.origin}/vendors`);
 });
