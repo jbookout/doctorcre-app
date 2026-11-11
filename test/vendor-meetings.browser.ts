@@ -48,7 +48,7 @@ test("Suggested retains exact named people with unknown channels and unavailable
     assert.equal(await section.getByText(text, { exact: true }).count(), 1);
 });
 
-async function setup(t: import("node:test").TestContext) {
+async function setup(t: import("node:test").TestContext, width = 1440) {
   const recording = JSON.parse(
     await readFile(new URL("./fixtures/vendor-meetings/recordings.json", import.meta.url), "utf8"),
   );
@@ -56,7 +56,7 @@ async function setup(t: import("node:test").TestContext) {
   t.after(() => server.stop());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  const page = await browser.newPage();
+  const page = await browser.newPage({ viewport: { width, height: 844 } });
   await page.route("https://**", (r) => r.abort());
   await page.route("**/api/v1/business/**", (r) => r.fulfill({ json: directoryFixture(r.request().url()) }));
   const requests: { view: string; q: string; cursor?: string }[] = [];
@@ -95,6 +95,7 @@ async function setup(t: import("node:test").TestContext) {
   });
   await page.goto(`${server.url}/vendors`);
   const section = page.getByRole("region", { name: "People worth meeting" });
+  if (width < 768) await page.locator(".vendor-meetings > summary").click();
   await section.getByText("Ada Synthetic", { exact: true }).waitFor();
   return {
     page,
@@ -176,7 +177,7 @@ test("session retirement erases results and ignores pending responses", async (t
 for (const width of [1440, 390])
   for (const theme of ["light", "dark"])
     test(`vendor meetings fit ${width} ${theme}`, async (t) => {
-      const { page, section } = await setup(t);
+      const { page, section } = await setup(t, width);
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate((theme) => {
         document.documentElement.dataset.theme = theme;
@@ -184,11 +185,11 @@ for (const width of [1440, 390])
       await section.scrollIntoViewIfNeeded();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       const { mkdir } = await import("node:fs/promises");
-      await mkdir("/tmp/WR591.S24.J1-shots", { recursive: true });
-      await page.screenshot({ path: `/tmp/WR591.S24.J1-shots/suggested-${width}-${theme}.png`, fullPage: true });
+      await mkdir("/tmp/WR591.S24.J3-shots", { recursive: true });
+      await page.screenshot({ path: `/tmp/WR591.S24.J3-shots/suggested-${width}-${theme}.png`, fullPage: true });
       await section.getByRole("tab", { name: "Research", exact: true }).click();
       await section.getByText("A verified office is needed", { exact: true }).waitFor();
-      await page.screenshot({ path: `/tmp/WR591.S24.J1-shots/research-${width}-${theme}.png`, fullPage: true });
+      await page.screenshot({ path: `/tmp/WR591.S24.J3-shots/research-${width}-${theme}.png`, fullPage: true });
     });
 
 test("query changes retire successful and failed late reads even when the adapter ignores cancellation", async (t) => {
@@ -293,4 +294,19 @@ test("possible meetings retain exact recorded details and partial-calendar warni
   );
   for (const note of ready.suggested.calendar.notes)
     assert.equal(await section.getByText(note, { exact: true }).count(), 1);
+});
+
+test("phone disclosure restores directory and retains meeting view across close and reopen", async (t) => {
+  const { page, section } = await setup(t, 390);
+  await section.getByRole("tab", { name: "Research", exact: true }).click();
+  await section.getByText("A verified office is needed", { exact: true }).waitFor();
+  const summary = page.locator(".vendor-meetings > summary");
+  await summary.click();
+  assert.equal(await section.isVisible(), false);
+  await page.locator(".record-row").first().waitFor();
+  assert.equal(await page.locator(".record-row").first().isVisible(), true);
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await section.getByText("A verified office is needed", { exact: true }).waitFor();
+  assert.equal(await section.getByRole("tab", { name: "Research", exact: true }).getAttribute("aria-selected"), "true");
 });

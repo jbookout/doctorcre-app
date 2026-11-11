@@ -8,6 +8,12 @@ The typed island owns selected tab, submitted search and one bounded five-person
 
 Two designs considered: add meeting modes to the directory URL/list state, or isolate the bounded page in a typed island. The island keeps meeting cursors separate from company directory cursors and reuses record detail navigation. One request per submit/tab/page/retry, no N+1, fan-out or automatic retry. At ten times today's usage CARR query/calendar reads become the first limit; the app still requests five people per page. Server keyset consistency is live and pages can change after record changes. Circuit breaker is one failed read with manual retry. Idempotency is n/a for reads.
 
+## Phone directory disclosure
+
+A native details element starts collapsed at phone widths and open on desktop. On phones its closed summary shares the search row, preserving three complete vendor rows at 390 pixels. Opening it gives the meeting panel the full width. Closing it retains the selected tab, query and page. The native element owns disclosure state and keyboard interaction; React still owns the unchanged read lifecycle. No added requests, storage or transport changes.
+
+A separate meeting route was considered. The native disclosure keeps the existing directory context and avoids a second navigation state. `vendor-meetings-disclosure.mmd` models its independent visibility. Initial closed entry is covered by all phone vendor-layout cases. Open, close and keyboard reopen are covered by `phone disclosure restores directory and retains meeting view across close and reopen`. Desktop entry is covered by the existing Suggested and fit tests. The chart abstracts native browser visibility and starts at phone entry; desktop starts expanded.
+
 ## Transition tests
 
 - Initial loading to ready: Suggested retains exact named people with unknown channels and unavailable calendar.

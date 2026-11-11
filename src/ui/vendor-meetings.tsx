@@ -49,9 +49,8 @@ function VendorMeetings({ options }: { options: Options }) {
     };
   }, [options, query]);
   return (
-    <section className="module-card glass vendor-meetings" aria-label="People worth meeting">
+    <section aria-label="People worth meeting">
       <header>
-        <h2>People worth meeting</h2>
         <p>Named people with a reason to meet and a verified office.</p>
       </header>
       <div role="tablist" aria-label="Vendor meetings">
@@ -233,6 +232,15 @@ export function mountVendorMeetings(host: HTMLElement, options: Options) {
     flushSync(() => root.unmount());
   };
   window.addEventListener("doctorcre-session-invalidated", dispose);
-  flushSync(() => root.render(<VendorMeetings options={options} />));
+  flushSync(() =>
+    root.render(
+      <details className="module-card glass vendor-meetings" open={!window.matchMedia("(max-width: 767px)").matches}>
+        <summary>
+          <h2>People worth meeting</h2>
+        </summary>
+        <VendorMeetings options={options} />
+      </details>,
+    ),
+  );
   return { dispose };
 }

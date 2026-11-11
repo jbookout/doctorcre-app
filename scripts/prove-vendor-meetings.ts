@@ -112,6 +112,7 @@ export async function prove({
         response.catch(() => {});
         await activePage.goto(`${origin}/vendors`, { timeout: remaining() });
         const section = activePage.getByRole("region", { name: "People worth meeting" });
+        if (width === 390) await activePage.locator(".vendor-meetings > summary").click({ timeout: remaining() });
         for (const view of ["suggested", "research"] satisfies MeetingQuery["view"][]) {
           const read =
             view === "suggested"

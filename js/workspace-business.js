@@ -137,6 +137,7 @@ async function syncQuietVendors() {
     const { createMcpRequests } = await import('./mcp-requests.mjs');
     if (generation !== quietVendorsGeneration) return;
     vendorMeetingsHost = document.createElement('div');
+    vendorMeetingsHost.className = 'vendor-meetings-host';
     vendorMeetingsHost.setAttribute('data-panel-background', '');
     host.before(vendorMeetingsHost);
     const requestMeetings = createMcpRequests();

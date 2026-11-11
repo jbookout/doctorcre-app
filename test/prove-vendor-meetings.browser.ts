@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+import { chromium as driver } from "playwright";
+import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-vendor-meetings.ts";
@@ -150,3 +153,50 @@ for (const mode of ["late launch", "stalled evaluation"])
       timeoutMs: 3000,
     });
   });
+
+test("real CDP deadline closes delayed page and preserves the original tab", async (t) => {
+  const root = temporaryDirectory("vendor-meetings-cdp-", t);
+  const context = await driver.launchPersistentContext(root, {
+    headless: true,
+    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0"],
+  });
+  t.after(() => context.close());
+  const originalTab = context.pages()[0];
+  assert.ok(originalTab);
+  const before = context.pages().length;
+  const port = (await readFile(join(root, "DevToolsActivePort"), "utf8")).split("\n")[0];
+  const cdpUrl = `http://127.0.0.1:${port}`;
+  const connect = driver.connectOverCDP.bind(driver);
+  let delayedTab: import("playwright").Page | undefined;
+  t.mock.method(driver, "connectOverCDP", async (...args: Parameters<typeof connect>) => {
+    const browser = await connect(...args);
+    const borrowed = browser.contexts()[0];
+    assert.ok(borrowed);
+    const newPage = borrowed.newPage.bind(borrowed);
+    t.mock.method(borrowed, "newPage", async () => {
+      delayedTab = await newPage();
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      return delayedTab;
+    });
+    return browser;
+  });
+  const server = await fixture(t);
+  await assert.rejects(prove({ origin: server.origin, expectedCommit: commit, cdpUrl, timeoutMs: 1200 }), {
+    exitCode: 78,
+  });
+  assert.ok(delayedTab, "newPage acquired a real tab before its delayed return");
+  assert.equal(delayedTab.isClosed(), true);
+  const fresh = await connect(cdpUrl);
+  try {
+    const remainingContext = fresh.contexts()[0];
+    assert.ok(remainingContext);
+    assert.equal(remainingContext.pages().length, before);
+    assert.equal(originalTab.isClosed(), false);
+    assert.equal(await originalTab.evaluate(() => 1), 1);
+  } finally {
+    await fresh.close();
+  }
+  t.diagnostic(
+    `exit 78; tabs before ${before}; tabs after ${context.pages().length}; delayed tab closed; original tab usable`,
+  );
+});
