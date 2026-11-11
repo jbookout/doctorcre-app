@@ -285,3 +285,65 @@ test("unmount during provider initialization never adds markers to a removed ren
   assert.equal(root.children.length, 0);
   dom.window.close();
 });
+
+import { navigationFromEvidence } from "../src/ui/tour-navigation.ts";
+import { detailFixture } from "./fixtures/tour-navigation/detail.ts";
+
+for (const scenario of ["expiry", "replacement", "destruction"]) {
+  test(`mounted navigation evidence lease ${scenario}`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.now() });
+    const dom = new JSDOM("<section></section>", { url: "https://example.test/tours" });
+    t.after(() => dom.window.close());
+    const timers = new Set();
+    Object.defineProperty(dom.window, "setTimeout", {
+      value: (callback, delay) => {
+        const timer = setTimeout(() => {
+          timers.delete(timer);
+          callback();
+        }, delay);
+        timers.add(timer);
+        return timer;
+      },
+    });
+    Object.defineProperty(dom.window, "clearTimeout", {
+      value: (timer) => {
+        timers.delete(timer);
+        clearTimeout(timer);
+      },
+    });
+    const root = dom.window.document.querySelector("section");
+    assert.ok(root);
+    const route = () => acceptedRouteFromDetail(detailFixture(), navigationFromEvidence);
+    const view = mountAcceptedItinerary(root, {
+      route: route(),
+      scope: "synthetic-session",
+      user_ref: "synthetic-user",
+    });
+    t.after(() => view.destroy());
+    const links = () => root.querySelectorAll(".itinerary-navigation a").length;
+    assert.equal(links(), 2);
+    assert.equal(timers.size, 1);
+    if (scenario === "replacement") {
+      t.mock.timers.tick(150000);
+      view.update({ route: route() });
+      assert.equal(timers.size, 1, "update replaces the prior lease timer");
+      t.mock.timers.tick(150001);
+      assert.equal(links(), 2, "prior deadline must not expire refreshed evidence");
+      t.mock.timers.tick(150000);
+    } else if (scenario === "destruction") {
+      view.destroy();
+      assert.equal(timers.size, 0, "destroy cancels the lease timer");
+      t.mock.timers.tick(300001);
+      assert.equal(root.childElementCount, 0);
+      return;
+    } else {
+      t.mock.timers.tick(299999);
+      assert.equal(links(), 2);
+      t.mock.timers.tick(2);
+    }
+    assert.equal(links(), 0, "five-minute deadline removes Navigate without another interaction");
+    assert.equal(root.querySelectorAll("[data-itinerary-stop]").length, 2);
+    assert.equal(root.querySelectorAll("[data-itinerary-card]").length, 1);
+    assert.equal(timers.size, 0);
+  });
+}

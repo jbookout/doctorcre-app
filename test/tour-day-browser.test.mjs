@@ -9,7 +9,7 @@ import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from "./browser-harness.mjs";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
-import { receipt as mapReceipt } from "./fixtures/tour-map.synthetic.mjs";
+import { bindParityNavigation } from "./fixtures/tour-navigation/detail.ts";
 import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
 
@@ -20,8 +20,8 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   if (basemap) {
     const source = await loadFixtureAssets({root:fileURLToPath(root),manifest:new Map([['/tours/day.js','tours/day.js']])});
     const day = source.get('/tours/day.js');
-    assets.set('/tours/day.js', { ...day, body:day.body.toString().replace('mountTourDay({ document, window });',
-      'mountTourDay({ document, window, mapFactory: (root, options) => mountAcceptedItinerary(root, { ...options, basemapStyle: { version: 8, sources: {}, layers: [] } }) });') });
+    assets.set('/tours/day.js', { ...day, body:day.body.toString().replace('mountTourDay({ document, window, navigationFromEvidence });',
+      'mountTourDay({ document, window, navigationFromEvidence, mapFactory: (root, options) => mountAcceptedItinerary(root, { ...options, basemapStyle: { version: 8, sources: {}, layers: [] } }) });') });
   }
   const server = await startWorkerFixture({ assets, env: { CARR: { fetch: async request => {
     const url = new URL(request.url);
@@ -333,11 +333,10 @@ test("accepted Tour exposes an unlocated stop without offering coordinate naviga
 function parityFixture() {
   const fixture = structuredClone(detail), route = fixture.routes[0];
   const [first, second] = route.stops;
-  const unlocated = { ...second, id: "88888888-8888-4888-8888-888888888888", property_id: "99999999-9999-4999-8999-999999999999", property_name: "Demo unlocated office", property_address: "300 Example Way", position: null, route_sequence: 3, route_label: "3" };
   first.route_label = "1"; second.route_label = "2";
-  route.stops = [unlocated, second, first];
-  Object.assign(fixture, { projection_id: "synthetic-parity-v1", canonical_dataset_version: "synthetic-v1", component_registry_version: "map-v1" });
-  fixture.map_promotion_receipt = { ...structuredClone(mapReceipt), tour_id: fixture.id, route_version_id: route.id, route_version: 1, projection_id: fixture.projection_id };
+  route.stops = [second, first];
+  fixture.projection_id = "synthetic-parity-v1";
+  bindParityNavigation(fixture);
   fixture.routes.unshift({ ...structuredClone(route), id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", accepted: false, route_version: 2, stops: [] });
   return fixture;
 }
@@ -367,16 +366,15 @@ test("accepted Tour keeps itinerary, numbered markers, next stop and phone hando
     const orderIs = async ids => {
       await page.waitForFunction(() => document.querySelectorAll('.itinerary-pin').length === 2);
       assert.deepEqual(await page.locator('.day-stop').evaluateAll(rows => rows.map(row => row.dataset.stopId)), ids);
-      assert.deepEqual(await page.locator('.stop-letter').allTextContents(), ['1', '2', '3']);
+      assert.deepEqual(await page.locator('.stop-letter').allTextContents(), ['1', '2']);
       assert.deepEqual(await page.locator('.day-stop strong').allTextContents(), ids.map(id => names[id]));
       for (let index = 0; index < 2; index++) {
         const marker = page.locator(`.itinerary-pin[data-route-stop-id="${ids[index]}"]`);
         assert.equal(await marker.locator('span').textContent(), String(index + 1));
         assert.match(await marker.getAttribute('aria-label'), new RegExp(`Stop ${index + 1}, ${names[ids[index]]}`));
       }
-      assert.match(await page.locator('.day-stop').nth(2).textContent(), /Location unknown/);
     };
-    await orderIs([first, second, unknown]);
+    await orderIs([first, second]);
     await currentIs(first, '30.6001,-88.0001');
     await page.locator('#day-next').click();
     await currentIs(second, '30.6102,-88.0102');
@@ -385,7 +383,7 @@ test("accepted Tour keeps itinerary, numbered markers, next stop and phone hando
     }, true));
     await page.locator('#day-current a[href*="google"]').click();
     await page.reload();
-    await orderIs([first, second, unknown]);
+    await orderIs([first, second]);
     await currentIs(second, '30.6102,-88.0102');
     await page.locator(`.itinerary-pin[data-route-stop-id="${first}"]`).click();
     await currentIs(first, '30.6001,-88.0001');
@@ -393,12 +391,10 @@ test("accepted Tour keeps itinerary, numbered markers, next stop and phone hando
     assert.equal(await page.locator('#day-dialog-title').textContent(), names[second]);
     await page.getByLabel('Close property', { exact: true }).click();
     await currentIs(second, '30.6102,-88.0102');
-    await page.locator('#day-next').click();
-    await currentIs(unknown);
     assert.equal(await page.locator('#day-next').isDisabled(), true);
     await page.reload();
-    await orderIs([first, second, unknown]);
-    await currentIs(unknown);
+    await orderIs([first, second]);
+    await currentIs(second, '30.6102,-88.0102');
 
     const route = current.routes.find(route => route.accepted);
     const a = route.stops.find(stop => stop.id === first), b = route.stops.find(stop => stop.id === second);
@@ -407,23 +403,19 @@ test("accepted Tour keeps itinerary, numbered markers, next stop and phone hando
     current.projection_id = 'synthetic-parity-v3';
     await page.locator('#day-refresh').click();
     await page.waitForFunction(() => document.querySelector('.day-stop')?.dataset.stopId === '66666666-6666-4666-8666-666666666666');
-    await orderIs([second, first, unknown]);
+    await orderIs([second, first]);
     assert.equal(await page.locator('#day-current a[href*="maps"]').count(), 0, 'old promotion cannot authorize a reordered route');
-    Object.assign(current.map_promotion_receipt, { route_version: 3, route_version_id: route.id, projection_id: current.projection_id });
+    bindParityNavigation(current);
     await page.locator('#day-refresh').click();
     await page.waitForFunction(() => document.querySelector('#day-current a[href*="maps"]'));
     await currentIs(second, '30.6102,-88.0102');
     await page.locator('#day-next').click();
     await currentIs(first, '30.6001,-88.0001');
     await page.reload();
-    await orderIs([second, first, unknown]);
+    await orderIs([second, first]);
     await currentIs(first, '30.6001,-88.0001');
     await page.locator(`.itinerary-pin[data-route-stop-id="${second}"]`).click();
     await currentIs(second, '30.6102,-88.0102');
-    await page.locator('.day-stop').nth(2).click();
-    assert.equal(await page.locator('#day-dialog-title').textContent(), names[unknown]);
-    await page.getByLabel('Close property', { exact: true }).click();
-    await currentIs(unknown);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(errors, []);
     assert.equal(requests.filter(request => request.path.startsWith('/api/') && request.method !== 'GET').length, 0);
