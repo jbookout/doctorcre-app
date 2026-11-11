@@ -347,3 +347,12 @@
 .deal-document-list summary { cursor: pointer; }
 .has-app-layout .deal-tour-departure { width: min(480px, calc(100vw - 32px)); padding: var(--space-5); }
 .deal-tour-departure .btn { margin-inline-end: var(--space-2); }
+
+.deal-client-needs { margin-block: 1rem; overflow-wrap: anywhere; }
+.deal-client-needs article, .deal-client-needs form, .deal-client-needs [aria-label="Review need revision"] { border: 1px solid var(--hairline); border-radius: .75rem; padding: 1rem; margin-block: 1rem; }
+.deal-client-needs label { display: grid; gap: .35rem; margin-block: .7rem; }
+.deal-client-needs input, .deal-client-needs select { min-height:44px; padding:.6rem; border:1px solid var(--hairline); border-radius:.4rem; background:var(--surface-1); color:inherit; font:inherit; width: 100%; min-width: 0; box-sizing: border-box; }
+.deal-client-needs dl { display: grid; gap: .5rem; }
+.deal-client-needs dt { font-weight: 600; }
+.deal-client-needs dd { margin: 0; }
+.deal-client-needs .btn { margin: .25rem .4rem .25rem 0; white-space: normal; }

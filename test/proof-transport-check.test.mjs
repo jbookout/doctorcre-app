@@ -265,3 +265,12 @@ for (const syntax of ['enum Mode { Read }', 'namespace Mode { export const read 
   const errors = await checkProofTransports(pathToFileURL(root + '/'));
   assert.match(errors.join('\n'), /helper.ts: Node TypeScript stripping refused/);
 });
+
+test('proof schema imports are data and invalid JSON is refused',async t=>{
+ const root=temporaryDirectory('proof-schema-',t);await mkdir(root+'/scripts');
+ await writeFile(root+'/scripts/prove-schema.ts',"import schema from './schema.json' with {type:'json'};");
+ await writeFile(root+'/scripts/schema.json',JSON.stringify({type:'object'}));
+ assert.deepEqual(await checkProofTransports(pathToFileURL(root+'/')),[]);
+ await writeFile(root+'/scripts/schema.json','not JSON');
+ assert.match((await checkProofTransports(pathToFileURL(root+'/'))).join('\n'),/invalid JSON import/);
+});

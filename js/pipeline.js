@@ -1,3 +1,4 @@
+import { createMcpRequests } from './mcp-requests.mjs';
 import { mountWatchControl } from './ui-watches.js';
 import { workCard } from './work-card.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
@@ -1084,8 +1085,25 @@ function workspaceEventsHtml(detail) {
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
 let factReviewPanel, marketTermsPanel, dealToursPanel, dealDocumentsPanel;
-let checklistPanel;
-function disposeChecklist() { checklistPanel?.dispose(); checklistPanel = null; }
+let checklistPanel, clientNeedsPanel;
+const needCall = createMcpRequests();
+function mountClientNeeds(detail) {
+  clientNeedsPanel?.dispose();
+  let retired = false, mounted;
+  clientNeedsPanel = { dispose() { retired = true; mounted?.dispose(); } };
+  const host = document.querySelector('[data-client-needs-host]');
+  if (!detail.deal.client_id) { host.textContent = 'Client identity unavailable. Reload the deal.'; return; }
+  void import('./ui-deal-client-needs.js').then(({mountDealClientNeeds}) => {
+    if (retired) return;
+    mounted = mountDealClientNeeds(host, {deal:detail.deal.id, client:detail.deal.client_id, call:async(verb,args) => {
+      const result = await needCall(verb,args,{timeoutMs:10000});
+      if (result.kind === 'authorization') { window.dispatchEvent(new Event('doctorcre-session-invalidated')); throw Error('Session ended'); }
+      if (result.kind !== 'payload') throw Error('Unconfirmed client need');
+      return result.payload;
+    }});
+  }).catch(() => { if (!retired) host.textContent = 'Client needs unavailable. Reopen the deal.'; });
+}
+function disposeChecklist() { clientNeedsPanel?.dispose(); clientNeedsPanel = null; checklistPanel?.dispose(); checklistPanel = null; }
 function disposeWatchControl() { watchControl?.dispose(); watchControl = null; watchElement = null; watchSubject = null; }
 function mountChecklist(detail) {
   disposeChecklist();
@@ -1128,6 +1146,7 @@ function workspaceHtml(detail) {
     <form id="detailUpdateForm" class="deal-update-form" novalidate><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><label for="dealUpdateStep">Next step</label><input id="dealUpdateStep" name="step" maxlength="10000" autocomplete="off"><label for="dealUpdateDate">Next date</label><input id="dealUpdateDate" name="date" type="date" min="${todayIso()}"${d.next_date && d.next_date < todayIso() ? ' aria-describedby="detailUpdateDateHint"' : ''}>${d.next_date && d.next_date < todayIso() ? '<small id="detailUpdateDateHint">Current next date is overdue.</small>' : ''}<button class="btn btn-primary" type="submit">Add update</button><button class="btn" type="button" data-review-update-step hidden>Review current next step</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
     <section id="panelEmailFollowups" aria-label="Email follow-ups"><p role="status">Updating email follow-ups…</p></section>
     ${requirementEmailHtml(d)}
+    <div data-client-needs-host></div>
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
     ${clientPortalHtml(d, controlsAvailable)}
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
@@ -1269,6 +1288,7 @@ function paintPanel(detail) {
   dealToursPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
   mountChecklist(detail);
+  mountClientNeeds(detail);
   if (watchSubject !== detail.deal.id) disposeWatchControl();
   watchElement ||= document.createElement('div');
   $('workspace-overview').prepend(watchElement);

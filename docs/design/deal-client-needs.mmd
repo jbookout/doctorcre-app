@@ -1,0 +1,45 @@
+stateDiagram-v2
+ state Authoring {
+ state Record {
+ [*] --> Draft
+ Draft --> Approved: Approve exact review
+ Approved --> EditedLapsed: Save edit
+ EditedLapsed --> Approved: Approve exact review
+ Approved --> Stale: Freshness expires
+ Stale --> EditedLapsed: Refresh evidence
+ Draft --> Withdrawn: Withdraw
+ Approved --> Withdrawn: Withdraw
+ EditedLapsed --> Withdrawn: Withdraw
+ Stale --> Withdrawn: Withdraw
+ Withdrawn --> EditedLapsed: Restore need
+ }
+ --
+ state Screen {
+ [*] --> Listing
+ Listing --> Editing: New or edit
+ Editing --> Listing: Cancel
+ Editing --> Pending: Save
+ Listing --> Reviewing: Review revision
+ Reviewing --> Listing: Cancel review
+ Reviewing --> Pending: Approve exact review
+ Listing --> Pending: Withdraw
+ Pending --> Listing: Confirmed
+ Pending --> Conflict: Version changed
+ Pending --> Unknown: Response lost
+ Unknown --> Pending: Check same request
+ Conflict --> Listing: Reload current
+ Listing --> Retired: Session ended
+ Editing --> Retired: Session ended
+ Reviewing --> Retired: Session ended
+ Pending --> Retired: Session ended
+ Unknown --> Retired: Session ended
+ Conflict --> Retired: Session ended
+ }
+ --
+ state Authority {
+ [*] --> Active
+ Active --> Ended: Session ended
+ }
+ }
+ %% never RetiredCannotWrite: Ended & Pending -- A retired panel cannot write
+ %% never RetiredCannotReview: Ended & Reviewing -- A retired panel cannot review
