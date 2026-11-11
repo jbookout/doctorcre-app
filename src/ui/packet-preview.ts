@@ -74,7 +74,8 @@ export async function mountPacketPreview(root: HTMLElement, job: string): Promis
       const text = document.createElement("details"),
         summary = document.createElement("summary"),
         body = document.createElement("p");
-      summary.textContent = "Read page text";
+      summary.textContent = `Read page ${n} text`;
+      text.open = matchMedia("(max-width: 600px)").matches;
       body.textContent = content.items
         .filter((item) => "str" in item)
         .map((item) => item.str)

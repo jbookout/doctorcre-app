@@ -98,3 +98,20 @@ button:focus-visible, .download-link:focus-visible, select:focus-visible, textar
 }
 
 [hidden] { display: none !important; }
+
+.report-list > li:first-child { padding-block: var(--space-3); }
+.report-list > li:first-child h2 { margin-top: 0; }
+.report-list > li:first-child ol { display: grid; gap: var(--space-3); padding-left: var(--space-5); }
+.report-item { min-width: 0; overflow-wrap: anywhere; }
+.report-item h3 { font-size: var(--font-size-3); }
+.report-item dl { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr); gap: var(--space-3) var(--space-4); margin-block: var(--space-5); }
+.report-item dt { color: var(--fg-muted); }
+.report-item dd { margin: 0; color: var(--fg); }
+.report-item .packet-appointment { color: var(--fg); font-weight: var(--font-weight-strong); }
+.report-item .packet-public-note { padding-block: var(--space-4); border-block: var(--hairline-width) solid var(--hairline); color: var(--fg); white-space: pre-wrap; }
+@media (max-width: 600px) {
+  .report-list { font-size: 1rem; line-height: 1.6; }
+  .report-item dl { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .report-item dd { margin-bottom: var(--space-3); }
+  .report-item h3 { font-size: 1.375rem; }
+}

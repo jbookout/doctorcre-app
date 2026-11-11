@@ -71,6 +71,23 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
           await page.locator("#packet-preview a").getAttribute("href"),
           `/api/tours/pdf/download?render_job_id=${job}`,
         );
+        if (width === 390) {
+          const text = page.locator("details").first();
+          assert.equal(
+            await text.getAttribute("open"),
+            "",
+            "Phone page text starts readable without opening a disclosure",
+          );
+          assert.ok(
+            await text.locator("p").evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize) >= 16),
+          );
+          assert.ok(
+            await text.evaluate((node) => {
+              const canvas = node.parentElement?.querySelector("canvas");
+              return !!canvas && node.getBoundingClientRect().bottom <= canvas.getBoundingClientRect().top;
+            }),
+          );
+        }
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         assert.ok(
           await page
@@ -180,6 +197,21 @@ test("the public packet renders the same synthetic stop facts at both widths", a
             asOf: node.querySelector(".packet-as-of")?.textContent || "",
           })),
         );
+        if (width === 390) {
+          assert.ok(
+            await page
+              .locator(".report-item dd")
+              .first()
+              .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize) >= 16),
+          );
+          assert.ok(
+            await page
+              .locator(".packet-appointment")
+              .first()
+              .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize) >= 16),
+          );
+          assert.doesNotMatch(await page.locator("#report-list").innerHTML(), /\bstyle\s*=/i);
+        }
         comparePacketStops(pdfStops, pdfStops, share);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         if (process.env.PACKET_PARITY_SHOTS)

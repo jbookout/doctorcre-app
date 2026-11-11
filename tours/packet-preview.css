@@ -17,3 +17,11 @@ section { margin-bottom: 24px; }
 details p { white-space: pre-wrap; line-height: 1.6; }
 
 header, main { max-width: 1000px; margin-inline: auto; box-sizing: border-box; }
+
+@media (max-width: 600px) {
+  details { padding: 12px; border: 1px solid var(--hairline); background: var(--surface-1); border-radius: var(--panel-radius); }
+  details p { font-size: 1rem; overflow-wrap: anywhere; }
+  #packet-preview > section { display: flex; flex-direction: column; gap: 12px; }
+  #packet-preview details { order: -1; }
+  #packet-preview button { align-self: flex-start; }
+}
