@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test, { after } from "node:test";
 import { JSDOM } from "jsdom";
-import { buildSync } from "esbuild";
+import { clientGrantsScript } from "./tour-client-grants-script.ts";
 import { openDom } from "./jsdom-harness.mjs";
 
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -27,11 +27,7 @@ const tourIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-822
 const projectionIds = ["33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"];
 const tourFormat = readFileSync(new URL("../tours/tour-format.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const propertyPanel = readFileSync(new URL("../tours/property-panel.js", import.meta.url), "utf8").replace(/^export /gm, "");
-const grantHelpers = buildSync({
-  entryPoints: [new URL("../src/ui/tour-client-grants.ts", import.meta.url).pathname],
-  bundle: true, write: false, format: "iife", globalName: "clientGrantHelpers",
-}).outputFiles[0].text;
-const tourScript = `${grantHelpers}\nconst { prepareClientGrant, grantReceipt, renderClientGrants } = clientGrantHelpers;\n${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
+const tourScript = `${clientGrantsScript}\n${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
