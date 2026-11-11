@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import cp from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 import { ExerciseClock, fixtureProbe } from "./fixture-probe.ts";
 
@@ -125,4 +127,102 @@ test("parent abort during Exercising cancels the timer and reaps its fixture", {
   assert.equal(cancelled, 1);
   await assert.rejects(fetch(origin));
   assert.throws(() => process.kill(fixturePid, 0), { code: "ESRCH" });
+});
+
+for (const [label, stage, payload] of [
+  ["reviewer completed false", "completed", { completed: false }],
+  ["started false", "started", { started: false }],
+  ["missing fields", "started", {}],
+  ["non-object", "started", null],
+  ["invalid origin", "ready", { origin: "garbage", fixturePid: 1 }],
+  ["wrong type", "started", { started: "true" }],
+  ["extra phase", "started", { started: true, completed: true }],
+  ["invalid readiness", "ready", { origin: "http://127.0.0.1:1", fixturePid: "1" }],
+  ["completed before ready", "started", { completed: true }],
+  ["ready before started", "started", { origin: "http://127.0.0.1:1", fixturePid: 1 }],
+  ["duplicate started", "ready", { started: true }],
+  ["duplicate ready", "completed", { origin: "http://127.0.0.1:1", fixturePid: 1 }],
+] as const) {
+  test(`IPC protocol refuses ${label} and reaps its probe`, { timeout: 60000 }, async (t) => {
+    const spawn = cp.spawn;
+    t.mock.method(cp, "spawn", (...args: Parameters<typeof cp.spawn>) => {
+      const child = spawn(...args);
+      const emit = child.emit;
+      child.emit = function (event: string | symbol, ...values: unknown[]) {
+        if (event === "message") {
+          const message = values[0];
+          if (
+            typeof message === "object" &&
+            message !== null &&
+            ((stage === "started" && "started" in message) || (stage === "ready" && "origin" in message))
+          )
+            values[0] = payload;
+        }
+        return emit.call(this, event, ...values);
+      };
+      if (stage === "completed")
+        t.mock.method(child, "send", () => {
+          queueMicrotask(() => child.emit("message", payload));
+          return true;
+        });
+      return child;
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    });
+    const probe = fixtureProbe({ scenario: "early-ready", expected: "impossible assertion" });
+    t.after(() => probe.close());
+    await assert.rejects(probe.exercise("adapter"), /protocol/);
+    if (stage === "started") await assert.rejects(probe.started, /protocol/);
+    await probe.close();
+    assert.throws(() => process.kill(probe.pid, 0), { code: "ESRCH" });
+  });
+}
+
+test("IPC protocol refuses completion while Ready and reaps its fixture", { timeout: 60000 }, async (t) => {
+  const spawn = cp.spawn;
+  let child: ReturnType<typeof cp.spawn> | undefined;
+  t.mock.method(cp, "spawn", (...args: Parameters<typeof cp.spawn>) => {
+    child = spawn(...args);
+    return child;
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  const probe = fixtureProbe();
+  t.after(() => probe.close());
+  const { origin, fixturePid } = await probe.ready;
+  assert.ok(child);
+  child.emit("message", { completed: true });
+  await assert.rejects(probe.exercise("adapter"), /protocol unexpected completed in Ready/);
+  await probe.close();
+  await assert.rejects(fetch(origin));
+  for (const pid of [probe.pid, fixturePid]) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+});
+
+test("IPC protocol failure during Closing cannot become exercise success", { timeout: 60000 }, async (t) => {
+  const spawn = cp.spawn;
+  let child: ReturnType<typeof cp.spawn> | undefined;
+  t.mock.method(cp, "spawn", (...args: Parameters<typeof cp.spawn>) => {
+    child = spawn(...args);
+    return child;
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  const probe = fixtureProbe({ scenario: "early-ready" });
+  t.after(() => probe.close());
+  await probe.ready;
+  const closed = probe.close();
+  assert.ok(child);
+  child.emit("message", { completed: false });
+  await closed;
+  await assert.rejects(probe.exercise("adapter"), /protocol/);
+  assert.throws(() => process.kill(probe.pid, 0), { code: "ESRCH" });
 });
