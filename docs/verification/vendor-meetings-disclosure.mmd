@@ -1,0 +1,16 @@
+stateDiagram-v2
+state Phone {
+  state Disclosure {
+    [*] --> Collapsed
+    Collapsed --> Expanded: open People worth meeting
+    Expanded --> Collapsed: close People worth meeting
+  }
+  --
+  state Controls {
+    [*] --> Hidden
+    Hidden --> Visible: open People worth meeting
+    Visible --> Hidden: close People worth meeting
+  }
+}
+%% never NoHiddenControls: Collapsed & Visible -- Closed disclosure cannot expose meeting controls.
+%% never NoMissingControls: Expanded & Hidden -- Open disclosure exposes meeting controls.
