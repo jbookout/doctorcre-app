@@ -28,7 +28,8 @@ current application source at 390 and 1440 in both themes.
 | Vendors to Suggested with open disclosure | Walk transition coverage: already open disclosures |
 | Suggested to next page | Walk transition coverage: pagination |
 | Suggested to refused inspection after 20 pages | Walk transition coverage: incomplete pagination |
-| Suggested to Research after the final page | Walk transition coverage: pagination |
+| Suggested to recorded Suggested after the final page | Walk transition coverage: pagination |
+| Recorded Suggested to Research | Walk transition coverage: pagination |
 | Research to Relationships | Walk transition coverage: standalone |
 | Relationships to Leads | Walk transition coverage: standalone |
 | Leads to nine returned observations | Walk transition coverage: standalone |
@@ -45,6 +46,28 @@ browser race that can cause that loss. The unavailable-surface case exercises th
 real readiness timeout. These fixtures test the diagnostic driver. The source
 walk tests the product and repeat/order invariance.
 
-The chart describes observable workflow control flow. It does not model arbitrary
-page failures, Chromium internals, or all DOM mutation schedules. No formal
-verification claim follows from the chart.
+The chart synchronizes workflow steps with a second region that records each of
+nine observations and a third region that records incomplete discovery. The two
+never rules compile into separate checked TLC invariants. `CompletionRequiresNine`
+rejects completion while fewer than nine observations are recorded.
+`IncompleteDiscoveryRefusesCompletion` rejects completion after discovery fails.
+The progress region records Home, Deals board, Deal, Tours library, Tour and cheat
+sheet, Vendors Suggested, Vendors Research, Relationships, and Leads in that order.
+Its synchronized transitions use the same tests listed above. The failure region
+uses the unavailable surface, unavailable frame, and incomplete pagination tests.
+
+The observation actions correspond to `inspect` and its awaited `capture` in
+`scripts/v2-accessibility-walk.ts`. The refusal actions correspond to its readiness
+wait, frame check, and pagination bound. Inspecting a surface includes discovery,
+repeat and reverse checks, and capture before recording the result. The model
+abstracts each successful navigation and inspection into one action. It leaves
+out arbitrary page failures, Chromium internals, and DOM mutation schedules.
+Runtime browser tests cover those concrete inspection paths separately.
+
+To regenerate the model, copy the chart into a fresh scratch directory and run
+`TLA2TOOLS=/path/to/tla2tools.jar JAVA=/path/to/java node /Users/booko/.claude/plugins/marketplaces/cursor-plugins/pstack/skills/statechart/scripts/statechart.mjs from-chart /path/to/scratch/walk.mmd --module Walk --png`.
+The generated `Walk.cfg` checks `TypeOK` and both semantic invariants independently.
+The real chart passes. Adding `Ready --> Complete: finish without observing any surface`
+breaks `CompletionRequiresNine` in one step. Adding `Incomplete --> Complete: finish after refusal`
+breaks `IncompleteDiscoveryRefusesCompletion`. These mutation edges describe forbidden
+model behavior, not observed shortcuts in the runtime walk.

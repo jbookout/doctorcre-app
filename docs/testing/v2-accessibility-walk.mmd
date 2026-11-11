@@ -1,35 +1,89 @@
 stateDiagram-v2
-  [*] --> Ready
-  Ready --> Home: open Home
-  Ready --> Incomplete: required surface unavailable
-  Home --> Board: open Deals
-  Board --> Deal: open first Deal
-  Deal --> Tours: open Tours
-  Tours --> Standalone: open standalone editor
-  Tours --> Embedded: open Deal editor
-  Embedded --> Incomplete: frame unavailable
-  Standalone --> Sheet: open cheat sheet
-  Embedded --> Sheet: open cheat sheet
-  Sheet --> Vendors: open Vendors
-  Vendors --> Suggested: expand people
-  Suggested --> Suggested: load another page
-  Suggested --> Incomplete: twenty pages remain incomplete
-  Suggested --> Research: finish Suggested and open Research
-  Research --> Relationships: open Relationships
-  Relationships --> Leads: open Leads
-  Leads --> Complete: finish observations
-  state "Ready to inspect" as Ready
-  state "Home visible" as Home
-  state "Deals board visible" as Board
-  state "Deal visible" as Deal
-  state "Tours library visible" as Tours
-  state "Standalone Tour visible" as Standalone
-  state "Embedded Tour visible" as Embedded
-  state "Tour and cheat sheet visible" as Sheet
-  state "Vendors visible" as Vendors
-  state "Suggested people visible" as Suggested
-  state "Research people visible" as Research
-  state "Relationships visible" as Relationships
-  state "Leads visible" as Leads
-  state "Nine observations returned" as Complete
-  state "Inspection refused" as Incomplete
+  state Walk {
+    [*] --> Ready
+    Ready --> Home: open Home
+    Ready --> Incomplete: required surface unavailable
+    Home --> Board: open Deals
+    Board --> Deal: open first Deal
+    Deal --> Tours: open Tours
+    Tours --> Standalone: open standalone editor
+    Tours --> Embedded: open Deal editor
+    Embedded --> Incomplete: frame unavailable
+    Standalone --> Sheet: open cheat sheet
+    Embedded --> Sheet: open cheat sheet
+    Sheet --> Vendors: open Vendors
+    Vendors --> Suggested: expand people
+    Suggested --> Suggested: load another page
+    Suggested --> Incomplete: twenty pages remain incomplete
+    Suggested --> SuggestedObserved: finish Suggested
+    SuggestedObserved --> Research: open Research
+    Research --> Relationships: open Relationships
+    Relationships --> Leads: open Leads
+    Leads --> Complete: finish observations
+    state "Ready to inspect" as Ready
+    state "Home visible" as Home
+    state "Deals board visible" as Board
+    state "Deal visible" as Deal
+    state "Tours library visible" as Tours
+    state "Standalone Tour visible" as Standalone
+    state "Embedded Tour visible" as Embedded
+    state "Tour and cheat sheet visible" as Sheet
+    state "Vendors visible" as Vendors
+    state "Suggested people visible" as Suggested
+    state "Suggested observation recorded" as SuggestedObserved
+    state "Research people visible" as Research
+    state "Relationships visible" as Relationships
+    state "Leads visible" as Leads
+    state "Nine observations returned" as Complete
+    state "Inspection refused" as Incomplete
+  --
+  [*] --> ObservationsPending
+  state "Fewer than nine observations recorded" as ObservationsPending {
+    [*] --> Observed0
+    Observed0 --> Observed1: open Home [while Ready]
+    %% when Ready
+    Observed1 --> Observed2: open Deals [while Home]
+    %% when Home
+    Observed2 --> Observed3: open first Deal [while Board]
+    %% when Board
+    Observed3 --> Observed4: open Tours [while Deal]
+    %% when Deal
+    Observed4 --> Observed5: open cheat sheet [while Standalone]
+    %% when Standalone
+    Observed4 --> Observed5: open cheat sheet [while Embedded]
+    %% when Embedded
+    Observed5 --> Observed6: finish Suggested [while Suggested]
+    %% when Suggested
+    Observed6 --> Observed7: open Research [while SuggestedObserved]
+    %% when SuggestedObserved
+    Observed7 --> Observed8: open Relationships [while Research]
+    %% when Research
+    state "0 observations recorded" as Observed0
+    state "1 observations recorded" as Observed1
+    state "2 observations recorded" as Observed2
+    state "3 observations recorded" as Observed3
+    state "4 observations recorded" as Observed4
+    state "5 observations recorded" as Observed5
+    state "6 observations recorded" as Observed6
+    state "7 observations recorded" as Observed7
+    state "8 observations recorded" as Observed8
+  }
+  Observed8 --> Observed9: open Leads [while Relationships]
+  %% when Relationships
+  state "All nine observations recorded" as Observed9
+  --
+  [*] --> Discovering
+  Discovering --> DiscoveryIncomplete: required surface unavailable [while Ready]
+  %% when Ready
+  Discovering --> DiscoveryIncomplete: frame unavailable [while Embedded]
+  %% when Embedded
+  Discovering --> DiscoveryIncomplete: twenty pages remain incomplete [while Suggested]
+  %% when Suggested
+  Discovering --> DiscoveryComplete: open Leads [while Relationships]
+  %% when Relationships
+  state "Discovery underway" as Discovering
+  state "Discovery incomplete" as DiscoveryIncomplete
+  state "Discovery complete" as DiscoveryComplete
+  }
+  %% never CompletionRequiresNine: Nine observations returned & Fewer than nine observations recorded -- Completion requires all nine surface observations.
+  %% never IncompleteDiscoveryRefusesCompletion: Nine observations returned & Discovery incomplete -- Incomplete discovery refuses completion.

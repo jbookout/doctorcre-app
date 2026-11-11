@@ -368,7 +368,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
           if (result.value.reactTarget) await collect(objectId, "delegated");
           const activationListeners = listeners.filter((listener) => events.has(listener.type));
           if (activationListeners.length) await collect(objectId, "listener");
-          if (activationListeners.length && !result.value.native && result.value.rendered) {
+          if (activationListeners.length && result.value.rendered) {
             const selectors = new Set<string>();
             for (const listener of activationListeners) {
               const listenerSelectors = new Set<string>();
