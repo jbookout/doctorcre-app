@@ -181,3 +181,79 @@ for (const width of [390, 1440])
       }
     });
   }
+
+for (const releaseDuring of ["scroll", "drag"])
+  for (const releaseAfter of [0, 1, 5, 10, 20, 40]) {
+    test(`late selection cart preserves the drag target during ${releaseDuring} after ${releaseAfter}ms`, async (t) => {
+      const server = await startTourDragFixture(await tourDragRoutes());
+      t.after(() => server.close());
+      const browser = await chromium.launch();
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let received = () => {};
+      const seen = new Promise<void>((resolve) => {
+        received = resolve;
+      });
+      try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+        await page.route("**/api/tours/selection-cart?*", async (route) => {
+          received();
+          await held;
+          await route.continue();
+        });
+        await page.goto(`${server.origin}/deals`);
+        await seen;
+        const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
+        assert.ok(editor);
+        await editor.locator("#route-editing").evaluate((node) => {
+          if (node instanceof HTMLDetailsElement) node.open = true;
+        });
+        const handle = editor.locator(`[data-property-id="${propA}"] [data-stop-drag]`);
+        const original = await handle.elementHandle();
+        assert.ok(original);
+        const response = page.waitForResponse((response) => response.url().includes("/api/tours/selection-cart?"));
+        const scrolling = handle.scrollIntoViewIfNeeded();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          if (releaseDuring === "scroll") timer = setTimeout(release, releaseAfter);
+          await scrolling;
+          assert.equal(await handle.isEnabled(), true, "route editing does not wait for the selection cart");
+          if (releaseDuring === "scroll") await (await response).finished();
+          assert.ok(
+            await original.evaluate((node) => node.isConnected),
+            "late cart read must keep the original handle attached",
+          );
+          assert.equal(await handle.isEnabled(), true, "route editing does not wait for the selection cart");
+          const box = await handle.boundingBox();
+          assert.ok(box);
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await page.mouse.down();
+          if (releaseDuring === "drag") {
+            timer = setTimeout(release, releaseAfter);
+            await (await response).finished();
+            assert.ok(await original.evaluate((node) => node.isConnected));
+          }
+          const destination = editor.locator(`[data-property-id="${propB}"] .stop-head`);
+          await destination.evaluate((node) => node.scrollIntoView({ block: "center" }));
+          const target = await destination.boundingBox();
+          assert.ok(target);
+          await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
+          await page.mouse.up();
+          const order = () =>
+            editor
+              .locator("#route-stops > li")
+              .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-property-id")));
+          assert.deepEqual(await order(), [propB, propA]);
+          await editor.locator("#undo-route").click();
+          assert.deepEqual(await order(), [propA, propB]);
+        } finally {
+          clearTimeout(timer);
+        }
+      } finally {
+        release();
+        await browser.close();
+      }
+    });
+  }
