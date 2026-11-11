@@ -12,6 +12,7 @@ const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 
 export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
 export const UI_ENTRIES = {
+  'ui-vendor-client-needs': 'vendor-client-needs',
   'ui-tour-stop-drag': 'tour-stop-drag',
   'ui-tour-client-download': 'tour-client-download',
   'ui-tour-client-grants': 'tour-client-grants',
@@ -101,7 +102,7 @@ async function buildUi(readSource, options) {
         if (args.kind !== "entry-point" && args.namespace !== "ui-source") return undefined;
         const base = args.kind === "entry-point" ? posix.normalize(args.path)
           : posix.normalize(posix.join(posix.dirname(args.importer), args.path));
-        if (['js/read-budget.mjs', 'js/email-action-receipt.mjs'].includes(base)) {
+        if (['js/read-budget.mjs', 'js/email-action-receipt.mjs', 'contracts/client-needs.v1.json'].includes(base)) {
           const contents = await read(base);
           if (contents !== null) return { path: base, namespace: 'ui-source', pluginData: contents };
         }
@@ -113,7 +114,7 @@ async function buildUi(readSource, options) {
         throw new Error(`UI import is not an admitted ${UI_SOURCE} source: ${args.path}`);
       });
       builder.onLoad({ filter: /.*/, namespace: "ui-source" }, (args) => ({
-        contents: args.pluginData, loader: args.path.endsWith(".tsx") ? "tsx" : "ts", resolveDir: INSTALL,
+        contents: args.pluginData, loader: args.path.endsWith('.json') ? 'json' : args.path.endsWith(".tsx") ? "tsx" : "ts", resolveDir: INSTALL,
       }));
     } }],
   });

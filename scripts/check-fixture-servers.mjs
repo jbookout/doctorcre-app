@@ -267,11 +267,12 @@ async function generatedLoads(source, filename, root) {
 
 export async function checkFixtureServers(root = fileURLToPath(new URL('../', import.meta.url))) {
   const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' })
-    .split('\0').filter(f => /\.[cm]?[jt]sx?$/.test(f));
+    .split('\0').filter(f => /\.[cm]?[jt]sx?$|\.json$/.test(f));
   const results = new Map(), sources = new Map(), loadResolutions = new Map();
   for (const file of new Set(files)) {
     const source = await readFile(resolve(root, file), 'utf8');
     sources.set(file, source);
+    if (file.endsWith('.json')) { JSON.parse(source); continue; }
     const generated = await generatedLoads(source, file, root);
     loadResolutions.set(file, generated.loads);
     for (const [key, contents] of generated.modules) {
@@ -311,6 +312,7 @@ export async function checkFixtureServers(root = fileURLToPath(new URL('../', im
   }
   const visited = new Set();
   function checkGraph(file) {
+    if (file.endsWith('.json')) return;
     if (visited.has(file)) return;
     visited.add(file);
     const source = sources.get(file);

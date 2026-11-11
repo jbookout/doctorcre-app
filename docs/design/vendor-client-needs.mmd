@@ -1,0 +1,33 @@
+stateDiagram-v2
+  state Panel {
+    state Session {
+      [*] --> Active
+      Active --> Retired: Session ends
+    }
+    --
+    state Results {
+      [*] --> Selected
+      Selected --> Reading: Open vendor
+      Reading --> Approved: Approved response
+      Reading --> Missing: Approval needed
+      Reading --> Empty: No matches
+      Reading --> Unavailable: Read fails
+      Reading --> Refused: Permission refused
+      Approved --> Reading: Refresh
+      Missing --> Reading: Refresh
+      Empty --> Reading: Refresh
+      Unavailable --> Reading: Retry
+      Refused --> Reading: Retry
+      Approved --> Reading: Next page
+      Approved --> Reading: Need withdrawn
+      Approved --> Reading: Need stale
+      Reading --> Cleared: Session ends
+      Approved --> Cleared: Session ends
+      Missing --> Cleared: Session ends
+      Empty --> Cleared: Session ends
+      Unavailable --> Cleared: Session ends
+      Refused --> Cleared: Session ends
+      Selected --> Cleared: Session ends
+    }
+  }
+  %% never RetiredMatches: Retired & Approved -- An ended session never shows client needs.

@@ -108,6 +108,11 @@ export async function checkProofTransports(root = new URL('../', import.meta.url
     visited.set(url.href, depth);
     const source = await readFile(url, 'utf8');
     const filename = url.href.slice(root.href.length);
+    if (url.pathname.endsWith('.json')) {
+      try { JSON.parse(source); }
+      catch { errors.push(`${filename}: invalid JSON import`); }
+      return;
+    }
     errors.push(...checkProofSource(source, filename.replace(/^scripts\//, '')));
     if (depth === 0) return;
     let ast;
