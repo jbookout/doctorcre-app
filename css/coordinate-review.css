@@ -1,4 +1,4 @@
-.coordinate-review { padding: 1.25rem; border: 1px solid var(--hairline); border-radius: 12px; margin-block: 1rem; }
+.coordinate-review { scroll-margin-block-start: 88px; padding: 1.25rem; border: 1px solid var(--hairline); border-radius: 12px; margin-block: 1rem; }
 .coordinate-review h2 { margin-top: 0; }
 .coordinate-review label { display: grid; gap: .4rem; margin-block: .8rem; }
 .coordinate-review select, .coordinate-review input:not([type=checkbox]) { width: 100%; min-height: 44px; box-sizing: border-box; }

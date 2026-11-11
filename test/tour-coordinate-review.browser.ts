@@ -56,7 +56,8 @@ test("coordinate review selects exact property, compares, refuses authority and 
       await root.getByRole("button", { name: "Refresh coordinate evidence" }).click();
       await root.locator("h3").waitFor();
       assert.equal(await root.locator("h3").textContent(), "Synthetic Medical 2");
-      await root.screenshot({ path: "/tmp/WR591.S17.J4-shots/" + width + "-" + theme + ".png" });
+      await root.evaluate((element) => element.scrollIntoView({ block: "start" }));
+      await page.screenshot({ path: "/tmp/WR591.S17.J4-shots/" + width + "-" + theme + ".png" });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       const first = detail.stops[0];
       assert.ok(first);
