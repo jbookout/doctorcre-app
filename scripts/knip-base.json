@@ -1,5 +1,6 @@
 {
   "entry": [
+    "docs/verification/introduction-request/map.ts",
     "docs/statecharts/broker-cheat-sheet/BrokerSheet.map.mjs",
     "docs/portal-model/view.ts",
     "e2e.config.ts",
@@ -166,6 +167,8 @@
     "docs/statecharts/ViewerCode.map.ts",
     "src/ui/worker/service-worker.ts",
     "js/invoice-tracker-fixture.d.ts",
+    "js/relationship-network-fixture.d.ts",
+    "js/relationship-network-model.d.ts",
     "js/invoice-tracker-model.d.ts",
     "js/leads-client.d.ts",
     "js/routes.d.ts",
