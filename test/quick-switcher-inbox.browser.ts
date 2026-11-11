@@ -151,3 +151,54 @@ test("canonical tasks deduplicate, isolate source failures and fence retired rea
   assert.equal(await page.locator("[data-quick-switcher]").count(), 0);
   assert.equal(await page.evaluate(() => sessionStorage.getItem("doctorcre.quick-switcher.recents.v1")), null);
 });
+
+test("ready sources remain visible while inbox is pending, joins or fails, and late updates are fenced", async (t) => {
+  const server = await startWorkerFixture({
+    assets: await appAssetSnapshot(),
+    env: { APP_ENV: "fixture", CARR: { fetch: async () => new Response("synthetic") } },
+  });
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(`${server.origin}/search?mode=fixture`);
+  for (const outcome of ["join", "fail", "close", "retire"]) {
+    await page.evaluate(async () => {
+      const { openQuickSwitcher, readQuickSwitcherSources, switcherInboxReader } = await import(String("/js/ui-quick-switcher.js"));
+      const inbox = await switcherInboxReader(async () => { throw Error("Fixture must not send"); }, true)();
+      openQuickSwitcher({
+        opener: document.querySelector(".quick-switcher-toggle"),
+        pages: [],
+        read: (publish: (value: unknown) => void) => readQuickSwitcherSources(
+          async () => ({ deals: [{ id: "ready", name: "Ready Deal" }] }),
+          () => new Promise((resolve) => Reflect.set(window, "finishNetwork", () => resolve({ nodes: [{ id: "ready-contact", name: "Ready Contact", kind: "contact" }] }))),
+          () => new Promise((resolve, reject) => {
+            Reflect.set(window, "finishInbox", () => resolve(inbox));
+            Reflect.set(window, "failInbox", () => reject(Error("Unavailable")));
+          }),
+          publish,
+        ),
+      });
+    });
+    await page.getByRole("combobox").fill("Ready");
+    await page.getByRole("option", { name: "Ready Deal Deal", exact: true }).waitFor({ timeout: 1500 });
+    await page.evaluate(() => Reflect.get(window, "finishNetwork")());
+    await page.getByRole("option", { name: "Ready Contact Contact", exact: true }).waitFor({ timeout: 1500 });
+    if (outcome === "close") await page.getByRole("combobox").press("Escape");
+    if (outcome === "retire") await page.evaluate(() => dispatchEvent(new Event("doctorcre-session-invalidated")));
+    await page.evaluate((outcome) => Reflect.get(window, outcome === "fail" ? "failInbox" : "finishInbox")(), outcome);
+    if (outcome === "close" || outcome === "retire") {
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await page.locator("[data-quick-switcher]").count(), 0);
+    } else {
+      await page.getByRole("option", { name: "Ready Deal Deal", exact: true }).waitFor();
+      await page.getByRole("option", { name: "Ready Contact Contact", exact: true }).waitFor();
+      if (outcome === "join") {
+        await page.getByRole("combobox").fill("Confirm next steps from the pipeline call");
+        await page.getByRole("option", { name: /Confirm next steps from the pipeline call/ }).waitFor();
+      } else await page.getByText("Home tasks unavailable.", { exact: false }).waitFor();
+      await page.getByRole("combobox").press("Escape");
+    }
+  }
+});
