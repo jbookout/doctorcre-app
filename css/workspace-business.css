@@ -302,3 +302,16 @@ body.record-open { overflow: hidden; }
 .market-evidence ul { padding-left: 1rem; }
 .market-evidence li + li { margin-top: .75rem; }
 .business-shell [hidden] { display: none; }
+
+.market-comparison-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1rem; margin-block: 1rem; }
+.market-comparison-card { min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); padding: 1rem; }
+.market-comparison-card h4 { margin: 0 0 1rem; font-size: var(--font-size-3); }
+.market-comparison-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin: 0 0 1rem; }
+.market-comparison-stats dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.market-comparison-stats dd { margin: .25rem 0 0; font-size: 1.5rem; font-weight: 700; }
+.market-comparison-members { list-style: none; padding: 0; margin-bottom: 0; }
+.market-comparison-members li { padding-block: .75rem; border-top: 1px solid var(--hairline); }
+.market-comparison-members a { font-weight: var(--font-weight-strong); }
+.market-comparison-members [data-vendor-ref] { color: var(--fg-muted); font-size: .75rem; }
+.market-comparison-card button, .market-compare-return { min-height: 44px; max-width: 100%; padding: .5rem .75rem; border: 1px solid var(--hairline); border-radius: var(--radius-2); color: var(--fg); background: var(--surface-2); font: inherit; cursor: pointer; }
+.market-comparison-references { border-top: 1px solid var(--hairline); padding-top: .5rem; }
