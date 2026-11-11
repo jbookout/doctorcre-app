@@ -17,7 +17,11 @@ export function mountSavedSearches(
   let disposed = false;
   let hydratedVersion = "";
   let clock: ReturnType<typeof mountLocalTicker> | undefined;
-  const model = new SavedSearches(options.dealId, options.call, render);
+  const model = new SavedSearches(options.dealId, options.call, render, async (id) => {
+    const path = "/tours/planner-client.js";
+    const module: { createPlannerClient(): { client(id: string): Promise<unknown> } } = await import(path);
+    return module.createPlannerClient().client(id);
+  });
   function update(field: string, value: string | number | boolean | string[] | null, criteria = false) {
     if (!model.draft) return;
     model.update(
@@ -54,6 +58,81 @@ export function mountSavedSearches(
           <option value="false">No</option>
         </select>
       </label>
+    );
+  }
+  function sourceReview() {
+    const review = model.sourceReview;
+    return (
+      <section
+        aria-label="Client context review"
+        style={{ overflowWrap: "anywhere", border: "1px solid var(--border)", padding: 12, borderRadius: 8 }}
+      >
+        <h4>Start from this deal's client</h4>
+        <p>Review client context before using it. Refresh keeps your edits until you choose otherwise.</p>
+        <button
+          type="button"
+          disabled={model.working || review.kind === "reading"}
+          onClick={() => void model.reviewClient()}
+        >
+          {review.kind === "reading" ? "Reading client…" : "Review or refresh client context"}
+        </button>
+        {review.kind === "failed" && <p role="status">Client read failed. Your edits remain. Retry the review.</p>}
+        {review.kind === "changed" && (
+          <p role="status">The deal's client changed. Review its current client before using context.</p>
+        )}
+        {review.kind === "applied" && <p role="status">Reviewed choices applied to this draft.</p>}
+        {review.kind === "review" && (
+          <>
+            <p>Client {review.source.client_id}</p>
+            <p>
+              Source <a href={review.source.source_ref}>{review.source.source_ref}</a>
+            </p>
+            <p>
+              Read observed{" "}
+              <time dateTime={review.source.observed_at}>
+                {new Date(review.source.observed_at).toLocaleString("en-US", { timeZone: "America/Chicago" })} Central
+              </time>
+              . This is the read time, not an evidence date.
+            </p>
+            <p>Location context · {review.source.location || "Unknown"}. This is not a search preference.</p>
+            <p>Use context · {review.source.use || "Unknown"}. Size and budget remain unspecified.</p>
+            {(["name", "requirements"] as const).map((field) => (
+              <fieldset key={field}>
+                <legend>{field === "name" ? "Search name" : "Descriptive requirements"} review</legend>
+                <p>Current draft · {model.draft?.[field] || "Empty"}</p>
+                <p style={{ whiteSpace: "pre-wrap" }}>Client source · {review.source[field] || "Empty"}</p>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 44 }}>
+                  <input
+                    style={{ width: 20, height: 20, margin: 0 }}
+                    type="radio"
+                    name={`source-${field}`}
+                    checked={review.choices[field] === "keep"}
+                    onChange={() => model.chooseSource(field, "keep")}
+                  />
+                  Keep my {field}
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 44 }}>
+                  <input
+                    style={{ width: 20, height: 20, margin: 0 }}
+                    type="radio"
+                    name={`source-${field}`}
+                    checked={review.choices[field] === "use"}
+                    onChange={() => model.chooseSource(field, "use")}
+                  />
+                  Use client {field}
+                </label>
+              </fieldset>
+            ))}
+            <button
+              type="button"
+              disabled={!review.choices.name || !review.choices.requirements || model.working}
+              onClick={() => void model.applySource()}
+            >
+              Apply reviewed choices
+            </button>
+          </>
+        )}
+      </section>
     );
   }
   function render() {
@@ -119,6 +198,7 @@ export function mountSavedSearches(
               >
                 <fieldset disabled={locked || row?.status === "archived"}>
                   <legend>{row ? "Search brief" : "New search brief"}</legend>
+                  {sourceReview()}
                   <label>
                     Search name
                     <input
@@ -238,7 +318,10 @@ export function mountSavedSearches(
                     results.
                   </p>
                   {draft.client_prefill_source && (
-                    <p>Client prefill source · {draft.client_prefill_source.source_ref}</p>
+                    <p>
+                      Client prefill source · {draft.client_prefill_source.source_ref} · client{" "}
+                      {draft.client_prefill_source.client_id} · observed {draft.client_prefill_source.observed_at}
+                    </p>
                   )}
                   <button type="submit" disabled={!model.dirty && row?.status === "saved"}>
                     Save search
