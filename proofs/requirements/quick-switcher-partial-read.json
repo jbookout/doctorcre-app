@@ -4,7 +4,7 @@
   "targets": ["app"],
   "assertions": [{
     "id": "deployed-switcher-independent-section-admission",
-    "predicate": "Run node scripts/prove-quick-switcher-partial-read.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. Match receipt release source_commit to the merged build. The runner imports deployed /js/ui-quick-switcher.js and its chunks, displays and keyboard-selects Valid Deal with malformed contacts, explains partial availability, and removes destinations and recents on session invalidation. This is synthetic deployed-code evidence, not natural-record evidence.",
+    "predicate": "Run node scripts/prove-quick-switcher-partial-read.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. Match receipt release source_commit to the merged build. The runner imports deployed /js/ui-quick-switcher.generated.js and its chunks, displays and keyboard-selects Valid Deal with malformed contacts, explains partial availability, and removes destinations and recents on session invalidation. This is synthetic deployed-code evidence, not natural-record evidence.",
     "runner": "app-release-live-walk.v1",
     "expected_result": "Exit 0 and a release-bound JSON receipt with module URLs and all four assertions. Protected assets or missing release identity block proof.",
     "input_class": "isolated synthetic browser ports and read-only deployed modules and app release",

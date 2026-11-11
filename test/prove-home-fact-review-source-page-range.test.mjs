@@ -54,7 +54,7 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
     const routes=new Map(snapshot);
     for(const [key,body] of (mode==='fail'?broken:assets))routes.set('/'+key,{contentType:'text/javascript',body});
     if(mode==='missing')for(const key of routes.keys())routes.set(key,{status:404});
-    const key='/js/ui-inbox.js';
+    const key='/js/ui-inbox.generated.js';
     if(mode==='external'||mode==='cap')routes.set(key,{contentType:'text/javascript',body:Buffer.concat([Buffer.from(routes.get(key).body),Buffer.from(mode==='external'?'\nimport "https://example.invalid/evil.js";':Array.from({length:21},(_,i)=>`\nimport "./cap${i}.generated.js";`).join(''))])});
     const identity=async sha=>({contentType:'application/json',body:await(await handleDoctorcreRequest(new Request('https://fixture.test/app-release'),{GIT_SHA:sha.repeat(40),APP_ENV:mode==='identity'?'staging':'production'})).text(),...(mode==='timeout'?{hold:'timeout'}:{})});
     routes.set('/app-release',{sequence:[await identity('a'),await identity(mode==='drift'?'b':'a')]});

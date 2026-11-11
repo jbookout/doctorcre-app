@@ -1,4 +1,4 @@
-import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.js';
+import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.generated.js';
 import { createCurrentRead } from './current-read.mjs';
 import { onDialogClosed } from './dialog-lifecycle.js';
 import { dealHref } from './home-dashboard-model.js';

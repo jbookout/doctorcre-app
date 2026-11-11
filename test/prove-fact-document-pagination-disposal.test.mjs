@@ -12,7 +12,7 @@ async function fixture(t, mode) {
   const responses = new Map([...assets].map(([path, body]) => ['/' + path,
     mode === 'protected' ? { status: 302, headers: { location: '/sign-in' } } : { body, contentType: 'text/javascript' }]));
   responses.set('/app-release', { body: JSON.stringify(mode === 'identity' ? {} : { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }), contentType: 'application/json' });
-  if (['broken', 'write', 'network'].includes(mode)) responses.set('/js/ui-facts.js', { contentType: 'text/javascript',
+  if (['broken', 'write', 'network'].includes(mode)) responses.set('/js/ui-facts.generated.js', { contentType: 'text/javascript',
     body: mode === 'broken' ? 'export function mountFactReview(){throw Error("fixture broken")}' : mode === 'write' ? 'export function mountFactReview(root, {client}){client.recordHumanFact();return {refresh:async()=>{},dispose(){}}}' : 'await fetch("/api/business", {method:"POST"}); export function mountFactReview(){}' });
   if (mode === 'timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
   const server = await startFixture({ routes: responses });

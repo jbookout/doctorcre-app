@@ -62,7 +62,7 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`load
   await section.getByRole('button',{name:'Refresh quiet vendors'}).click();await select.waitFor();
   await select.selectOption('missing');assert.equal(await section.getByRole('link').count(),3);
   await page.evaluate(async snapshot=>{
-    const {mountQuietVendors}=await import('/js/ui-quiet-vendors.js');
+    const {mountQuietVendors}=await import('/js/ui-quiet-vendors.generated.js');
     const host=document.createElement('div');document.body.append(host);
     let finish;const pending=new Promise(resolve=>finish=resolve);
     const view=mountQuietVendors(host,{load:()=>pending,href:()=>'/vendors',open:()=>{}});

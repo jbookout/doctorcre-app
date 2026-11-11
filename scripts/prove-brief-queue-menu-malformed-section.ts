@@ -9,7 +9,7 @@ import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
 
 export async function exerciseQueueMenu() {
-  const { createBriefQueueView } = await import("/js/ui-queue.js");
+  const { createBriefQueueView } = await import("/js/ui-queue.generated.js");
   const results: { id: string; passed: boolean }[] = [];
   const check = (id: string, condition: unknown) => {
     if (!condition) throw new Error(id);
@@ -172,7 +172,7 @@ export async function prove({ origin, timeoutMs, commit }: { origin: string; tim
       throw unavailable("release identity unavailable");
     await requireContainingRelease(commit, report.release.source_commit, { signal: controller.signal });
     await init;
-    const pending = [`${origin}/js/ui-queue.js`];
+    const pending = [`${origin}/js/ui-queue.generated.js`];
     for (let index = 0; index < pending.length; index++) {
       const url = pending[index];
       if (!url) throw unavailable("asset URL unavailable");

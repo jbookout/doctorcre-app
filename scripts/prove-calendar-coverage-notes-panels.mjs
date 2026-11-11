@@ -51,7 +51,7 @@ export async function observeCoverage(page, fixture = producerFixture) {
       if (request.params.name !== 'calendar-meeting-prep') throw Error('Unexpected read');
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: JSON.stringify(fixture) }] } }), { headers: { 'content-type': 'application/json' } });
     } });
-    const { mountCalendarPanels } = await import('/js/ui-calendar-panels.js');
+    const { mountCalendarPanels } = await import('/js/ui-calendar-panels.generated.js');
     const left = document.querySelector('#left'), right = document.querySelector('#right');
     const panel = await mountCalendarPanels(left, right);
     panel.render(await client.calendarMeetingPrep());

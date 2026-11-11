@@ -13,7 +13,7 @@ for (const width of [390, 1440]) for (const colorScheme of ['light', 'dark']) {
     await page.goto(server.origin);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const result = await observeOnPage(page, `${server.origin}/js/ui-facts.js`);
+    const result = await observeOnPage(page, `${server.origin}/js/ui-facts.generated.js`);
     assert.ok(result.assertions.includes('healthy-fact-review-usable'));
     assert.ok(result.assertions.includes('expired-later'));
     assert.deepEqual(errors, []);

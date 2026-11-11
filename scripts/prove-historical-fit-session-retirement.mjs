@@ -22,7 +22,7 @@ export async function retirementAssertions(page, moduleURL) {
   const payload = await responseFixture();
   const assertions = [];
   await page.evaluate(async ({ moduleURL, payload }) => {
-    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
+    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.generated.js');
     if (typeof mountIdealClientProfile !== 'function') throw Error('missing mountIdealClientProfile export');
     const host = document.createElement('main'); document.body.append(host);
     const p = window.retirementProof = { payload, reads: [], pending: [], mode: 'ready' };
@@ -133,7 +133,7 @@ export async function prove({ origin, timeout }) {
     await context.route('**/*', async route => {
       const req = route.request(), url = new URL(req.url());
       if (req.method() === 'GET' && url.href === `${origin}/__historical_retirement_proof__`) return route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Synthetic retirement proof</title>' });
-      if (req.method() !== 'GET' || url.origin !== origin || !/^\/js\/(ui-ideal-client-profile\.js|ui-shared-[A-Z0-9]+\.generated\.js)$/.test(url.pathname) || ++requests > 31) {
+      if (req.method() !== 'GET' || url.origin !== origin || !/^\/js\/(ui-ideal-client-profile\.generated\.js|ui-shared-[A-Z0-9]+\.generated\.js)$/.test(url.pathname) || ++requests > 31) {
         unavailable = `asset outside allowlist or asset cap: ${url.pathname}`; return route.abort();
       }
       try {
@@ -150,7 +150,7 @@ export async function prove({ origin, timeout }) {
       } catch (error) { unavailable = error.message; return route.abort(); }
     });
     await page.goto(`${origin}/__historical_retirement_proof__`);
-    const assertions = await retirementAssertions(page, `${origin}/js/ui-ideal-client-profile.js`);
+    const assertions = await retirementAssertions(page, `${origin}/js/ui-ideal-client-profile.generated.js`);
     assert.ok(!unavailable, unavailable);
     return { origin, release, assets, assertions, requests, bytes, scope: 'deployed synthetic behavior; no natural business journey' };
   };

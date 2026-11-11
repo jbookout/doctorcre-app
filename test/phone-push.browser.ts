@@ -27,7 +27,7 @@ test("phone push controls at phone and desktop sizes in both themes", async (t) 
         await page.goto(`${server.origin}/push-test.html`);
         await page.evaluate(async (theme) => {
           document.documentElement.dataset.theme = theme;
-          const { mountPhonePush } = await import("/js/ui-phone-push.js");
+          const { mountPhonePush } = await import("/js/ui-phone-push.generated.js");
           const root = document.querySelector("#test");
           if (!root) throw Error("Missing test host");
           const calls: string[] = [];
@@ -165,7 +165,7 @@ test("real phone push startup reads authenticated configuration and stops on dis
         await page.route("**/push-test.html", (route) =>
           route.fulfill({
             contentType: "text/html",
-            body: '<div id="phonePush"></div><script type="module" src="/js/ui-phone-push.js"></script>',
+            body: '<div id="phonePush"></div><script type="module" src="/js/ui-phone-push.generated.js"></script>',
           }),
         );
         await page.route("**/auth/session", (route) =>
@@ -287,7 +287,7 @@ test("fresh Updates installation activates the root worker before enrollment", a
         await page.route("**/fresh-push.html", (route) =>
           route.fulfill({
             contentType: "text/html",
-            body: '<div id="phonePush"></div><script type="module" src="/js/ui-phone-push.js"></script>',
+            body: '<div id="phonePush"></div><script type="module" src="/js/ui-phone-push.generated.js"></script>',
           }),
         );
         await page.goto(`${server.origin}/fresh-push.html`);

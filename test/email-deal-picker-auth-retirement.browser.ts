@@ -25,7 +25,7 @@ for (const width of [390, 1280])
       await page.evaluate((theme) => {
         document.documentElement.dataset.theme = theme;
       }, theme);
-      const assertions = await exercise(page, "http://127.0.0.1/js/ui-email-actions.js");
+      const assertions = await exercise(page, "http://127.0.0.1/js/ui-email-actions.generated.js");
       for (const error of [{ status: 401 }, { status: 403 }, { code: "session_changed" }]) {
         assert.ok(assertions.includes(`canceled board denial retires replacement ${JSON.stringify(error)}`));
       }

@@ -64,7 +64,7 @@ export async function runProof({ origin: originText, timeout = 30000, engine = c
     await context.route('**/*', async route => {
       const req = route.request(), url = new URL(req.url());
       if (url.origin !== origin.origin) return route.abort();
-      if (req.method() === 'GET' && url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script></body></html>' });
+      if (req.method() === 'GET' && url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.generated.js"></script></body></html>' });
       if (req.method() === 'GET' && url.pathname === '/auth/session') return route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-proof' } });
       if (req.method() === 'POST' && url.pathname === '/mcp') {
         const { name, arguments: args } = req.postDataJSON().params;
@@ -126,7 +126,7 @@ export async function runProof({ origin: originText, timeout = 30000, engine = c
       hold = false; releasePending?.();
       assert.equal(await page.locator('[data-inbox-row]').count(), 0); receipt.assertions.push(assertions[4]);
       if (errors.length) throw errors[0];
-      assert.ok(assets.has(new URL('/js/ui-inbox.js', origin).href));
+      assert.ok(assets.has(new URL('/js/ui-inbox.generated.js', origin).href));
       receipt.assets = [...assets].map(([url, body]) => ({ url, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length }));
       const result = { ...receipt, network_requests: requests, bytes };
       assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 65536);

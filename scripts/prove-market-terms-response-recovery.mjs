@@ -42,7 +42,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
     page.on('response', response => { if (new URL(response.url()).pathname.startsWith('/js/')) urls.push(response.url()); });
     await page.goto(`${origin}/__market-terms-proof`);
     await page.evaluate(async () => {
-      const module = await import('/js/ui-market.js');
+      const module = await import('/js/ui-market.generated.js');
       if (typeof module.mountMarketTerms !== 'function') throw new Error('Missing mountMarketTerms export');
       let reads = 0;
       window.proofCalls = [];
@@ -64,7 +64,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
     assert.deepEqual(await page.evaluate(() => window.proofCalls), [{submarket:'North'},{submarket:'South',as_of:'2025-01-01'}]);
     await page.evaluate(() => window.proofPanel.dispose());
     assert.deepEqual(errors, []);
-    assert.ok(urls.includes(`${origin}/js/ui-market.js`));
+    assert.ok(urls.includes(`${origin}/js/ui-market.generated.js`));
     return {origin,release,loaded_module_urls:[...new Set(urls)],assertions:['malformed rows refused','filters retained and usable','one explicit retry recovers valid terms','workspace retained','no unhandled page error'],synthetic:true};
   };
   try {
