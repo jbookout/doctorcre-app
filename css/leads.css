@@ -271,3 +271,6 @@ dialog::backdrop { background: var(--scrim); }
   .territory-evidence tr { display: grid; grid-template-columns: 1fr 1fr; padding-block: .5rem; }
   .territory-evidence td:last-child { grid-column: 1 / -1; }
 }
+
+#reachabilitySummary, .reachability-note { grid-column: 1 / -1; margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.lead-reachability { overflow-wrap: anywhere; font-size: var(--font-size-1); }
