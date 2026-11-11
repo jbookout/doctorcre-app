@@ -67,6 +67,22 @@ export function parseEvidence(value: unknown, origin: string): Evidence {
   return { active, revoked, viewOnly, rows, pdfSha256: value.pdfSha256 };
 }
 
+export function packetSummary(packet: unknown, rowCount: number): string {
+  assert.ok(object(packet) && Array.isArray(packet.stops), "packet stops required");
+  const count = packet.stops.length;
+  assert.equal(count, rowCount, "packet stop count matches independent rows");
+  const quantity = `${count} ${count === 1 ? "property" : "properties"}`;
+  if (!object(packet.presentation)) return `${quantity} in this report.`;
+  const summary = packet.presentation.summary;
+  assert.ok(typeof summary === "string", "packet summary required");
+  assert.equal(
+    summary.match(/^\d+ (?:property|properties)\b/)?.[0],
+    quantity,
+    "packet summary agrees with its stop count",
+  );
+  return summary;
+}
+
 export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, engine = chromium }: Options) {
   const lifetime = new AbortController();
   const timer = setTimeout(() => lifetime.abort(insufficient("Total client proof deadline exceeded")), timeoutMs);
@@ -122,6 +138,13 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               return route.fallback();
             });
             await page.goto(expected[kind]);
+            const packetResponse =
+              kind === "revoked"
+                ? undefined
+                : page.waitForResponse((response) => {
+                    const url = new URL(response.url());
+                    return url.origin === clientOrigin && url.pathname === "/api/share/report";
+                  });
             await page.getByRole("button", { name: "Open tour", exact: true }).click();
             await page.waitForFunction(() => {
               const status = document.querySelector("#status")?.textContent;
@@ -136,9 +159,14 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               assert.equal(await page.locator("#status").textContent(), "This shared report is unavailable.");
               assert.equal(await page.locator(".report-item").count(), 0);
             } else {
+              const response = await packetResponse;
+              assert.ok(response, "packet response required");
+              assert.ok(response.ok(), "packet response available");
+              const envelope: unknown = await response.json();
+              assert.ok(object(envelope), "packet envelope required");
               assert.equal(
                 await page.locator("#report-summary").textContent(),
-                `${expected.rows.length} ${expected.rows.length === 1 ? "property" : "properties"} in this report.`,
+                packetSummary(envelope.data, expected.rows.length),
               );
               const rows = await page.locator(".report-item").evaluateAll((nodes) =>
                 nodes.map((node) => ({

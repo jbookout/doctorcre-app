@@ -16,7 +16,7 @@ const recorded = JSON.parse(await readFile(new URL("./fixtures/client-links/prod
 const pdf = Buffer.from("%PDF-1.4 synthetic reviewed packet");
 const row = {
   propertyRef: "property:public:synthetic_property_01",
-  label: "A",
+  label: "Stop A",
   name: "Synthetic clinic",
   detail: "6 Medical Drive",
 };
@@ -25,7 +25,7 @@ const outDir = temporaryDirectory("client-links-proof-");
 after(() => rm(outDir, { recursive: true, force: true }));
 await buildArtifact({ root: new URL("../", import.meta.url).pathname, outDir, commit });
 
-async function fixture(t: test.TestContext, nearMiss = false) {
+async function fixture(t: test.TestContext, nearMiss = false, badSummary = false) {
   const html = await readFile(outDir + "/site/reports/share.html", "utf8");
   const share = await readFile(outDir + "/site/reports/share.js", "utf8");
   const css = await readFile(outDir + "/site/reports/share.css", "utf8");
@@ -94,7 +94,17 @@ async function fixture(t: test.TestContext, nearMiss = false) {
           if (path === "/api/share/report")
             return route.fulfill({
               json: {
-                data: nearMiss ? recorded.responses.nearMiss : recorded.responses.packet,
+                data: badSummary
+                  ? {
+                      ...recorded.responses.packet,
+                      presentation: {
+                        ...recorded.responses.packet.presentation,
+                        summary: "2 properties in tour order.",
+                      },
+                    }
+                  : nearMiss
+                    ? recorded.responses.nearMiss
+                    : recorded.responses.packet,
               },
             });
           if (path === "/api/share/map") return route.fulfill({ status: 404, json: recorded.responses.mapUnavailable });
@@ -166,6 +176,15 @@ test("client proof rejects the near-miss displayed 16 Medical Drive for expected
   });
 });
 
+test("client proof rejects a packet summary that disagrees with its own stop count", async (t) => {
+  await assert.rejects(prove(await fixture(t, false, true)), (error: unknown) => {
+    assert.ok(error instanceof assert.AssertionError);
+    assert.equal(error.actual, "2 properties");
+    assert.equal(error.expected, "1 property");
+    return true;
+  });
+});
+
 test("client proof classifies unavailable browser as insufficient evidence", async (t) => {
   const options = await fixture(t);
   await assert.rejects(
@@ -181,11 +200,12 @@ test("client proof classifies unavailable browser as insufficient evidence", asy
   );
 });
 
-for (const mode of ["pass", "near miss", "late launch", "stalled evaluation"])
+for (const mode of ["pass", "near miss", "summary mismatch", "late launch", "stalled evaluation"])
   test(`client proof CLI ${mode}`, async (t) => {
     const nearMiss = mode === "near miss";
     const timeout = mode === "late launch" || mode === "stalled evaluation";
-    const options = await fixture(t, nearMiss);
+    const badSummary = mode === "summary mismatch";
+    const options = await fixture(t, nearMiss, badSummary);
     const root = temporaryDirectory("client-proof-cli-", t);
     const evidenceFile = `${root}/evidence.json`;
     const preload = `${root}/browser.mjs`;
@@ -202,6 +222,7 @@ const chromiumDriver = { launch: chromium.launch.bind(chromium) };
 const recorded = ${JSON.stringify(recorded)};
 const pdf = Buffer.from(${JSON.stringify(pdf.toString())});
 const nearMiss = ${nearMiss};
+const badSummary = ${badSummary};
 const engine = { ${options.engine.launch.toString().replaceAll("chromium.launch", "chromiumDriver.launch")} };
 chromium.launch = async options => {
   const browser = await engine.launch({ args: [...CHROMIUM_SAFETY_ARGS, ...(options?.args || [])], ...options });
@@ -241,7 +262,7 @@ chromium.launch = async options => {
       ],
       { timeout: 40000 },
     );
-    if (nearMiss || timeout)
+    if (nearMiss || badSummary || timeout)
       await assert.rejects(execution, (error: unknown) => {
         assert.ok(error && typeof error === "object" && "code" in error && "stdout" in error);
         assert.equal(error.code, timeout ? 78 : 1, "stderr" in error ? String(error.stderr) : "no stderr");

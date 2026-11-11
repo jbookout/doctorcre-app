@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { startFixture } from "../scripts/fixture-http.mjs";
-import { parseEvidence, prove } from "../scripts/prove-client-links.ts";
+import { packetSummary, parseEvidence, prove } from "../scripts/prove-client-links.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 
 test("client proof gates equal descendant older unrelated and unknown releases before browser work", async (t) => {
@@ -67,4 +67,29 @@ test("client proof accepts both displayed link formats and rejects duplicate tok
   });
   for (const hash of ["#token=short", "#token=" + "a".repeat(43) + "&extra=x", "#" + "a".repeat(44)])
     assert.throws(() => parseEvidence({ ...value, active: origin + "/share" + hash }, origin), { exitCode: 78 });
+});
+
+test("client proof derives the summary from a presentation 1.x-shaped packet", () => {
+  assert.equal(packetSummary({ stops: [{ property_ref: "synthetic" }] }, 1), "1 property in this report.");
+});
+
+test("client proof derives the summary from a presentation 2.0.0-shaped packet", () => {
+  assert.equal(
+    packetSummary(
+      {
+        stops: [{ property_ref: "synthetic" }],
+        presentation: {
+          version: "2.0.0",
+          summary: "1 property in tour order.",
+        },
+      },
+      1,
+    ),
+    "1 property in tour order.",
+  );
+});
+
+test("client proof checks packet membership count against independent rows", () => {
+  assert.throws(() => packetSummary({ stops: [{}, {}] }, 1), assert.AssertionError);
+  assert.equal(packetSummary({ stops: [{}, {}] }, 2), "2 properties in this report.");
 });

@@ -1,6 +1,27 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import test from "node:test";
+import { parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
+import { presentedPacket } from "./packet-presentation.fixture.ts";
+
+test("client-link packets match the pinned presentation producer and production parser", () => {
+  const recorded = JSON.parse(readFileSync(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"));
+  const producer = JSON.parse(readFileSync(new URL("./fixtures/tour-packet/producer.json", import.meta.url), "utf8"));
+  if (process.env.RECORD_CLIENT_LINKS_CONTRACT === "1") {
+    recorded.packet_source_commit = producer.source_commit;
+    for (const name of ["packet", "nearMiss"]) recorded.responses[name] = presentedPacket(recorded.inputs[name].stops);
+    writeFileSync(
+      new URL("./fixtures/client-links/producer.json", import.meta.url),
+      `${JSON.stringify(recorded, null, 2)}\n`,
+    );
+  }
+  assert.equal(recorded.packet_source_commit, producer.source_commit);
+  for (const name of ["packet", "nearMiss"]) {
+    assert.deepEqual(recorded.responses[name], presentedPacket(recorded.inputs[name].stops));
+    assert.equal(parsePublicTourPacket(recorded.responses[name])[0]?.address, recorded.inputs[name].stops[0].address);
+  }
+});
 
 test("client-link response recordings match the exact CARR production projectors", {
   skip:
@@ -20,8 +41,6 @@ test("client-link response recordings match the exact CARR production projectors
   execFileSync("git", ["-C", root, "diff", "--quiet", "HEAD", "--", "mcp-server/src"]);
   const producer = await import(pathToFileURL(root + "/mcp-server/src/tour-sharing.js").href);
   if (process.env.RECORD_CLIENT_LINKS_CONTRACT === "1") {
-    for (const name of ["packet", "nearMiss"])
-      recorded.responses[name] = producer.projectTourClientPacket(recorded.inputs[name]);
     for (const name of ["active", "viewOnly"])
       recorded.responses[name] = producer.projectTourClientFeedback(recorded.inputs[name]);
     await writeFile(
@@ -29,8 +48,6 @@ test("client-link response recordings match the exact CARR production projectors
       `${JSON.stringify(recorded, null, 2)}\n`,
     );
   }
-  for (const name of ["packet", "nearMiss"])
-    assert.deepEqual(producer.projectTourClientPacket(recorded.inputs[name]), recorded.responses[name]);
   for (const name of ["active", "viewOnly"])
     assert.deepEqual(producer.projectTourClientFeedback(recorded.inputs[name]), recorded.responses[name]);
   const { createReportsWebHandler } = await import(pathToFileURL(root + "/mcp-server/src/reports-web.ts").href);
