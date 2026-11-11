@@ -106,7 +106,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await page.goto(`${server.origin}/share-intake.html`);
         await page.evaluate((theme) => (document.documentElement.dataset.theme = theme), theme);
         const panel = page.getByRole("region", { name: "Deal Deliverables", exact: true });
-        await panel.getByRole("button", { name: "Drop a deliverable or choose a file" }).focus();
+        await panel.getByRole("button", { name: /Drop one file here/ }).focus();
         const keyboardChooser = page.waitForEvent("filechooser");
         await page.keyboard.press("Enter");
         await (await keyboardChooser).setFiles([]);
@@ -125,7 +125,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         assert.equal(writes.length, 0);
         const file = { name: "Photo.jpg", mimeType: "image/jpeg", buffer: Buffer.from([255, 216, 255, 0, 1, 2, 3]) };
         if (width === 1440) {
-          await panel.getByRole("button", { name: "Drop a deliverable or choose a file" }).evaluate((element) => {
+          await panel.getByRole("button", { name: /Drop one file here/ }).evaluate((element) => {
             const transfer = new DataTransfer();
             transfer.items.add(
               new File([new Uint8Array([255, 216, 255, 0, 1, 2, 3])], "Photo.jpg", { type: "image/jpeg" }),

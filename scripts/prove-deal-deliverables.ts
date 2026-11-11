@@ -78,7 +78,7 @@ export async function proveDeliverables({
           ]);
 
           const chooserPromise = page.waitForEvent("filechooser");
-          await panel.getByRole("button", { name: "Drop a deliverable or choose a file" }).click();
+          await panel.getByRole("button", { name: /Drop one file here/ }).click();
           const chooser = await chooserPromise;
           await chooser.setFiles([]);
           const value: unknown = await page.evaluate(async (deal) => {

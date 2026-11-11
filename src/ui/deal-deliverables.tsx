@@ -163,7 +163,6 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
         disabled={!!active || life.current.signal.aborted}
         onClick={() => chooser.current?.click()}
         tabIndex={0}
-        aria-label="Drop a deliverable or choose a file"
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
