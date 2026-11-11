@@ -158,7 +158,7 @@ test("producer resolves aliases; unavailable retries; session retirement erases 
 test("category switch and session retirement fence late success and failure", async (t) => {
   const { page } = await setup(t);
   await page.evaluate(async (fixture) => {
-    const path = "/js/ui-vendor-markets.js";
+    const path = "/js/ui-vendor-markets.generated.js";
     const { mountVendorMarkets } = await import(path);
     const host = document.createElement("div");
     document.body.replaceChildren(host);
@@ -414,7 +414,7 @@ for (const state of ["Category", "Comparison", "Selected", "Loading", "Empty", "
       const { page } = await setup(t);
       await page.evaluate(
         async ({ fixture, state, answer }) => {
-          const path = "/js/ui-vendor-markets.js";
+          const path = "/js/ui-vendor-markets.generated.js";
           const { mountVendorMarkets } = await import(path);
           history.replaceState(null, "", "/vendors");
           const host = document.createElement("div");

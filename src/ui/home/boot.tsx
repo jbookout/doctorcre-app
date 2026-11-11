@@ -4,7 +4,7 @@ import { fixtureInboxRpc } from './fixture';
 
 type Rpc = (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>;
 type McpResult = { kind: string; isError?: boolean; payload?: unknown };
-const sibling = (path: string) => import(/* runtime module beside ui-inbox.js */ new URL(path, import.meta.url).href);
+const sibling = (path: string) => import(/* runtime module beside ui-inbox.generated.js */ new URL(path, import.meta.url).href);
 
 export async function bootInbox(host: HTMLElement) {
   const legacy = new Set(['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeBrief', 'homeMeetingReviews', 'homeMissingNextStep', 'homeCalendar', 'homeMeetings', 'homeCallOutcomes', 'homeEmailFilings', 'homeInvoices', 'homePastClients', 'homeIntroductions', 'homeContactReasons', 'homeLeads', 'dealAttention', 'dealFlags', 'homeEmailActivity', 'homeReplyOutcomes']);

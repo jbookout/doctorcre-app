@@ -39,7 +39,7 @@ for (const width of [390, 1440])
         await page.goto(server.origin);
         const result = await page.evaluate(
           async ({ scenario, confirmed, skipped }) => {
-            const { mountCallReview } = await import("/js/" + "ui-call.js");
+            const { mountCallReview } = await import("/js/" + "ui-call.generated.js");
             const { createLiveClient } = await import("/js/" + "live-client.js");
             const rows = [
               {

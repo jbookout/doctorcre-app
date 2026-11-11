@@ -22,7 +22,7 @@ async function fixture(t, mode) {
   git('checkout','--orphan','unrelated'); const unrelated = await commit('unrelated');
   const released = { older, descendant, unrelated, unknown: 'f'.repeat(40) }[mode] || expectedCommit;
   const snapshot = new Map([...assets].map(([path, value]) => [path, {
-    ...value, body: mode.includes('failure') && path === '/js/ui-lead-research.js'
+    ...value, body: mode.includes('failure') && path === '/js/ui-lead-research.generated.js'
       ? value.body.toString().replaceAll('data-flag-id', 'data-wrong-id') : value.body,
   }]));
   const server = await startWorkerFixture({ assets: snapshot, env: {

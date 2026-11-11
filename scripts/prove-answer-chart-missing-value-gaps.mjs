@@ -9,7 +9,7 @@ export async function assertChartGaps(page) {
   const results = [];
   const mount = async (values, kind = 'line', absent = false) => {
     await page.evaluate(async ({values, kind, absent}) => {
-      const api = await import('/js/ui-answers.js');
+      const api = await import('/js/ui-answers.generated.js');
       const host = document.querySelector('#proof');
       const source = {record_id:'11111111-1111-4111-8111-111111111111'};
       const table = {type:'table.v1',id:'samples',columns:[{key:'year',label:'Year',type:'text'},{key:'value',label:'Value',type:'number'}],rows:values.map((value,index)=>({year:{value:String(2024+index)},...(absent && value === null ? {} : {value:{value,...(value === null ? {} : {source})}})}))};
@@ -74,7 +74,7 @@ export async function assertChartGaps(page) {
     assert.equal(await page.locator('#proof polyline').count(),1);
     assert.equal(await page.locator('#proof .answer-chart [role="status"]').textContent(),'Focus or hover a value to inspect it.');
     if (active) await page.locator('#proof circle').first().focus();
-    await page.evaluate(async()=>{const api=await import('/js/ui-answers.js'); const host=document.querySelector('#proof');api.disposeAnswerBlocks(host);api.disposeAnswerBlocks(host);});
+    await page.evaluate(async()=>{const api=await import('/js/ui-answers.generated.js'); const host=document.querySelector('#proof');api.disposeAnswerBlocks(host);api.disposeAnswerBlocks(host);});
     assert.equal(await page.locator('#proof').textContent(),'');
   }
   results.push({name:'changed-answer-and-disposal',passed:true});
@@ -104,7 +104,7 @@ export async function prove({origin, timeoutMs}) {
   try {
     return await Promise.race([ (async()=>{
       release = await readAppRelease(origin, async url => ({ type: 'application/json', body: releaseBytes = await fetchBytes(url.pathname) }));
-      const pending = ['/js/ui-answers.js'];
+      const pending = ['/js/ui-answers.generated.js'];
       while (pending.length) {
         const path = pending.shift();
         if (assets.has(path)) continue;

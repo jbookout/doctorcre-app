@@ -26,12 +26,12 @@ test('declared CLI verifies deployed bytes and refuses contradictions or unavail
     const routes=new Map(snapshot),manifest=structuredClone(built.manifest);
     if(mode==='release')manifest.source_commit='f'.repeat(40);
     if(mode==='assertion') {
-      const entry=manifest.files.find(f=>f.path==='js/ui-deal-reviews.js');
+      const entry=manifest.files.find(f=>f.path==='js/ui-deal-reviews.generated.js');
       entry.bytes=Buffer.byteLength(wrong);entry.sha256=createHash('sha256').update(wrong).digest('hex');
     }
     routes.set('/artifact-manifest.json',{contentType:'application/json',body:mode==='manifest'?'{}':JSON.stringify(manifest)});
     routes.set('/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:built.manifest.source_commit}),...(mode==='timeout'?{hold:'timeout'}:{})});
-    if(mode==='asset'||mode==='assertion')routes.set('/js/ui-deal-reviews.js',{contentType:'text/javascript',body:mode==='asset'?'export const wrong = true;':wrong});
+    if(mode==='asset'||mode==='assertion')routes.set('/js/ui-deal-reviews.generated.js',{contentType:'text/javascript',body:mode==='asset'?'export const wrong = true;':wrong});
     const server=await startFixture({routes});servers.push(server);return server.origin;
   }
   t.after(()=>Promise.all(servers.map(server=>server.close())));

@@ -23,7 +23,7 @@ async function fixture(t) {
   const start = async () => {
     await server?.close();
     const snapshot = new Map([...assets].map(([path, value]) => [path, {
-      ...value, body: corrupt && path === '/js/ui-quiet-vendors.js'
+      ...value, body: corrupt && path === '/js/ui-quiet-vendors.generated.js'
         ? value.body.toString().replaceAll('data-vendor-id','data-wrong-id') : value.body,
     }]));
     server = await startWorkerFixture({ assets: snapshot, env: {

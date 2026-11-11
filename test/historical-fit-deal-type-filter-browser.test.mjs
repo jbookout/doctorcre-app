@@ -10,7 +10,7 @@ for(const width of [390,1280]) for(const colorScheme of ['light','dark']) {
     const page=await browser.newPage({viewport:{width,height:900},colorScheme});
     await page.route(`${server.url}/__filter`,r=>r.fulfill({contentType:'text/html',body:'<!doctype html><title>Filter</title>'}));
     await page.goto(`${server.url}/__filter`);
-    assert.equal((await filterAssertions(page,`${server.url}/js/ui-ideal-client-profile.js`)).length,10);
+    assert.equal((await filterAssertions(page,`${server.url}/js/ui-ideal-client-profile.generated.js`)).length,10);
   });
 }
 
@@ -31,7 +31,7 @@ for (const choice of ['recorded', 'Unrecorded']) for (const action of ['retireme
         proof.reads++;
         return Promise.resolve(structuredClone(payload));
       } });
-    }, { moduleURL: `${server.url}/js/ui-ideal-client-profile.js`, payload: recorded.full });
+    }, { moduleURL: `${server.url}/js/ui-ideal-client-profile.generated.js`, payload: recorded.full });
     const host = page.locator('main');
     await host.locator('summary').first().click();
     const selector = host.getByLabel('Deal type', { exact: true });

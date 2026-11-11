@@ -45,7 +45,7 @@ setTimeout(() => {}, 10000);
     ['missing-selector', 'export function mountTerritoryEvidence(host){host.innerHTML="<details><table><tbody></tbody></table></details>"; return {dispose(){host.replaceChildren()}}}'],
     ['contradiction', 'export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}'],
     ['foreign-import', 'import "https://foreign.invalid/a.js";'],
-  ]) if (mode === scenario) routes.set('/js/ui-territory-evidence.js', { body, contentType: 'text/javascript' });
+  ]) if (mode === scenario) routes.set('/js/ui-territory-evidence.generated.js', { body, contentType: 'text/javascript' });
   const response = await handleDoctorcreRequest(new Request('http://fixture.test/app-release'), { GIT_SHA: released, APP_ENV: 'production' });
   routes.set('/app-release', { body: mode === 'release-missing' ? '{}' : Buffer.from(await response.arrayBuffer()), contentType: 'application/json',
     ...(mode === 'ancestry-slow' ? { delayMs: 700 } : {}), ...(mode === 'timeout' ? { hold: 'timeout' } : {}) });

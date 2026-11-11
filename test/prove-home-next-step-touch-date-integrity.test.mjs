@@ -30,7 +30,7 @@ test('exact proof CLI passes deployed bytes, contradicts calendar normalization,
     const routes = new Map(snapshot);
     for(const key of routes.keys()) {
       if(mode==='asset-unavailable')routes.set(key,{status:404});
-      if(key==='/js/ui-next-step.js'&&['invalid-calendar','foreign','cap'].includes(mode))routes.set(key,{contentType:'text/javascript',body:mode==='invalid-calendar'?defective:mode==='foreign'?'import "https://example.com/foreign.js";':Array.from({length:21},(_,i)=>`import "./ui-shared-A${i}.generated.js";`).join('\n')});
+      if(key==='/js/ui-next-step.generated.js'&&['invalid-calendar','foreign','cap'].includes(mode))routes.set(key,{contentType:'text/javascript',body:mode==='invalid-calendar'?defective:mode==='foreign'?'import "https://example.com/foreign.js";':Array.from({length:21},(_,i)=>`import "./ui-shared-A${i}.generated.js";`).join('\n')});
     }
     const identity = async sha => ({contentType:'application/json',status:mode==='unavailable'?503:200,body:await(await worker.fetch(new Request('https://synthetic.invalid/app-release'),{APP_ENV:mode==='wrong-environment'?'staging':'production',GIT_SHA:sha.repeat(40)})).text(),...(mode==='timeout'?{hold:'timeout'}:{})});
     routes.set('/app-release',{sequence:[await identity('a'),await identity(mode==='changed'?'b':'a')]});

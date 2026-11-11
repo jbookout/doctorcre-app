@@ -46,7 +46,7 @@ test("viewer lifecycle and request identity transitions", async (t) => {
     });
     await page.evaluate(
       async ({ source, deal }) => {
-        const path = "/js/ui-deal-documents.js";
+        const path = "/js/ui-deal-documents.generated.js";
         const { mountDealDocuments } = await import(path);
         const target = document.querySelector("main");
         const pending: { resolve(value: unknown): void; reject(value: unknown): void }[] = [];

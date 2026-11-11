@@ -77,7 +77,7 @@ export async function prove({ origin, timeoutMs }) {
       if (!row || typeof row.path !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(row.path) || row.path.startsWith('/') || row.path.split('/').some(part => !part || part === '.' || part === '..') || files.has(row.path) || !/^[a-f0-9]{64}$/.test(row.sha256 || '') || !Number.isSafeInteger(row.bytes) || row.bytes < 0) throw Error('Malformed asset manifest row');
       files.set(row.path, row);
     }
-    if (!files.has('js/ui-task-done.js')) throw Error('Manifest has no task module');
+    if (!files.has('js/ui-task-done.generated.js')) throw Error('Manifest has no task module');
     const { chromium } = await import('playwright');
     browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     controller.signal.addEventListener('abort', () => { void browser.close(); }, { once: true });
@@ -105,7 +105,7 @@ export async function prove({ origin, timeoutMs }) {
     page.setDefaultTimeout(remaining());
     await page.goto(`${origin}/__task-proof`, { timeout: remaining() });
     let assertions;
-    try { assertions = await observeTaskReceipts(page, `${origin}/js/ui-task-done.js`); } catch (error) { throw routeError || error; }
+    try { assertions = await observeTaskReceipts(page, `${origin}/js/ui-task-done.generated.js`); } catch (error) { throw routeError || error; }
     if (routeError) throw routeError;
     if (JSON.stringify(await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.pathname) }))) !== JSON.stringify(release)) throw Error('Release changed during proof');
     return { status: 'passed', release, manifest_sha256: hash(manifestBytes), assets, assertions, requests, business_writes: 0 };

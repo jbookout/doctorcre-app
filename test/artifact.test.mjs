@@ -43,8 +43,8 @@ test('finding 6: emitted public report shell reserves space beside the fixed rai
 test('Deal Room forms ship separately from the shared UI with one React runtime', async t => {
   const outDir = await temporaryDirectory('doctorcre-form-bundle-', t);
   await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
-  const shared = await readFile(join(outDir, 'site/js/ui-lead.js'), 'utf8');
-  const forms = await readFile(join(outDir, 'site/js/deal-room-forms.generated.js'), 'utf8');
+  const shared = await readFile(join(outDir, 'site/js/ui-lead.generated.js'), 'utf8');
+  const forms = await readFile(join(outDir, 'site/js/ui-deal-room-forms.generated.js'), 'utf8');
   assert.ok(!shared.includes('Research for the new organization or sub-client'));
   assert.ok(forms.includes('Research for the new organization or sub-client'));
   assert.match(shared, /ui-shared-[\w-]+\.generated\.js/);

@@ -30,7 +30,7 @@ test('proof CLI passes fixtures, rejects contradictions and reports insufficient
     const responses = new Map([...assets].map(([path, body]) => ['/' + path, { body, contentType: 'text/javascript' }]));
     responses.set('/app-release', { body: JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:revision}), contentType: 'application/json' });
     if (mode === 'protected') for (const path of assets.keys()) responses.set('/' + path, { status: 403 });
-    if (mode === 'contradiction') responses.set('/js/ui-ideal-client-profile.js', { body: mutated.outputFiles[0].text, contentType: 'text/javascript' });
+    if (mode === 'contradiction') responses.set('/js/ui-ideal-client-profile.generated.js', { body: mutated.outputFiles[0].text, contentType: 'text/javascript' });
     const fixture = await startFixture({ routes: responses }); t.after(() => fixture.close()); return fixture;
   }
   let fixture = await snapshot(), origin = fixture.origin;

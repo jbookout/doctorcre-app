@@ -433,7 +433,7 @@ async function prove({ origin, commit, timeoutMs = 30000 }: { origin: string; co
         await load(dependency.pathname.slice(1));
       }
     };
-    await load("js/ui-email-actions.js");
+    await load("js/ui-email-actions.generated.js");
     if (controller.signal.aborted || Date.now() >= deadline) throw new Unavailable("Proof timeout");
     browserPromise = chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, deadline - Date.now()) });
     const browser = await browserPromise;
@@ -454,7 +454,7 @@ async function prove({ origin, commit, timeoutMs = 30000 }: { origin: string; co
       await route.abort();
     });
     await page.goto(`${origin}/__email-proof__`);
-    const assertions = await exercise(page, `${origin}/js/ui-email-actions.js`);
+    const assertions = await exercise(page, `${origin}/js/ui-email-actions.generated.js`);
     if (routeFailure) throw routeFailure;
     return {
       release,

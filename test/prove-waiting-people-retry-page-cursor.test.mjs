@@ -44,7 +44,7 @@ test('exact declared command and five assertions pass against fetched fixture by
   assert.equal(result.code, 0, result.stderr);
   const receipt = JSON.parse(result.stdout);
   assert.deepEqual(receipt.assertions, assertions); assert.equal(receipt.release.source_commit, '1'.repeat(40));
-  assert.ok(receipt.assets.some(asset => asset.url.endsWith('/js/ui-inbox.js')));
+  assert.ok(receipt.assets.some(asset => asset.url.endsWith('/js/ui-inbox.generated.js')));
   assert.ok(receipt.assets.every(asset => /^[a-f0-9]{64}$/.test(asset.sha256)));
   assert.ok(receipt.assets.length <= 30); assert.ok(receipt.bytes <= 10 * 1024 * 1024); assert.ok(fixtureOrigin.methods.every(method => method === 'GET'));
 });

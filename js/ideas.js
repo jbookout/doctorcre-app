@@ -613,7 +613,7 @@ async function boot() {
   remember();
   render();
   // The inner Ideas host stays fixture-only; the partner workspace owns the live flag.
-  if (resolved.mode === "fixture" && reactHost && (!resolved.options.selfActor || ["joe", "dell"].includes(resolved.options.selfActor))) import("./ui-host.js").then(({ hostNode }) => hostNode($("ideasPanel")));
+  if (resolved.mode === "fixture" && reactHost && (!resolved.options.selfActor || ["joe", "dell"].includes(resolved.options.selfActor))) import("./ui-host.generated.js").then(({ hostNode }) => hostNode($("ideasPanel")));
   client = resolved.mode === "live" ? createLiveClient({docContext:false}) : await (await import("./fixture-client.js")).createFixtureClient({...resolved.options,docContext:false});
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await load(); await loadEvents(); } });
