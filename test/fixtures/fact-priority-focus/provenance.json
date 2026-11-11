@@ -29,8 +29,9 @@
   "parser": "createLiveClient rawRpc production fact-review response parser",
   "procedure": "producer.txt contains exact producer bytes and executed recipe",
   "reused_from": "test/fixtures/fact-review-pending-status-view",
-  "parser_revision": "bf66acef1db56a6d0eb1d309bdfbab2017cd6922",
-  "parser_sha256": "97209f2107910f6e4117ef84624541928ef20395c600e7fb5ee1ae8a7df64b3d",
+  "parser_revision": "41311508175e33ac1eba2726d6719058ec965483",
+  "parser_sha256": "d85ec316771e3237932285d09b84259c4cf1e0894e9350c4b7228763c1dd45f1",
   "producer_file_sha256": "057ec5840a6b30f6ce6ad1a4e0579d3a4fef93f5f08928a82cd5245dd4b1b768",
-  "priority_cases": "Recorded normal values are unchanged. Browser tests vary priority and add a competing observation through createLiveClient rawRpc, the exact production parser. Cases include high, null, omitted, blank and future values. These are parser-contract cases, not producer replays."
+  "priority_cases": "Recorded normal values are unchanged. Browser tests vary priority and add a competing observation through createLiveClient rawRpc, the exact production parser. Cases include high, null, omitted, blank and future values. These are parser-contract cases, not producer replays.",
+  "parser_revalidation": "WR591.S26.J4 revalidates the recorded fact priority cases through createLiveClient after e8609ccc removed generated introduction UI loading from the transport. The fact-review parser and recorded producer bytes are unchanged."
 }
