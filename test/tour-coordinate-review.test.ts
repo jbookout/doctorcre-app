@@ -52,7 +52,7 @@ test("compare exact candidates without mutations; invalid rights and centroid ap
 });
 test("refresh, read failure, retry, wrong property and retired late reads", async () => {
   const r = fixture();
-  let value: unknown = r;
+  let value: unknown = { ...r, as_of: "2026-11-11T18:00:00Z" };
   let fail = false;
   const s = coordinateReviewSession({ ...binding, property: r.property_id }, r, {
     read: async () => {
@@ -68,6 +68,7 @@ test("refresh, read failure, retry, wrong property and retired late reads", asyn
   await s.refresh();
   assert.equal(s.phase, "unavailable");
   fail = false;
+  value = { ...r, as_of: "2026-11-11T19:00:00Z" };
   await s.refresh();
   assert.equal(s.phase, "comparing");
   value = { ...r, property_id: "other" };
@@ -97,7 +98,7 @@ test("review authority refused, exact unknown retry, confirmed refresh and late 
   const s = coordinateReviewSession({ ...binding, property: r.property_id }, r, {
     read: async () => {
       reads++;
-      return r;
+      return { ...r, as_of: "2026-11-11T18:00:00Z" };
     },
     write: async (a) => {
       calls.push(a);

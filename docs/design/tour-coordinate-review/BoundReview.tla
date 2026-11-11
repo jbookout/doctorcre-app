@@ -12,10 +12,10 @@ Select == /\ phase \in {"comparing", "reading", "refused", "unavailable"}
           /\ property' = 3-property /\ phase' = "comparing" /\ pendingProperty' = 0
           /\ visibleProperty'=3-property /\ visibleVersion'=snapshots[3-property]
           /\ UNCHANGED <<retainedKey,snapshots,freshest>>
-\* src/ui/tour-coordinate-review-model.ts:154-158 refresh() admits as_of >= latestAsOf.
+\* src/ui/tour-coordinate-review-model.ts:168-174 refresh() admits only full-precision as_of > latestAsOf.
 Arrive == /\ phase="reading" /\ pendingProperty=property
           /\ phase'="comparing" /\ visibleProperty'=property
-          /\ \E version \in snapshots[property]..2:
+          /\ \E version \in (snapshots[property]+1)..2:
               /\ snapshots' = [snapshots EXCEPT ![property] = version]
               /\ freshest' = [freshest EXCEPT ![property] = IF version > @ THEN version ELSE @]
               /\ visibleVersion' = version

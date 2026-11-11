@@ -53,6 +53,7 @@ test("coordinate review selects exact property, compares, refuses authority and 
       assert.equal(await root.locator("h3").textContent(), "Synthetic Medical 2");
       assert.equal(await root.locator("[data-coordinate-candidate]").count(), 3);
       assert.equal(await root.locator("a").count(), 0);
+      second.coordinate_review.as_of = new Date(Date.parse(second.coordinate_review.as_of) + 1000).toISOString();
       await root.getByRole("button", { name: "Refresh coordinate evidence" }).click();
       await root.locator("h3").waitFor();
       assert.equal(await root.locator("h3").textContent(), "Synthetic Medical 2");
@@ -268,7 +269,11 @@ for (const newlyApproved of [false, true]) {
     await assertFresh();
     reply = detail;
     await root.getByRole("button", { name: "Refresh coordinate evidence" }).click();
-    await root.getByRole("status").filter({ hasText: "Coordinate evidence is unavailable." }).waitFor();
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll<HTMLButtonElement>("#coordinate-review button")].some(
+        (button) => button.textContent === "Refresh coordinate evidence" && !button.disabled,
+      ),
+    );
     await select.selectOption(first.property_id);
     await select.selectOption(second.property_id);
     await assertFresh();

@@ -81,6 +81,21 @@ function candidate(v: unknown): v is CoordinateReview["candidates"][number] {
     a.receipt === null
   );
 }
+type ProducerInstant = { seconds: number; fraction: string };
+function producerInstant(value: string): ProducerInstant | null {
+  const match =
+    /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.(\d+))?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(
+      value,
+    );
+  if (!match) return null;
+  const local = `${match[1]}T${match[2]}:${match[3]}:${match[4]}`;
+  const localTime = Date.parse(`${local}Z`);
+  if (!Number.isFinite(localTime) || new Date(localTime).toISOString().slice(0, 19) !== local) return null;
+  return { seconds: Date.parse(`${local}${match[6]}`) / 1000, fraction: (match[5] ?? "").replace(/0+$/, "") };
+}
+function newerInstant(next: ProducerInstant, held: ProducerInstant | null): boolean {
+  return !held || next.seconds > held.seconds || (next.seconds === held.seconds && next.fraction > held.fraction);
+}
 function isReview(v: unknown): v is CoordinateReview {
   return (
     object(v) &&
@@ -89,7 +104,7 @@ function isReview(v: unknown): v is CoordinateReview {
     nullable(v.property_name) &&
     nullable(v.property_address) &&
     string(v.as_of) &&
-    Number.isFinite(Date.parse(v.as_of)) &&
+    producerInstant(v.as_of) !== null &&
     Array.isArray(v.candidates) &&
     v.candidates.every(candidate) &&
     new Set(v.candidates.map((c) => c.coordinate_candidate_id)).size === v.candidates.length &&
@@ -132,7 +147,7 @@ export function coordinateReviewSession(
   let phase: ReviewPhase = "comparing",
     review = parseCoordinateReview(initial, binding.property),
     generation = 0;
-  let latestAsOf = review ? Date.parse(review.as_of) : -Infinity;
+  let latestAsOf = review ? producerInstant(review.as_of) : null;
   let pending: ReceiptInput | null = null;
   const current = (n: number) => phase !== "retired" && generation === n;
   const changed = () => io.changed();
@@ -153,8 +168,9 @@ export function coordinateReviewSession(
         const value = await io.read();
         if (!current(n)) return;
         const next = parseCoordinateReview(value, binding.property);
-        review = next && Date.parse(next.as_of) >= latestAsOf ? next : null;
-        if (review) latestAsOf = Date.parse(review.as_of);
+        const instant = next ? producerInstant(next.as_of) : null;
+        review = next && instant && newerInstant(instant, latestAsOf) ? next : null;
+        if (review) latestAsOf = instant;
         phase = review ? "comparing" : "unavailable";
       } catch {
         if (!current(n)) return;
