@@ -271,6 +271,11 @@ export function createIntroductionRequest({
     view = { ...view, status, message };
     onChange();
   }
+  function retire(message = "Session ended.") {
+    generation++;
+    view = { ...view, path: null, request: null };
+    change("retired", message);
+  }
   function validate(value: unknown) {
     if (!validNetwork(value)) throw Error("Relationships unavailable");
     return value;
@@ -316,8 +321,7 @@ export function createIntroductionRequest({
       if (token !== generation) return;
       const failure = error && typeof error === "object" ? object(error) : {};
       if (failure.code === "session_changed" || failure.status === 401 || failure.status === 403) {
-        generation++;
-        change("retired", "Session changed. Reopen Relationships in your original session.");
+        retire("Session changed. Reopen Relationships in your original session.");
       } else if (
         failure.payload &&
         typeof failure.payload === "object" &&
@@ -384,9 +388,7 @@ export function createIntroductionRequest({
       if (view.status === "unknown") await send(true);
     },
     retire() {
-      generation++;
-      view = { ...view, path: null, request: null };
-      change("retired", "Session ended.");
+      retire();
     },
   };
 }

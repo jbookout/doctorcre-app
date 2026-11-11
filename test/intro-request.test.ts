@@ -265,3 +265,15 @@ test("recorded producer receipts and snapshots pass the production parsers", () 
   assert.equal(validNetwork(recorded.requested), true);
   assert.equal(recorded.requested.suggestions.length, 0);
 });
+
+test("transport session refusal retires and clears the retained review", async () => {
+  const h = harness();
+  h.client.linkParties = async () => {
+    throw Object.assign(Error("Session changed"), { code: "session_changed" });
+  };
+  h.model.open(h.network, offerId);
+  await h.model.submit("2026-11-10", "Note", true);
+  assert.equal(h.model.view().status, "retired");
+  assert.equal(h.model.view().path, null);
+  assert.equal(h.model.view().request, null);
+});

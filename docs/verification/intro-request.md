@@ -43,6 +43,7 @@ Transition-to-test mapping:
 | Confirmed to confirmed on refresh | V03 explicitly reviews and records the exact introduction, all widths/themes |
 | Submitting to retired | retirement suppresses a late receipt and all later sends |
 | Other active states to retired | retirement clears reviewing/unknown/refused/confirmed/changed_source review and prevents further sends |
+| Transport session change to retired | transport session refusal retires and clears the retained review; V03 changed-session recovery sends no second write and clears private review identities |
 | Read-only proof and cancel | V03 proof observation passes exact identity |
 | Proof identity mismatch | V03 proof observation rejects near-miss identity |
 

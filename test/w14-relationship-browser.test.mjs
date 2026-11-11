@@ -615,6 +615,16 @@ test('V03 lost response survives closing and refresh then replays the same sessi
  assert.equal(writes.length,2);assert.deepEqual(writes[0],writes[1]);assert.deepEqual(errors,[]);
 });
 
+test('V03 changed-session recovery sends no second write and clears private review identities',async t=>{
+ const {page,setMode,writes}=await open(t,390);setMode('intro-lost');await page.goto('http://localhost/relationships?mode=live');
+ await page.locator('#networkIntroductions [data-node]').click();await page.locator('[data-review-introduction]').click();
+ const panel=page.locator('.introduction-review');await panel.locator('[name="date"]').fill('2026-11-10');await panel.locator('[name="note"]').fill('Retain this request.');await panel.locator('[name="reviewed"]').check();await panel.locator('[type="submit"]').click();
+ await page.waitForFunction(()=>document.querySelector('.introduction-review').dataset.state==='unknown');
+ await page.route('**/auth/session',route=>route.fulfill({json:{actor:{slug:'dell'},csrf_token:'synthetic-replacement-session'}}));
+ await panel.locator('[data-recover]').click();await page.waitForURL('**/public-shell/session-ended.html');
+ assert.equal(writes.length,1);assert.equal(await page.locator('.introduction-review,[data-identity]').count(),0);
+});
+
 for (const mismatch of [false,true]) test(`V03 proof observation ${mismatch ? 'rejects near-miss identity' : 'passes exact identity'}`,async t=>{
  const {page,setMode,writes}=await open(t);setMode('intro');
  if(mismatch)await page.addInitScript(()=>{
