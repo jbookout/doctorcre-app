@@ -6,7 +6,7 @@ import { runInNewContext } from "node:vm";
 const workflows = ["ci.yml", "e2e.yml"];
 const locks = {
   "deploy-production.yml": [
-    "    concurrency:\n      group: doctorcre-app-production\n      cancel-in-progress: false\n",
+    "    concurrency:\n      group: doctorcre-app-production\n      cancel-in-progress: false\n      queue: max\n",
   ],
   "staging-e2e.yml": ["concurrency:\n  group: signed-in-staging\n  cancel-in-progress: true\n"],
 };
