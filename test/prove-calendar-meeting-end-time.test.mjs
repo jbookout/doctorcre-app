@@ -66,7 +66,7 @@ test('proof CLI accepts a working-tree fixture and rejects a broken deployed mod
   const delayedResize = await prove({ fixtureRoot: join(out, 'site'), engine });
   assert.ok(delayedResize.observations.every(observation => observation.checks.every(check => check.pass)),
     'resize assertions wait for layout delivery when resize callbacks arrive after animation frames');
-  await writeFile(join(out, 'site/js/ui-calendar-panels.js'), 'export async function mountCalendarPanels() { throw Error("broken fixture module"); }');
+  await writeFile(join(out, 'site/js/ui-calendar-panels.generated.js'), 'export async function mountCalendarPanels() { throw Error("broken fixture module"); }');
   await assert.rejects(exec(process.execPath, args), error => {
     assert.equal(error.code, 1);
     assert.match(JSON.parse(error.stdout).error, /broken fixture module/);
@@ -78,7 +78,7 @@ for (const mode of ['stalled evaluation', 'late launch']) test(`proof closes acq
   const root = temporaryDirectory('meeting-proof-timeout-');
   const { mkdir } = await import('node:fs/promises');
   await mkdir(join(root, 'js'), { recursive: true });
-  await writeFile(join(root, 'js/ui-calendar-panels.js'), '');
+  await writeFile(join(root, 'js/ui-calendar-panels.generated.js'), '');
   t.after(() => rm(root, { recursive: true, force: true }));
   let owned, acquisition, evaluating = false;
   t.after(async () => { await acquisition?.catch(() => {}); await owned?.close(); });
@@ -170,7 +170,7 @@ test('endpoint CLI admits only equal or descendant releases with complete eviden
   });
   await t.test('containing release with broken asset is an assertion failure', async () => {
     const broken = new Map(assets);
-    broken.set('/js/ui-calendar-panels.js', { contentType: 'text/javascript', body: 'export async function mountCalendarPanels() { throw Error("broken contained module"); }' });
+    broken.set('/js/ui-calendar-panels.generated.js', { contentType: 'text/javascript', body: 'export async function mountCalendarPanels() { throw Error("broken contained module"); }' });
     const fixture = await startFixture({ assets: broken, routes: new Map([['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: expected }) }]]) });
     try {
       const result = await run(['--origin', fixture.origin, '--expected-commit', expected]);

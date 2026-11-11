@@ -36,7 +36,7 @@ test('exact CLI flags prove fetched head and reject recoverable invalidation; un
   const assets = await uiAssets(path => readFile(path));
   async function snapshot(mode) {
     const responses = new Map([...assets].map(([path, body]) => ['/' + path, mode === 'missing-asset' ? { status: 404 } : { body, contentType: 'text/javascript' }]));
-    if (mode === 'contradiction') responses.set('/js/ui-ideal-client-profile.js', { body: bundled.outputFiles[0].text, contentType: 'text/javascript' });
+    if (mode === 'contradiction') responses.set('/js/ui-ideal-client-profile.generated.js', { body: bundled.outputFiles[0].text, contentType: 'text/javascript' });
     responses.set('/app-release', mode === 'unavailable' ? { status: 503 } : { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: mode === 'staging' ? 'staging' : 'production' }), ...(mode === 'timeout' ? { hold: 'timeout' } : {}) });
     const server = await startFixture({ routes: responses }); t.after(() => server.close()); return server;
   }
@@ -52,7 +52,7 @@ test('exact CLI flags prove fetched head and reject recoverable invalidation; un
     if (scenario === 'pass') {
       const receipt = JSON.parse(result.stdout);
       assert.equal(receipt.assertions.length, 8); assert.equal(receipt.release.service, 'doctorcre-app');
-      assert.ok(receipt.assets.some(asset => asset.path === '/js/ui-ideal-client-profile.js'));
+      assert.ok(receipt.assets.some(asset => asset.path === '/js/ui-ideal-client-profile.generated.js'));
       assert.ok(receipt.assets.every(asset => /^[a-f0-9]{64}$/.test(asset.sha256)));
       assert.ok(receipt.assets.length <= 30); assert.ok(receipt.bytes <= 10 * 1024 * 1024);
       for (const state of ['idle', 'loading', 'ready', 'error', 'clear', 'pagehide', 'dispose']) assert.ok(receipt.assertions.some(value => value.startsWith(state + ':')), state);

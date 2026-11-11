@@ -22,7 +22,7 @@ async function fixture(t, mode = 'success') {
     if (mode === 'protected-asset' || mode === 'protected-chunk' && path.includes('ui-shared')) responses.set(path, { status: 403 });
     if (mode === 'missing-chunk' && path.includes('ui-shared')) responses.set(path, { status: 404 });
     if (mode === 'html-asset') responses.set(path, { contentType: 'text/html', body: '<h1>Sign in</h1>' });
-    if (path === '/js/ui-agenda.js') {
+    if (path === '/js/ui-agenda.generated.js') {
       if (mode === 'request-limit') responses.set(path, { ...response, body: Buffer.concat([Buffer.from('for(let i=0;i<100;i++) await import("./extra-"+i+".js");'), Buffer.from(response.body)]) });
       if (mode === 'write-attempt') responses.set(path, { ...response, body: Buffer.concat([Buffer.from('await fetch("/api/write", {method:"POST"}).catch(()=>{});'), Buffer.from(response.body)]) });
       if (mode === 'oversized') responses.set(path, { ...response, body: Buffer.alloc(5 * 1024 * 1024 + 1) });

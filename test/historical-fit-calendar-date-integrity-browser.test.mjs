@@ -14,9 +14,9 @@ for (const width of [390, 1280]) for (const colorScheme of ['light', 'dark']) {
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), colorScheme);
     await componentDocument(page, server.url, { dispose: page => page.evaluate(() => window.integrityPanel?.dispose()) });
     await page.evaluate(() => { document.body.replaceChildren(); });
-    assert.equal((await calendarAssertions(page, `${server.url}/js/ui-ideal-client-profile.js`)).length, 7);
+    assert.equal((await calendarAssertions(page, `${server.url}/js/ui-ideal-client-profile.generated.js`)).length, 7);
     await page.evaluate(async () => {
-      const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
+      const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.generated.js');
       const host = document.createElement('main'); document.body.append(host);
       window.integrityPanel = mountIdealClientProfile(host, { getIdealClientProfile: async () => ({}) });
     });
@@ -34,7 +34,7 @@ test('Leads remains searchable after malformed historical evidence', async t => 
   await page.locator('#leadBoard[aria-busy="false"]').waitFor();
   const count = await page.locator('#leadBoard .lead-card').count(); assert.ok(count > 0);
   await page.evaluate(async () => {
-    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
+    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.generated.js');
     const host = document.createElement('div'); document.body.append(host);
     mountIdealClientProfile(host, { getIdealClientProfile: async () => ({ schema_version: 'ideal-client-profile.v1', coverage: 'recorded_closed_won_only', profiles: [
       { vertical: 'Synthetic', deal_type: 'lease', city: null, state: null, won_deals: 1, clients: 1, hypothesis: 'Historical fit', evidence: [{ deal_id: '00000000-0000-4000-8000-000000000001', closed_on: '2026-02-31' }] },
@@ -58,7 +58,7 @@ for (const action of ['clear', 'dispose']) for (const state of ['idle', 'loading
     await componentDocument(page, server.url, { dispose: page => page.evaluate(() => window.lifecycle?.mount.dispose()) });
     await page.evaluate(async state => {
       document.body.replaceChildren();
-      const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
+      const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.generated.js');
       const host = document.createElement('main'); document.body.append(host);
       const fixture = window.lifecycle = { pending: [], hold: state === 'loading', reads: 0, invalid: ['unavailable', 'retrying'].includes(state) };
       fixture.mount = mountIdealClientProfile(host, { getIdealClientProfile() {

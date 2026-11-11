@@ -54,7 +54,7 @@ test('stale refresh cannot replace selected results and parent disposal clears p
     await componentDocument(page, server.origin, { dispose: page => page.evaluate(() => window.panel?.dispose()) });
     await page.evaluate(async fixtures => {
       document.body.innerHTML = '<main id="comparison"></main>';
-      const { mountMarketTerms } = await import('/js/ui-market.js');
+      const { mountMarketTerms } = await import('/js/ui-market.generated.js');
       window.pending = [];
       window.response = fixtures.single;
       window.emptyResponse = fixtures.empty;
@@ -76,7 +76,7 @@ test('stale refresh cannot replace selected results and parent disposal clears p
     await page.evaluate(() => window.panel.dispose());
     assert.equal(await page.locator('#comparison').textContent(),'');
     await page.evaluate(async () => {
-      const { mountMarketTerms } = await import('/js/ui-market.js');
+      const { mountMarketTerms } = await import('/js/ui-market.generated.js');
       window.panel = mountMarketTerms(document.querySelector('#comparison'), {entityRef:'synthetic-a',client:{readMarketTerms:() => new Promise(resolve => window.pending.push(resolve))}});
       window.panel.dispose();
       window.pending[4](window.response);

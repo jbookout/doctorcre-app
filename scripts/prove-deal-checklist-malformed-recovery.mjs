@@ -19,7 +19,7 @@ export async function observeMalformedRecovery(page, origin) {
   await page.goto(`${origin}/__checklist-proof__`);
   const result = await page.evaluate(async () => {
     const check = (value, message) => { if (!value) throw new Error(message); };
-    const { mountDealChecklist } = await import('/js/ui-checklist.js');
+    const { mountDealChecklist } = await import('/js/ui-checklist.generated.js');
     check(typeof mountDealChecklist === 'function', 'Missing mountDealChecklist export');
     const panel = mountDealChecklist(document.querySelector('main'), {dealId:'synthetic',checklist:null});
     const item = { id: 'lease', label: 'Synthetic lease', status: 'received', source: { document: 'synthetic-kit' } };
@@ -44,7 +44,7 @@ export async function observeMalformedRecovery(page, origin) {
     panel.dispose();
     return { assertions };
   });
-  if (!loaded.has(`${origin}/js/ui-checklist.js`)) throw new Error('Deployed module was not loaded');
+  if (!loaded.has(`${origin}/js/ui-checklist.generated.js`)) throw new Error('Deployed module was not loaded');
   return { origin, ...result, loaded_module_urls: [...loaded].sort(), requests, synthetic: true };
 }
 

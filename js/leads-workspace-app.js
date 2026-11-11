@@ -1,8 +1,8 @@
-import { parseOpportunityTiming, timingMarkup } from './ui-lead-opportunity-timing.js';
-import { mountLeadResearch } from './ui-lead-research.js';
-import { mountQuietLeads } from './ui-quiet-leads.js';
-import { mountTerritoryEvidence } from './ui-territory-evidence.js';
-import { mountLeadGuidance } from './ui-lead.js';
+import { parseOpportunityTiming, timingMarkup } from './ui-lead-opportunity-timing.generated.js';
+import { mountLeadResearch } from './ui-lead-research.generated.js';
+import { mountQuietLeads } from './ui-quiet-leads.generated.js';
+import { mountTerritoryEvidence } from './ui-territory-evidence.generated.js';
+import { mountLeadGuidance } from './ui-lead.generated.js';
 import { createPageBudget } from './read-budget.mjs';
 import { mountContactReasons } from './contact-reasons.mjs';
 import { workCard } from './work-card.js';

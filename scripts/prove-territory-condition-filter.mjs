@@ -8,7 +8,7 @@ import { init, parse } from 'es-module-lexer';
 export const territoryResponse = {"schema_version":"territory-state-board.v1","coverage":"recorded_geographies_only","submarkets":[{"city":"Balanced City","state":"TX","condition":"balanced","evidence":[{"flag_id":"fixture-balanced-true","condition":"balanced","source":"Synthetic balanced source","observed_at":"2026-01-01T12:00:00Z","expires_on":"2099-04-01","current":true,"expired":false}]},{"city":"Conflict City","state":"TX","condition":"conflicting","evidence":[{"flag_id":"fixture-soft-true","condition":"soft","source":"Synthetic soft source","observed_at":"2026-01-01T12:00:00Z","expires_on":"2099-04-01","current":true,"expired":false},{"flag_id":"fixture-tight-true","condition":"tight","source":"Synthetic tight source","observed_at":"2026-01-01T12:00:00Z","expires_on":"2099-04-01","current":true,"expired":false}]},{"city":"Expired City","state":"TX","condition":"unknown","evidence":[{"flag_id":"fixture-tight-false","condition":"tight","source":"Synthetic tight source","observed_at":"2026-01-01T12:00:00Z","expires_on":"2026-02-01","current":false,"expired":true}]},{"city":"Soft City","state":"TX","condition":"soft","evidence":[{"flag_id":"fixture-soft-true","condition":"soft","source":"Synthetic soft source","observed_at":"2026-01-01T12:00:00Z","expires_on":"2099-04-01","current":true,"expired":false}]},{"city":"Tight City","state":"TX","condition":"tight","evidence":[{"flag_id":"fixture-tight-true","condition":"tight","source":"Synthetic tight source","observed_at":"2026-01-01T12:00:00Z","expires_on":"2099-04-01","current":true,"expired":false}]},{"city":"Unknown City","state":"TX","condition":"unknown","evidence":[]}]};
 
 export async function exerciseConditionFilter(response) {
-  const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.js');
+  const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.generated.js');
   const results = [];
   const check = (name, ok) => {
     if (!ok) throw new Error(name);
@@ -109,7 +109,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, exer
     };
     release = await readAppRelease(base, async url => ({ type: 'application/json', body: await fetchBytes(url.pathname) }));
     await init;
-    const queue = ['/js/ui-territory-evidence.js'];
+    const queue = ['/js/ui-territory-evidence.generated.js'];
     for (let i = 0; i < queue.length; i++) {
       if (queue.length > 19) throw unavailable('Module asset cap exceeded');
       const path = queue[i], bytes = await fetchBytes(path); assets.set(path, bytes);

@@ -820,7 +820,7 @@ for (const kind of ['file_to_deal', 'possible_new_deal']) test(`${kind} files to
 });
 
 test('Central default and explicit picker reject DST gaps and folds', async () => {
-  const { tomorrowCentral, centralInstant } = await import('../js/ui-email-actions.js');
+  const { tomorrowCentral, centralInstant } = await import('../js/ui-email-actions.generated.js');
   assert.equal(tomorrowCentral(new Date('2026-03-07T23:00:00Z')), '2026-03-08T09:00');
   assert.equal(centralInstant('2026-03-08T09:00'), '2026-03-08T14:00:00.000Z');
   assert.equal(tomorrowCentral(new Date('2026-10-31T23:00:00Z')), '2026-11-01T09:00');

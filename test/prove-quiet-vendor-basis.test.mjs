@@ -26,8 +26,8 @@ async function fixture(t) {
   const start = async () => {
     await server?.close();
     const snapshot = new Map([...assets].map(([path, value]) => [path, {
-      ...value, body: corrupt && path === '/js/ui-quiet-vendors.js'
-        ? value.body.toString().replaceAll(corrupt === 'history' ? 'Contact history' : 'data-vendor-id', corrupt === 'history' ? 'History unavailable' : 'data-wrong-id') : nearMiss && path === '/js/ui-quiet-vendors.js' ? value.body.toString().replaceAll('matching loaded vendors','matching loaded vendorsx') : value.body,
+      ...value, body: corrupt && path === '/js/ui-quiet-vendors.generated.js'
+        ? value.body.toString().replaceAll(corrupt === 'history' ? 'Contact history' : 'data-vendor-id', corrupt === 'history' ? 'History unavailable' : 'data-wrong-id') : nearMiss && path === '/js/ui-quiet-vendors.generated.js' ? value.body.toString().replaceAll('matching loaded vendors','matching loaded vendorsx') : value.body,
     }]));
     server = await startWorkerFixture({ assets: snapshot, env: {
       APP_ENV: 'production', GIT_SHA: source,

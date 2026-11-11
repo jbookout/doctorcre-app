@@ -26,7 +26,7 @@ const board = { deals: [{ id: 'd1', name: 'Valid Deal', open_actions: [{ id: 't1
 const network = { nodes: [{ id: 'party:c1', name: 'Valid Contact', kind: 'contact' }] };
 async function open(page, payload, mode = 'resolved') {
   await page.evaluate(async ({ payload, mode }) => {
-    const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+    const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
     window.readCount = 0;
     openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }, { label: 'Deals', href: '/deals' }], read: () => {
       window.readCount++;
@@ -114,7 +114,7 @@ test('read rejection retries into full results and selection follows current res
     await page.goto(server.url);
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
     await page.evaluate(async () => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       let count = 0;
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Valid Page', href: '/calendar' }], read: () => ++count === 1 ? Promise.reject(Error('Unavailable')) : new Promise(resolve => { window.finishRead = resolve; }) });
     });

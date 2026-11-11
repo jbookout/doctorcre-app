@@ -4,7 +4,7 @@
   "targets": ["app"],
   "assertions": [{
     "id": "menu-malformed-coverage-recovery",
-    "predicate": "Run node scripts/prove-brief-queue-menu-malformed-section.ts --origin https://app.doctorcre.com --timeout-ms 30000 --commit <merge-commit> after deploy. Fetch app-release and ui-queue.js plus its same-origin generated module closure, execute only those deployed bytes in an isolated browser document, and assert missing or malformed sections retain queue controls with unknown coverage, valid replacement and zero counts, partial/unavailable annotations, Joe-only Needs Joe, switching and disposal.",
+    "predicate": "Run node scripts/prove-brief-queue-menu-malformed-section.ts --origin https://app.doctorcre.com --timeout-ms 30000 --commit <merge-commit> after deploy. Fetch app-release and ui-queue.generated.js plus its same-origin generated module closure, execute only those deployed bytes in an isolated browser document, and assert missing or malformed sections retain queue controls with unknown coverage, valid replacement and zero counts, partial/unavailable annotations, Joe-only Needs Joe, switching and disposal.",
     "runner": "app-release-live-walk.v1",
     "expected_result": "Exit 0 with release identity, SHA256 of every fetched asset and named passing assertions. Exit 1 on contradiction and 78 on unavailable release or assets or timeout. The runner refuses releases that do not contain the expected merged commit.",
     "input_class": "read-only deployed app modules and synthetic menu facts",

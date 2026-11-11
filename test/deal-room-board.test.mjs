@@ -11,7 +11,7 @@ test('board rows keep focus and native command values across snapshot renders', 
   await page.goto(`${server.origin}/deals?mode=fixture&view=national`);
   await page.locator('.account-card').first().waitFor();
   const result = await page.evaluate(async () => {
-    const { mountDealRoomBoard } = await import('/js/ui-board.js');
+    const { mountDealRoomBoard } = await import('/js/ui-board.generated.js');
     const table = document.createElement('table');
     const rows = document.createElement('tbody');
     table.append(rows);

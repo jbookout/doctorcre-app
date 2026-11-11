@@ -30,10 +30,10 @@ for (const scenario of [
       scenario === "missing-release" ? { status: 404 } : { body: release, contentType: "application/json" },
     );
     for (const [path, value] of assets) {
-      if (scenario === "missing-entry" && path === "js/ui-quiet-vendors.js") continue;
+      if (scenario === "missing-entry" && path === "js/ui-quiet-vendors.generated.js") continue;
       if (scenario === "missing-chunk" && path.includes("ui-shared-")) continue;
       let bytes: string | Uint8Array = value;
-      if (path === "js/ui-quiet-vendors.js") {
+      if (path === "js/ui-quiet-vendors.generated.js") {
         if (scenario === "contradiction")
           bytes = 'export function mountQuietVendors() { throw Error("synthetic contradiction"); }';
         if (scenario === "foreign-import") bytes = 'import "https://foreign.invalid/asset.js";';

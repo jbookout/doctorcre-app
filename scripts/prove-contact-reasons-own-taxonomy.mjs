@@ -160,7 +160,7 @@ export async function prove({origin,timeoutMs=30000,requiredRevision}) {
     await page.goto(`${origin}/__contact-taxonomy-proof__`);
     const assertions = await exerciseContactReasons(page,`${origin}/js/contact-reasons.mjs`);
     assert.deepEqual(failures,[]);
-    assert.ok(moduleUrls.has(`${origin}/js/ui-reasons.js`),'deployed renderer was not loaded');
+    assert.ok(moduleUrls.has(`${origin}/js/ui-reasons.generated.js`),'deployed renderer was not loaded');
     return {origin,release,required_revision:required,module_urls:[...moduleUrls],assertions,requests};
   };
   try {

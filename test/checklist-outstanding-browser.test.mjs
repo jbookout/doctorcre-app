@@ -15,7 +15,7 @@ for(const width of [390,1280]) for(const theme of ['light','dark']) test(`checkl
  routes.set('/',{body:`<html data-theme="${theme}"><main id="host"></main></html>`,contentType:'text/html'});
  const server=await startFixture({routes});t.after(()=>server.close());
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960}});
- await page.goto(server.origin);await page.evaluate(async snapshot=>{const {mountDealChecklist}=await import('/js/ui-checklist.js');window.panel=mountDealChecklist(document.querySelector('#host'),{dealId:'a',checklist:snapshot});},snapshot);
+ await page.goto(server.origin);await page.evaluate(async snapshot=>{const {mountDealChecklist}=await import('/js/ui-checklist.generated.js');window.panel=mountDealChecklist(document.querySelector('#host'),{dealId:'a',checklist:snapshot});},snapshot);
  const root=page.locator('.deal-checklist');await root.locator(':scope > summary').click();
  const filter=page.getByLabel('Requirements view');await filter.focus();await page.keyboard.press('o');await page.keyboard.press('Tab');assert.equal(await filter.inputValue(),'outstanding');
  assert.deepEqual(await root.locator('[data-checklist-item]').evaluateAll(rows=>rows.map(r=>r.dataset.checklistItem)),outstanding.map(i=>i.id));

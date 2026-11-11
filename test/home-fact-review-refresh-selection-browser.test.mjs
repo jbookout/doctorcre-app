@@ -14,7 +14,7 @@ for (const mode of ['retained', 'removed', 'replaced', 'empty', 'forbidden', 'no
     const origin = 'http://localhost:37891';
     await page.route('**/*', async route => {
       const url = new URL(route.request().url());
-      if (url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script>' });
+      if (url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.generated.js"></script>' });
       if (url.pathname === '/__disposed-proof') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Disposed</title>' });
       const path = resolve(root, '.' + decodeURIComponent(url.pathname));
       if (!path.startsWith(root + sep)) return route.abort();

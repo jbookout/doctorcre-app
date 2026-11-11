@@ -15,7 +15,7 @@ for (const width of [390, 1440]) test(`whole calendar island and keyboard at ${w
   await page.route('**/calendar-island-fixture', route => route.fulfill({ contentType: 'text/html', body: '<div id="left"></div><div id="right"></div>' }));
   await run.open('/calendar-island-fixture');
   const observation = await page.evaluate(async () => {
-    const { mountCalendarPanels } = await import('/js/ui-calendar-panels.js');
+    const { mountCalendarPanels } = await import('/js/ui-calendar-panels.generated.js');
     const left = document.querySelector('#left'), right = document.querySelector('#right');
     const panel = await mountCalendarPanels(left, right);
     const items = [
@@ -53,8 +53,8 @@ for (const mode of ['import-failure', 'detached']) test(`calendar caller ${mode}
   await page.route('**/mcp', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
   await page.route('**/api/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
   await page.route('**/auth/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
-  if (mode === 'import-failure') await page.route('**/js/ui-calendar-panels.js', route => route.abort());
-  else await page.route('**/js/ui-calendar-panels.js', route => route.fulfill({ contentType: 'text/javascript', body: `
+  if (mode === 'import-failure') await page.route('**/js/ui-calendar-panels.generated.js', route => route.abort());
+  else await page.route('**/js/ui-calendar-panels.generated.js', route => route.fulfill({ contentType: 'text/javascript', body: `
     globalThis.calendarModuleLoaded = true;
     export async function mountCalendarPanels(left, right) {
       left.textContent = 'Mounted calendar';

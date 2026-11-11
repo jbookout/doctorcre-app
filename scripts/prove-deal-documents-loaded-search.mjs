@@ -11,7 +11,7 @@ const recordings = JSON.parse(await readFile(new URL('../test/fixtures/deal-docu
 
 export async function observeLoadedSearch(page, assetUrl) {
   await page.evaluate(async ({ assetUrl, recordings }) => {
-    const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+    const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
     const { request: initialRequest } = recordings.initial;
     window.loadedSearchRequests = [];
     window.loadedSearchPanel = mountDealDocuments(document.querySelector('main'), {
@@ -89,7 +89,7 @@ export async function proveLoadedSearch({ origin, timeout = 30000, syntheticOnly
       } catch (error) { errors.push(error); await route.abort().catch(() => {}); }
     });
     await page.goto(new URL('/__loaded-search-proof', url).href);
-    const observed = await observeLoadedSearch(page, new URL('/js/ui-deal-documents.js', url).href);
+    const observed = await observeLoadedSearch(page, new URL('/js/ui-deal-documents.generated.js', url).href);
     if (errors.length) throw errors[0];
     const after = await readAppRelease(url, read);
     if (after.source_commit !== before.source_commit) throw insufficient('Release changed during observation');

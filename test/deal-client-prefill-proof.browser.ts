@@ -56,7 +56,7 @@ test("production proof CLI passes the real review UI and fails a near-miss sourc
     routes.set(
       "/tours/route-editor.html",
       html(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/tours/app.css"><main id="view"></main><script type="module">
-   import {mountSavedSearches} from '/js/ui-deal-space-searches.js';
+   import {mountSavedSearches} from '/js/ui-deal-space-searches.generated.js';
    const saved=${JSON.stringify(saved)},binding=${JSON.stringify(binding)},list=${JSON.stringify(fixture.reopened)};
    mountSavedSearches(document.querySelector('#view'),{dealId:saved.deal_id,describe:()=>null,hydrate:async()=>{},handoff:()=>false,call:async verb=>verb==='get-deal-room'?binding:{...list,searches:[saved]}});
   </script>`),

@@ -26,7 +26,7 @@ export async function buildToursAppScript(source?: string): Promise<string> {
         name: "isolated-tour-transport",
         setup(builder) {
           builder.onResolve({ filter: /\/js\/[^/]+\.js$/ }, async (args) => {
-            const entry = Object.entries(UI_ENTRIES).find(([name]) => args.path.endsWith(`/js/${name}.js`));
+            const entry = Object.entries(UI_ENTRIES).find(([name]) => args.path.endsWith(`/js/${name}.generated.js`));
             if (!entry) return undefined;
             return builder.resolve(fileURLToPath(new URL(`../src/ui/${entry[1]}`, import.meta.url)), {
               kind: args.kind,

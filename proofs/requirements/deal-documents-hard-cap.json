@@ -4,7 +4,7 @@
   "targets": ["app"],
   "assertions": [{
     "id": "deployed-documents-hard-cap",
-    "predicate": "After the deployed app release contains this merge, run node scripts/prove-deal-documents-hard-cap.mjs --origin https://app.doctorcre.com --timeout-ms 30000. Resolve /release and the app /app-release identity when needed, execute deployed /js/ui-deal-documents.js and its real chunks with synthetic ports in an isolated browser, observe eleven 49-row pages yield exactly 500 accepted rows, a limit notice and no further pagination. Record asset URLs and SHA-256 hashes. This proves synthetic resilience only; natural private-data coverage remains unproven.",
+    "predicate": "After the deployed app release contains this merge, run node scripts/prove-deal-documents-hard-cap.mjs --origin https://app.doctorcre.com --timeout-ms 30000. Resolve /release and the app /app-release identity when needed, execute deployed /js/ui-deal-documents.generated.js and its real chunks with synthetic ports in an isolated browser, observe eleven 49-row pages yield exactly 500 accepted rows, a limit notice and no further pagination. Record asset URLs and SHA-256 hashes. This proves synthetic resilience only; natural private-data coverage remains unproven.",
     "runner": "app-release-live-walk.v1",
     "expected_result": "The release-bound deployed-byte observation exits zero with four passing assertions, 500 rows and eleven list calls; failures exit nonzero and protected assets or missing identity exit 78.",
     "input_class": "read-only deployed assets with synthetic ports, isolated storage and business network writes denied",

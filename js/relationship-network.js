@@ -1,4 +1,4 @@
-import { mountIntroductionRequest, mountRelationshipKindFilter, relationshipKind } from "./ui-relationship-kind-filter.js";
+import { mountIntroductionRequest, mountRelationshipKindFilter, relationshipKind } from "./ui-relationship-kind-filter.generated.js";
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { dealName } from "./pipeline-model.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";

@@ -25,7 +25,7 @@ test('focus intersects every local filter, preserves exact evidence, counts and 
         await page.goto(server.origin);
         await page.evaluate(async data => {
           document.body.innerHTML = '<main></main>';
-          const { mountMarketTerms } = await import('/js/ui-market.js');
+          const { mountMarketTerms } = await import('/js/ui-market.generated.js');
           window.reads = 0;
           window.panel = mountMarketTerms(document.querySelector('main'), { entityRef: 'synthetic-a', client: { readMarketTerms: async () => { window.reads++; return data; } } });
         }, data);
@@ -76,7 +76,7 @@ test('Compare retains focus through empty and malformed recovery; dispose and re
       await page.goto(server.origin);
       await page.evaluate(async data => {
         document.body.innerHTML = '<main></main>';
-        const { mountMarketTerms } = await import('/js/ui-market.js');
+        const { mountMarketTerms } = await import('/js/ui-market.generated.js');
         window.response = data; window.data = data;
         window.mount = () => window.panel = mountMarketTerms(document.querySelector('main'), { entityRef: 'synthetic-a', client: { readMarketTerms: async () => window.response } });
         window.mount();

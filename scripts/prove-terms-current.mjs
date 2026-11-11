@@ -34,7 +34,7 @@ export async function observeNaturalTerms(page, origin) {
     const response = await loaded;
     if ([401, 403].includes(response.status())) throw unavailable('Signed-in session unavailable');
     const data = await response.json();
-    const accepted = await page.evaluate(async data => (await import('/js/ui-market.js')).isMarketTermsResponse(data), data);
+    const accepted = await page.evaluate(async data => (await import('/js/ui-market.generated.js')).isMarketTermsResponse(data), data);
     if (!accepted) throw unavailable('Invalid comparable response');
     const toggle = root.getByRole('checkbox', { name: 'Hide superseded terms', exact: true });
     await toggle.waitFor();

@@ -20,7 +20,7 @@ async function open(t, width = 390, theme = 'light', mapAvailable = false, publi
   await page.goto(`${server.url}/portal/index.html`);
   await page.evaluate(async ({ fixture, theme, moduleRoutes }) => {
     document.documentElement.dataset.theme = theme;
-    const { mountPortal } = await import('/js/ui-portal.js');
+    const { mountPortal } = await import('/js/ui-portal.generated.js');
     window.portalPanel = mountPortal(document.querySelector('#portal-root'), { load: async () => fixture, modules: moduleRoutes.map(route => ({ route, label: route, available: () => true, render: () => `${route} content` })) });
   }, { fixture: publication, theme, moduleRoutes });
   return page;
