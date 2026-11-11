@@ -1,6 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { chromium, fixtureServer, WAIT_MS } from './browser-harness.mjs';
+import { chromium, WAIT_MS } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 // Register holds after response routes so release resumes the original adapter.
 export async function scenario(t, { now, timezone = 'America/Chicago', seed = {}, root, page: pageOptions = {} } = {}) {

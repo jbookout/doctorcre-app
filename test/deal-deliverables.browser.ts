@@ -94,7 +94,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
   t.after(() => server.close());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  await mkdir("/tmp/WR586.S3.J10-shots", { recursive: true });
+  await mkdir("/tmp/WR586.S4.J16-shots", { recursive: true });
   for (const width of [1440, 390])
     for (const theme of ["light", "dark"] as const) {
       saved = false;
@@ -125,15 +125,37 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
             element.setAttribute("data-trusted-click", String(event.isTrusted)),
           );
         });
+        const requests: string[] = [];
+        page.on("request", (request) => requests.push(request.url()));
+        const beforeCancel = await panel.textContent();
         const keyboardChooser = page.waitForEvent("filechooser");
         await page.keyboard.press("Enter");
         await (await keyboardChooser).setFiles([]);
         assert.equal(await keyboardButton.getAttribute("data-trusted-click"), "true");
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        assert.equal(await panel.getByRole("status").textContent(), "", "cancel must not show a status message");
+        assert.equal(await panel.textContent(), beforeCancel, "cancel must leave the panel unchanged");
+        assert.deepEqual(requests, [], "cancel must not send requests");
+        await keyboardButton.evaluate((element) => {
+          const transfer = new DataTransfer();
+          for (const name of ["one.jpg", "two.jpg"])
+            transfer.items.add(new File([new Uint8Array([255, 216, 255])], name, { type: "image/jpeg" }));
+          element.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: transfer }));
+        });
+        await panel.getByText("Failed. Choose one file at a time.", { exact: true }).waitFor();
+        assert.deepEqual(requests, [], "multiple files must not send requests");
+        const beforeCancelAfterFailure = await panel.textContent();
+        const failedChooser = page.waitForEvent("filechooser");
+        await keyboardButton.click();
+        await (await failedChooser).setFiles([]);
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        assert.equal(await panel.textContent(), beforeCancelAfterFailure, "cancel must preserve an existing error");
+        assert.deepEqual(requests, [], "cancel after failure must not send requests");
         await keyboardButton.focus();
         const spaceChooser = page.waitForEvent("filechooser");
         await page.keyboard.press("Space");
         await (await spaceChooser).setFiles({ name: "bad.html", mimeType: "text/html", buffer: Buffer.from("bad") });
-        assert.equal(chooserCount, 2);
+        assert.equal(chooserCount, 3);
         await panel.getByText("Failed.", { exact: false }).waitFor();
         assert.equal(writes.length, 0);
         const file = { name: "Photo.jpg", mimeType: "image/jpeg", buffer: Buffer.from([255, 216, 255, 0, 1, 2, 3]) };
@@ -155,6 +177,15 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await panel.getByText("Confirmed.", { exact: false }).waitFor();
         assert.equal(writes.filter((w) => w.body.target_collection).length, 1);
         assert.equal(writes.filter((w) => w.path.endsWith("/finalize")).length, 1);
+        await panel.getByRole("button", { name: "Mark Photo.jpg shared" }).waitFor();
+        const beforeCancelAfterUpload = await panel.textContent();
+        requests.length = 0;
+        const confirmedChooser = page.waitForEvent("filechooser");
+        await keyboardButton.click();
+        await (await confirmedChooser).setFiles([]);
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        assert.equal(await panel.textContent(), beforeCancelAfterUpload, "cancel must preserve a confirmed upload");
+        assert.deepEqual(requests, [], "cancel after upload must not send requests");
         failReadback = true;
         const expectedVersion = row.version + 1;
         await panel.getByRole("button", { name: "Mark Photo.jpg shared" }).click();
@@ -166,7 +197,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         assert.equal(await panel.getByRole("button", { name: /Drop one file here/ }).isDisabled(), true);
         const visibilityCount = () => writes.filter((w) => w.path.endsWith("/visibility")).length;
         assert.equal(visibilityCount(), 1);
-        await page.screenshot({ path: `/tmp/WR586.S3.J10-shots/${width}-${theme}-unknown.png`, fullPage: true });
+        await page.screenshot({ path: `/tmp/WR586.S4.J16-shots/${width}-${theme}-unknown.png`, fullPage: true });
         await refresh.click();
         await panel.getByText("Request unavailable or version changed.", { exact: false }).waitFor();
         assert.equal(await refresh.isEnabled(), true);
@@ -182,7 +213,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         assert.equal(await panel.getByRole("button", { name: /Drop one file here/ }).isEnabled(), true);
         assert.equal(visibilityCount(), 1);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-        await page.screenshot({ path: `/tmp/WR586.S3.J10-shots/${width}-${theme}-recovered.png`, fullPage: true });
+        await page.screenshot({ path: `/tmp/WR586.S4.J16-shots/${width}-${theme}-recovered.png`, fullPage: true });
         conflict = true;
         await panel.getByRole("button", { name: "Make Photo.jpg private" }).click();
         await panel.getByText("Designation unconfirmed.", { exact: false }).waitFor();
@@ -205,7 +236,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await panel.getByText("File discarded.", { exact: false }).waitFor();
         assert.equal(writes.filter((w) => w.body.target_collection).length, 1);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-        await page.screenshot({ path: `/tmp/WR586.S3.J10-shots/${width}-${theme}.png`, fullPage: true });
+        await page.screenshot({ path: `/tmp/WR586.S4.J16-shots/${width}-${theme}.png`, fullPage: true });
         await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
         await page.getByText("Session expired. Sign in again to view documents.", { exact: true }).waitFor();
         assert.equal(await panel.count(), 0);

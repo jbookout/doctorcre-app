@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { chromium, fixtureServer, componentDocument } from './browser-harness.mjs';
+import { chromium, componentDocument } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 test('component document discards initialized shell listeners instead of replacing its body', async () => {
   const server = await fixtureServer(), browser = await chromium.launch();

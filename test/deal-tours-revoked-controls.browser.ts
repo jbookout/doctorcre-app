@@ -79,7 +79,7 @@ const row = {
 test("packet editor retirement transitions in the parent workspace", async (t) => {
   const { buildArtifact } = await import("../scripts/artifact.mjs");
   const { temporaryDirectory } = await import("../scripts/temp-directory.mjs");
-  const { startFixtureServer } = await import("../scripts/fixture-server.mjs");
+  const { ownedServer: startFixtureServer } = await import("./fixture-probe.ts");
   const { fileURLToPath } = await import("node:url");
   const artifact = await temporaryDirectory("doctorcre-editor-retirement-", t);
   await buildArtifact({

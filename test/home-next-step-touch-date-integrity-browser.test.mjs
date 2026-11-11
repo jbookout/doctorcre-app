@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { syntheticBoard, exerciseHomeDates } from '../scripts/prove-home-next-step-touch-date-integrity.mjs';
 for (const width of [390, 1440]) for (const timezoneId of ['America/Los_Angeles', 'Pacific/Kiritimati']) {
   test(`Home date dispositions, expansion, scope, focus and disposal at ${width} ${timezoneId}`, async t => {

@@ -1,7 +1,8 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer, settles, waitForAsync } from './browser-harness.mjs';
+import { chromium, settles, waitForAsync } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 let server, origin;
 before(async()=>{

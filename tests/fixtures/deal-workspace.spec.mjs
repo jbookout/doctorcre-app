@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
-import { startFixtureServer } from '../../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from '../../test/fixture-probe.ts';
 
 let server;
 test.beforeAll(async () => { server = await startFixtureServer(); });
