@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import { chromium as driver } from "playwright";
@@ -10,6 +9,7 @@ import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-vendor-client-needs.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
+import { cdpEndpoint } from "./cdp-fixture.ts";
 import { directoryFixture } from "./fixtures/vendor-directory.synthetic.mjs";
 import { assertProofDeadlineCleanup } from "./proof-browser-harness.mjs";
 
@@ -205,14 +205,22 @@ test("real CDP deadline closes delayed page and preserves the original tab", asy
   const root = temporaryDirectory("client-needs-cdp-", t);
   const context = await driver.launchPersistentContext(root, {
     headless: true,
-    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0"],
+    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
   });
   t.after(() => context.close());
   const originalTab = context.pages()[0];
   assert.ok(originalTab);
   const before = context.pages().length;
-  const port = (await readFile(join(root, "DevToolsActivePort"), "utf8")).split("\n")[0];
-  const cdpUrl = `http://127.0.0.1:${port}`;
+  let portReads = 0;
+  const readPortFile = async (path: string, encoding: "utf8") => {
+    portReads += 1;
+    if (portReads <= 2) throw Object.assign(new Error("port file not visible yet"), { code: "ENOENT", path });
+    return readFile(path, encoding);
+  };
+  const browser = context.browser();
+  assert.ok(browser);
+  const cdpUrl = await cdpEndpoint(browser, { readPortFile });
+  assert.ok(portReads > 2, "acquisition waits for port file visibility");
   const connect = driver.connectOverCDP.bind(driver);
   let delayedTab: import("playwright").Page | undefined;
   t.mock.method(driver, "connectOverCDP", async (...args: Parameters<typeof connect>) => {
