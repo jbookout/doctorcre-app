@@ -43,9 +43,6 @@ export async function prove({
 }) {
   const base = new URL(origin);
   assert.ok(base.href === `${base.origin}/` && !base.username && !base.password, "origin only");
-  assert.match(commit, /^[a-f0-9]{40}$/);
-  assert.ok(!/^0+$/.test(commit), "nonzero merge commit required");
-  assert.match(tourId, /^[a-f0-9-]{36}$/);
   assert.ok(timeoutMs > 0 && timeoutMs <= 60000, "bounded deadline");
   if (fixture && !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname))
     throw unavailable("Fixture requires loopback");
@@ -61,6 +58,8 @@ export async function prove({
   let browser: Browser | undefined;
   try {
     const release = await bounded(readAppRelease(base, { timeoutMs }));
+    if (!/^[a-f0-9]{40}$/.test(commit) || /^0+$/.test(commit)) throw unavailable("Expected merge commit required");
+    if (!/^[a-f0-9-]{36}$/.test(tourId)) throw unavailable("Approved Tour identity required");
     if (release.source_commit !== commit) {
       await bounded(
         new Promise<void>((resolve, reject) => {
@@ -154,6 +153,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         commit: { type: "string" },
         tour: { type: "string" },
         "storage-state": { type: "string" },
+        "timeout-ms": { type: "string" },
         fixture: { type: "boolean" },
       },
     });
@@ -165,6 +165,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           tourId: values.tour ?? "",
           storageState: values["storage-state"],
           fixture: values.fixture ?? false,
+          timeoutMs: Number(values["timeout-ms"] ?? 30000),
         }),
       ),
     );
