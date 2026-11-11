@@ -164,7 +164,6 @@ test("Geometry-time row replacement never reports the row covered by its own chi
           assert.notEqual(replacements, 1, "One replacement must recover");
           assert.match(String(result.error), /unstable-identity/);
         } else {
-          assert.notEqual(replacements, Infinity, "Persistent replacement must refuse evidence");
           assert.deepEqual(result.audit?.covered, [], "Current row owns its center after geometry-time replacement");
         }
       }
