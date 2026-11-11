@@ -57,3 +57,18 @@ Transition-to-test mapping:
 | Proof identity mismatch | V03 proof observation rejects near-miss identity |
 
 The proof CLI checks a containing release, opens the canonical offered path at 1440 and 390 in both themes, compares every displayed identity and evidence field exactly, and cancels without sending. Persistence is covered by synthetic browser transport tests. A production requested-status receipt requires a separately authorized business request. Independent taste scoring belongs to the reviewer.
+
+The clean release fixtures exposed an eager import from LiveClient to the generated introduction bundle. Three approaches were compared: load the parser when link-parties returns; generate every UI asset before all Node checks; duplicate the receipt validator in the transport. Loading only at the new operation keeps clean-source imports independent of generated UI and preserves one parser. The existing release-publication tests enforce this boundary. Dynamic import starts loading when the import call executes, as specified by [ECMAScript import calls](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-import-calls). The browser artifact still includes the registered UI entry through the existing build.
+
+The guarded model is in introduction-request/IntroductionRequest.tla with its configuration and TypeScript mapping. It bounds one endpoint triple, two intended requests and two network attempts. It assumes the deployed server's same-key replay and unique relationship contract; it does not prove database concurrency, availability or an atomic source fence. Source inputs are nondeterministic at reads. The model checks these rules in addition to TypeOK:
+
+| Invariant | Executed behavior test |
+| --- | --- |
+| NoUnreviewedDispatch | selected path requires explicit review and preserves exact party identities |
+| NoUncheckedDispatch | fresh source refuses restricted/hold/stale/changed/removed/already-requested; unavailable fresh read blocks writing |
+| NoNewKeyWhileUnknown | lost response blocks replacement and recovers with identical key after reopening |
+| NoUnverifiedConfirmation | receipt and exact canonical readback are both required; complete proof runner fails an exact identity mismatch |
+| NoDispatchAfterRetirement | retirement suppresses a late receipt and all later sends |
+| NoPrivateViewAfterRetirement | V03 retiring the review clears private notes and prevents reopening their values |
+
+Run the installed statechart script with `from-spec docs/verification/introduction-request/IntroductionRequest.tla --map docs/verification/introduction-request/map.ts --out /tmp/intro-guarded-chart --png`, with Java and TLA2TOOLS configured. The phase diagram above remains the direct transition-to-test index.

@@ -625,6 +625,23 @@ test('V03 changed-session recovery sends no second write and clears private revi
  assert.equal(writes.length,1);assert.equal(await page.locator('.introduction-review,[data-identity]').count(),0);
 });
 
+test('V03 retiring the review clears private notes and prevents reopening their values',async t=>{
+ const {page}=await open(t);
+ await componentDocument(page,'http://localhost',{html:'<main id="recovery"></main>',dispose:page=>page.evaluate(()=>window.introPrivacy.dispose())});
+ await page.evaluate(async recording=>{
+  const {mountIntroductionRequest}=await import('/js/ui-introduction-request.js');
+  const {validNetwork}=await import('/js/relationship-network-model.js');
+  recording.snapshot.observed_at=new Date().toISOString();recording.snapshot.valid_until=new Date(Date.now()+120000).toISOString();
+  window.introPrivacy=mountIntroductionRequest({document,validNetwork,client:{getRelationshipNetwork:async()=>recording.snapshot,linkParties:async()=>recording.created},onConfirmed:()=>{},recoveryHost:document.querySelector('main')});
+  window.introPrivacy.open(recording.snapshot,recording.snapshot.suggestions[0].id);
+ },introRecording);
+ const panel=page.locator('.introduction-review');await panel.locator('[name="date"]').fill('2026-11-10');await panel.locator('[name="note"]').fill('Private synthetic note');
+ await page.evaluate(()=>window.introPrivacy.retire());
+ assert.equal(await panel.locator('[name="note"]').inputValue(),'');assert.equal(await panel.locator('[name="date"]').inputValue(),'');assert.equal(await panel.locator('[data-identity]').count(),0);
+ await page.evaluate(()=>window.introPrivacy.open({},'ignored'));
+ assert.equal(await panel.isVisible(),true);assert.equal(await panel.locator('[name="note"]').inputValue(),'');assert.equal(await panel.locator('[name="reviewed"]').isChecked(),false);assert.equal(await panel.locator('[type="submit"]').isDisabled(),true);
+});
+
 for (const mismatch of [false,true]) test(`V03 proof observation ${mismatch ? 'rejects near-miss identity' : 'passes exact identity'}`,async t=>{
  const {page,setMode,writes}=await open(t);setMode('intro');
  if(mismatch)await page.addInitScript(()=>{

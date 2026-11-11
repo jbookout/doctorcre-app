@@ -13,7 +13,6 @@ import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './current-read.mjs';
 import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
-import { parseLinkReceipt } from './ui-introduction-request.js';
 import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
 import { createEngagementWriter } from './prospect-engagement.mjs';
@@ -135,7 +134,10 @@ export function createLiveClient(opts = {}) {
       throw unknownMcpOutcome(new Error('Draft save receipt unavailable'));
     if (verb === 'submit-email-draft' && !validEmailDraftReceipt(payload, args))
       throw unknownMcpOutcome(new Error('Reply submission receipt unavailable'));
-    if (verb === 'link-parties') parseLinkReceipt(payload);
+    if (verb === 'link-parties') {
+      const { parseLinkReceipt } = await import('./ui-introduction-request.js');
+      parseLinkReceipt(payload);
+    }
     return payload;
   }
 

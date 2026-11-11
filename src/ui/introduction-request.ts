@@ -106,6 +106,11 @@ export function mountIntroductionRequest({
         ? "Checking and recording this request…"
         : "Willingness to introduce is unconfirmed.");
     const locked = view.status !== "reviewing";
+    if (view.status === "retired") {
+      date.value = "";
+      note.value = "";
+      reviewed.checked = false;
+    }
     for (const control of [date, note, reviewed, submit]) control.disabled = locked;
     recover.hidden = view.status !== "unknown";
     if (view.request) {
