@@ -12,6 +12,7 @@ const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 
 export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
 export const UI_ENTRIES = {
+  'ui-tour-navigation': 'tour-navigation',
   'ui-tour-stop-drag': 'tour-stop-drag',
   'ui-broker-cheat-sheet': 'broker-cheat-sheet',
   'ui-phone-push': 'phone-push',
