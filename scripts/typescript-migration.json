@@ -8,6 +8,7 @@
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs"
   ],
   "legacyJavaScript": [
+    "docs/statecharts/broker-cheat-sheet/BrokerSheet.map.mjs",
     "data/fixtures/fact-review.mjs",
     "data/fixtures/practice-origination.mjs",
     "js/account-cards.js",

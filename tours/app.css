@@ -341,3 +341,21 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 }
 
 .workspace-grid > details > summary { display: flex; align-items: center; min-height: var(--touch); cursor: pointer; font-weight: var(--font-weight-strong); }
+
+#sheet-generated, #sheet-history pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+#sheet-history summary { min-height: 44px; padding-block: 12px; cursor: pointer; }
+@media print {
+  #cheat-print .sheet-property { break-before: page; break-inside: avoid; border-top: 1px solid black; }
+  #cheat-print .sheet-property h2 { font-size: 16pt; }
+}
+
+#internal-cheat-sheet details > summary { min-height: 44px; padding-block: 12px; cursor: pointer; }
+
+@media (max-width: 560px) {
+  .cheat-card .section-head { flex-direction: column; align-items: stretch; }
+  .cheat-card .section-head button { width: 100%; }
+}
+@media print {
+  #cheat-print .sheet-property { break-before: auto; }
+  #cheat-print .sheet-property ~ .sheet-property { break-before: page; }
+}

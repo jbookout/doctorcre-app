@@ -1,0 +1,18 @@
+{
+  "schema": "tour-cheat-sheet-history.v1",
+  "version": "1.0.0",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "fe974ea46b348a98a7507f43765e0475b30e8167",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/3180",
+    "contract": "workspace/contracts/tour-cheat-sheet-history.v1.json"
+  },
+  "path": "/api/tours/cheat-sheet/history/v1",
+  "method": "GET",
+  "query_fields": ["tour_id"],
+  "envelope": "data",
+  "limit": 100,
+  "order": "revision_number descending",
+  "deployment_order": ["producer", "consumer"],
+  "older_producer_behavior": "History unavailable; current sheet editing remains available"
+}

@@ -1,7 +1,6 @@
 import { presentedPacket } from "./packet-presentation.fixture.ts";
+import { buildToursAppScript } from "./tours-app-loader.ts";
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { autoRefreshScript } from "./auto-refresh-script.mjs";
-import { mapScript } from "./tours-map-script.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test, { after } from "node:test";
@@ -20,14 +19,12 @@ const css = readFileSync(new URL("../reports/share.css", import.meta.url), "utf8
 const tours = readFileSync(new URL("../tours/app.js", import.meta.url), "utf8");
 const tourHtml = readFileSync(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 
+const tourScript = await buildToursAppScript();
 const propertyRef = "property:public:synthetic_property_01";
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const shortlistAction = (doc, label = "Add to shortlist") => [...doc.querySelectorAll("button")].find(button => button.textContent === label);
 const tourIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
 const projectionIds = ["33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"];
-const tourFormat = readFileSync(new URL("../tours/tour-format.js", import.meta.url), "utf8").replace(/^export /gm, "");
-const propertyPanel = readFileSync(new URL("../tours/property-panel.js", import.meta.url), "utf8").replace(/^export /gm, "");
-const tourScript = `${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
