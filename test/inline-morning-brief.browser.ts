@@ -1,12 +1,12 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
+import { promisify } from "node:util";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium } from "./browser-harness.mjs";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 
 test("Home brief stays inline with inbox and restores priority focus in both themes and widths", async (t) => {
   const server = await startWorkerFixture({
@@ -76,18 +76,39 @@ test("production proof observer accepts the fixture and refuses incorrect source
   await assert.rejects(observeInlineBrief(page, server.origin), /Incorrect owner/);
 });
 
-
-test("inline brief proof CLI returns 0 and 1 with no borrowed-tab leak", async t => {
+test("inline brief proof CLI returns 0 and 1 with no borrowed-tab leak", async (t) => {
   const commit = "1".repeat(40);
-  const server = await startWorkerFixture({ assets: await appAssetSnapshot(),
+  const server = await startWorkerFixture({
+    assets: await appAssetSnapshot(),
     qaSeed: JSON.parse(await readFile(new URL("../data/board-seed.json", import.meta.url), "utf8")),
-    routes: new Map([["/app-release", { contentType: "application/json", body: JSON.stringify({ service: "doctorcre-app", environment: "production", source_commit: commit }) }]]) });
+    routes: new Map([
+      [
+        "/app-release",
+        {
+          contentType: "application/json",
+          body: JSON.stringify({ service: "doctorcre-app", environment: "production", source_commit: commit }),
+        },
+      ],
+    ]),
+  });
   t.after(() => server.close());
   const fixture = await ownedCdpFixture();
   t.after(() => fixture.close());
-  await fixture.context.request.post(`${server.origin}/api/test/seed`, { data: { namespace: "inline-cli", reset: true } });
+  await fixture.context.request.post(`${server.origin}/api/test/seed`, {
+    data: { namespace: "inline-cli", reset: true },
+  });
   const before = fixture.context.pages().length;
-  const args = ["scripts/prove-inline-morning-brief.ts", "--origin", server.origin, "--expected-commit", commit, "--cdp-url", fixture.endpoint, "--timeout-ms", "20000"];
+  const args = [
+    "scripts/prove-inline-morning-brief.ts",
+    "--origin",
+    server.origin,
+    "--expected-commit",
+    commit,
+    "--cdp-url",
+    fixture.endpoint,
+    "--timeout-ms",
+    "20000",
+  ];
   const run = promisify(execFile);
   const result = JSON.parse((await run(process.execPath, args)).stdout);
   assert.equal(result.exitCode, 0);
@@ -98,7 +119,7 @@ test("inline brief proof CLI returns 0 and 1 with no borrowed-tab leak", async t
       if (title && title.textContent !== "Incorrect owner") title.textContent = "Incorrect owner";
     }).observe(document, { childList: true, subtree: true });
   });
-  await assert.rejects(run(process.execPath, args), error => {
+  await assert.rejects(run(process.execPath, args), (error) => {
     if (!error || typeof error !== "object" || !("code" in error)) return false;
     return error.code === 1;
   });
