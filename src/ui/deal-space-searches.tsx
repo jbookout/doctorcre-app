@@ -344,7 +344,7 @@ export function mountSavedSearches(
   void model.load();
   return {
     refresh: render,
-    dirty: () => model.dirty || model.working,
+    dirty: () => model.blocksDeparture,
     retire: () => {
       clock?.dispose();
       model.retire();

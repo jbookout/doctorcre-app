@@ -37,3 +37,28 @@ Transition coverage lives in `test/deal-space-searches.test.ts` and `test/deal-s
 After the containing CARR and app releases, save a search on a real deal. Run `node scripts/prove-deal-space-searches.ts` with `--expected-commit`, `--deal-id`, `--search-id` and the signed-in browser's loopback `--cdp-url`. The proof requires a containing app release, reopens the search after reload, independently reads the registered CARR verb, compares every criterion and result ID exactly at both widths and themes, then cancels without cart handoff. Exit 0 means passed, 1 means disagreement on a containing release, and 78 means insufficient evidence. The CLI itself is read-only. The preceding real-deal save remains part of the release proof.
 
 The proof reuses the existing bounded browser/release runner. Its shared tests cover equal/descendant/older/unrelated/unknown releases, late browser acquisition and stalled evaluation cleanup. Local fixture CLI checks exercise exact-match success and missing-result failure.
+
+## Departure state
+
+The model owns the departure decision. Its operation is `null`, `read` or `write`; `working` still locks controls for either request. `blocksDeparture` combines an edited draft with a pending write. A pending read alone permits leaving immediately. No timeout, delay or transport change controls this decision.
+
+```mermaid
+stateDiagram-v2
+  [*] --> idle
+  idle --> reading: Load saved searches
+  reading --> idle: Read succeeds or fails
+  idle --> edited: Edit search
+  edited --> idle: Cancel draft
+  edited --> writing: Save draft
+  idle --> writing: Rerun saved criteria
+  writing --> idle: Write confirmed
+  writing --> edited: Save fails with draft retained
+  idle --> list: Back
+  reading --> list: Back
+  edited --> edited: Back shows dialog then Keep editing
+  writing --> writing: Back shows dialog then Keep editing
+```
+
+Only edited and writing block departure. These are departure states, separate from result freshness and session access above. A read completion after departure is discarded with the disposed panel. The browser regression holds the actual MCP response while navigating Back, using current-source Worker assets and the production response parser.
+
+Every edge is covered by `departure guard follows idle, reading, edited and writing transitions` in `test/deal-space-searches.test.ts`, except the Back edges. `pending read leaves` in `test/deal-space-search-departure.browser.ts` covers reading to list; `deal Tours lists, opens, starts and recovers on the fixture server` covers idle to list. `edited draft blocks` and `pending write blocks` cover the two guarded Back edges and Keep editing at 1440 and 390 in both themes. The pending write is a rerun of unchanged saved criteria, so it proves write protection independently of draft dirtiness.

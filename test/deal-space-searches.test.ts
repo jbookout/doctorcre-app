@@ -225,3 +225,54 @@ test("boundary parser agrees with the pinned producer schema on malformed respon
     mutations(original);
   }
 });
+
+test("departure guard follows idle, reading, edited and writing transitions", async () => {
+  let settle: (value: unknown) => void = () => {};
+  let reject: (error: Error) => void = () => {};
+  const model = new SavedSearches(
+    deal,
+    () =>
+      new Promise((resolve, fail) => {
+        settle = resolve;
+        reject = fail;
+      }),
+    () => {},
+  );
+  assert.equal(model.blocksDeparture, false);
+  const reading = model.load();
+  assert.equal(model.working, true);
+  assert.equal(model.blocksDeparture, false);
+  settle(fixture.reopened);
+  await reading;
+  assert.equal(model.working, false);
+  assert.equal(model.blocksDeparture, false);
+  const failedRead = model.load();
+  reject(Error("offline"));
+  await failedRead;
+  assert.equal(model.blocksDeparture, false);
+  model.edit(fixture.saved.search);
+  assert.ok(model.draft);
+  model.update({ ...model.draft, name: "Unsaved name" });
+  assert.equal(model.blocksDeparture, true);
+  model.cancel();
+  assert.equal(model.blocksDeparture, false);
+  model.edit(fixture.saved.search);
+  const running = model.write("run");
+  assert.equal(model.dirty, false);
+  assert.equal(model.blocksDeparture, true);
+  settle(fixture.positive);
+  await running;
+  assert.equal(model.blocksDeparture, false);
+  assert.ok(model.draft);
+  model.update({ ...model.draft, name: "Unsaved name" });
+  const failedSave = model.write("save");
+  assert.equal(model.blocksDeparture, true);
+  reject(Error("offline"));
+  await failedSave;
+  assert.equal(model.working, false);
+  assert.equal(model.blocksDeparture, true);
+  const saved = model.write("save");
+  settle(fixture.saved);
+  await saved;
+  assert.equal(model.blocksDeparture, false);
+});

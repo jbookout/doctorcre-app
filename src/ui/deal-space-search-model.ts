@@ -189,7 +189,7 @@ export class SavedSearches {
   newIds = new Set<string>();
   message = "";
   private alive = true;
-  private busy = false;
+  private operation: "read" | "write" | null = null;
   private searchId = "";
   private pending: { verb: string; args: Record<string, unknown> } | null = null;
   readonly dealId: string;
@@ -207,7 +207,10 @@ export class SavedSearches {
     );
   }
   get working() {
-    return this.busy;
+    return this.operation !== null;
+  }
+  get blocksDeparture() {
+    return this.dirty || this.operation === "write";
   }
   private toDraft(row: Search): Draft {
     return structuredClone({
@@ -233,8 +236,8 @@ export class SavedSearches {
     this.changed();
   }
   async load() {
-    if (!this.alive || this.busy) return;
-    this.busy = true;
+    if (!this.alive || this.working) return;
+    this.operation = "read";
     this.message = "Loading saved searches…";
     this.publish();
     try {
@@ -245,12 +248,12 @@ export class SavedSearches {
     } catch {
       if (this.alive) this.message = "Saved searches unavailable. Retry loading.";
     } finally {
-      this.busy = false;
+      this.operation = null;
       this.publish();
     }
   }
   edit(row?: Search) {
-    if (!this.alive || this.busy || this.dirty) return;
+    if (!this.alive || this.working || this.dirty) return;
     this.current = row ?? null;
     this.searchId = row?.id ?? crypto.randomUUID();
     this.draft = row
@@ -282,14 +285,14 @@ export class SavedSearches {
     this.publish();
   }
   update(draft: Draft) {
-    if (!this.alive || this.busy) return;
+    if (!this.alive || this.working) return;
     this.draft = draft;
     this.phase = "editing";
     this.pending = null;
     this.publish();
   }
   cancel() {
-    if (!this.alive || this.busy) return;
+    if (!this.alive || this.working) return;
     this.current = null;
     this.draft = null;
     this.pending = null;
@@ -309,14 +312,14 @@ export class SavedSearches {
     return this.current ? this.resultPhase(this.current) === "results-stale" || this.dirty : false;
   }
   age() {
-    if (!this.alive || this.busy || !this.stale()) return;
+    if (!this.alive || this.working || !this.stale()) return;
     if (["results-current", "handed-to-cart", "restored", "run-failed", "saved"].includes(this.phase)) {
       this.phase = "results-stale";
       this.publish();
     }
   }
   async write(action: "save" | "run" | "archive" | "restore") {
-    if (!this.alive || this.busy || !this.draft || (action !== "save" && !this.current)) return;
+    if (!this.alive || this.working || !this.draft || (action !== "save" && !this.current)) return;
     if (action === "run" && (this.dirty || this.current?.status !== "saved")) return;
     const criteria = this.draft.criteria;
     if (
@@ -356,7 +359,7 @@ export class SavedSearches {
       this.pending = { verb, args: { ...args, idempotency_key: crypto.randomUUID() } };
     const pending = this.pending;
     const previous = this.current;
-    this.busy = true;
+    this.operation = "write";
     this.phase = action === "run" ? "running" : "saving";
     this.message = action === "run" ? "Rerunning saved criteria…" : "Saving search…";
     this.publish();
@@ -410,18 +413,18 @@ export class SavedSearches {
             : "Save unconfirmed. Your draft remains. Retry uses the same request.";
       }
     } finally {
-      this.busy = false;
+      this.operation = null;
       this.publish();
     }
   }
   toggle(id: string) {
-    if (!this.alive || this.busy || !this.current?.result_property_ids.includes(id)) return;
+    if (!this.alive || this.working || !this.current?.result_property_ids.includes(id)) return;
     if (this.selected.has(id)) this.selected.delete(id);
     else this.selected.add(id);
     this.publish();
   }
   handoff(accept: (ids: string[]) => boolean) {
-    if (!this.alive || this.busy || this.stale() || this.current?.status !== "saved" || !this.selected.size) return;
+    if (!this.alive || this.working || this.stale() || this.current?.status !== "saved" || !this.selected.size) return;
     if (accept([...this.selected])) {
       this.phase = "handed-to-cart";
       this.message = "Added to the Tour cart draft. Save selection in the Tour cart to keep these properties.";
