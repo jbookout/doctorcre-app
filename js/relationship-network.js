@@ -1,4 +1,4 @@
-import { mountRelationshipKindFilter, relationshipKind } from "./ui-relationship-kind-filter.js";
+import { mountIntroductionRequest, mountRelationshipKindFilter, relationshipKind } from "./ui-relationship-kind-filter.js";
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { dealName } from "./pipeline-model.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
@@ -26,7 +26,8 @@ export function mountRelationshipNetwork({
   intervalMs,
 }) {
   const $ = (id) => document.getElementById(id),
-    dialog = mountRelationshipDialog({ document });
+    intro = mountIntroductionRequest({ document, client, validNetwork, onConfirmed: () => auto.refresh(), recoveryHost: $('networkIntroductions').parentElement }),
+    dialog = mountRelationshipDialog({ document, onReviewIntroduction: id => intro.open(snapshot, id) });
   let snapshot = null,
     epoch = 0,
     disposed = false,
@@ -302,6 +303,7 @@ export function mountRelationshipNetwork({
     } catch (error) {
       if (disposed || seq !== epoch) return;
       const expired = [401, 403].includes(error.status);
+      if (expired) intro.retire();
       if (
         expired ||
         !snapshot ||
@@ -349,6 +351,7 @@ export function mountRelationshipNetwork({
     };
   });
   const localEvents = new window.AbortController();
+  window.addEventListener('doctorcre-session-invalidated', () => intro.retire(), { signal: localEvents.signal });
   const applyFilters = () => {
     if (disposed) return;
     limit = 12;
@@ -416,6 +419,7 @@ export function mountRelationshipNetwork({
       epoch++;
       auto.dispose();
       dialog.dispose();
+      intro.dispose();
       expiry.dispose();
       window.removeEventListener("resize", resize);
     },

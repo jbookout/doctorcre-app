@@ -77,5 +77,6 @@ mobile-a11y-evidence/
 
 /tsconfig.*.generated.json
 
+/js/ui-tour-stop-drag.js
 /js/ui-vendor-meetings.js
 /js/ui-broker-cheat-sheet.js
