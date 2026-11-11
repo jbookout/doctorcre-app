@@ -4,13 +4,11 @@ import path from "node:path";
 import type { TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import { startFixture } from "../scripts/fixture-http.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
-import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import recorded from "./fixtures/tour-stop-drag.json" with { type: "json" };
-import { mapScript } from "./tours-map-script.mjs";
+import { buildToursAppScript } from "./tours-app-loader.ts";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 export function fixturePath(requestPath: string) {
@@ -54,18 +52,8 @@ export async function tourDragRoutes(mode: FixtureMode = "pass") {
       await Promise.all(["/css/tokens.css", "/tours/app.css", "/tours/property-panel.css"].map(read))
     ).join("\n");
     html.window.document.head.append(style);
-    const format = (await read("/tours/tour-format.js")).replace(/^export /gm, "");
-    const panel = (await read("/tours/property-panel.js")).replace(/^import [^\n]*\n/gm, "").replace(/^export /gm, "");
-    const app = (await read("/tours/app.js")).replace(/^import [^\n]*\n/gm, "");
-    const drag = await build({
-      entryPoints: ["src/ui/tour-stop-drag.ts"],
-      bundle: true,
-      write: false,
-      format: "iife",
-      globalName: "TourStopDrag",
-    });
     const script = html.window.document.createElement("script");
-    script.textContent = `${autoRefreshScript}\n${drag.outputFiles[0]?.text}\nconst { mountStopDrag, reorderFlexibleStops } = TourStopDrag;\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
+    script.textContent = await buildToursAppScript();
     html.window.document.body.append(script);
     if (mode !== "pass") {
       const fault = html.window.document.createElement("script");
