@@ -111,12 +111,22 @@ RefreshReplacesRevision ==
     /\ \/ (history = "HistoryReady" /\ history' = "HistoryLoading")
     /\ UNCHANGED <<summary>>
 
+\* unchanged source keeps pages
+UnchangedSourceKeepsPages ==
+    /\ \/ (history = "HistoryReady" /\ history' = "HistoryReady")
+    /\ UNCHANGED <<summary>>
+
+\* changed source clears cached pages
+ChangedSourceClearsCachedPages ==
+    /\ \/ (history = "Collapsed" /\ history' = "Collapsed")
+    /\ UNCHANGED <<summary>>
+
 \* collapse returns focus
 CollapseReturnsFocus ==
     /\ \/ (history = "HistoryReady" /\ history' = "Collapsed")
     /\ UNCHANGED <<summary>>
 
-Next == SummaryArrives \/ SummaryFails \/ RetrySummary \/ RefreshSource \/ LeaveDeal \/ LoseSession \/ ExpandHistory \/ FirstPageArrives \/ FirstPageFails \/ RetryHistory \/ LoadOlder \/ NextPageArrives \/ OrdinaryFailureKeepsRows \/ RetryOlder \/ StaleCursorReplacesPages \/ RefreshReplacesRevision \/ CollapseReturnsFocus
+Next == SummaryArrives \/ SummaryFails \/ RetrySummary \/ RefreshSource \/ LeaveDeal \/ LoseSession \/ ExpandHistory \/ FirstPageArrives \/ FirstPageFails \/ RetryHistory \/ LoadOlder \/ NextPageArrives \/ OrdinaryFailureKeepsRows \/ RetryOlder \/ StaleCursorReplacesPages \/ RefreshReplacesRevision \/ UnchangedSourceKeepsPages \/ ChangedSourceClearsCachedPages \/ CollapseReturnsFocus
 
 Spec == Init /\ [][Next]_vars
 

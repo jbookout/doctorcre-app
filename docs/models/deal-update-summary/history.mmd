@@ -23,6 +23,8 @@ stateDiagram-v2
     ContinuationError --> Continuing: retry older
     Continuing --> HistoryLoading: stale cursor replaces pages
     HistoryReady --> HistoryLoading: refresh replaces revision
+    HistoryReady --> HistoryReady: unchanged source keeps pages
+    Collapsed --> Collapsed: changed source clears cached pages
     HistoryReady --> Collapsed: collapse returns focus
     HistoryLoading --> HistoryRetired: leave deal
     Continuing --> HistoryRetired: leave deal

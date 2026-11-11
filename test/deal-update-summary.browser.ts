@@ -107,14 +107,30 @@ test("Overview uses one source summary, exact pages, retained originals, retry, 
       await root.screenshot({ path: `/tmp/WR433.S6.J5-shots/${width}-${theme}-history.png` });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       assert.equal(overflow, false);
+      await original.focus();
+      const unchangedRead = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/mcp") &&
+          response.request().postDataJSON()?.params?.name === "read-deal-update-summary-v1",
+      );
+      await page.evaluate(() => dispatchEvent(new Event("online")));
+      await unchangedRead;
+      await root.getByText("End of supported update history.", { exact: true }).waitFor();
+      assert.equal(await root.locator(".deal-note").count(), 3);
+      assert.equal(await original.evaluate((n) => n === document.activeElement), true);
+      assert.equal(await root.locator(".deal-note details").evaluate((n: HTMLDetailsElement) => n.open), true);
+      revision = "revision-b";
       await page.locator('[aria-label="Refresh deal"]').click();
+      await page.waitForFunction(
+        () => document.querySelector("#panelUpdateSummary")?.getAttribute("data-source-revision") === "revision-b",
+      );
       await root.getByRole("button", { name: "Load older updates" }).waitFor();
       assert.equal(await root.locator(".updates-history").evaluate((n: HTMLDetailsElement) => n.open), true);
       stale = true;
-      revision = "revision-b";
+      revision = "revision-c";
       await root.getByRole("button", { name: "Load older updates" }).click();
       await page.waitForFunction(
-        () => document.querySelector("#panelUpdateSummary")?.getAttribute("data-source-revision") === "revision-b",
+        () => document.querySelector("#panelUpdateSummary")?.getAttribute("data-source-revision") === "revision-c",
       );
       assert.equal(await root.locator(".deal-note").count(), 2);
       await control.focus();

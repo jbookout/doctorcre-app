@@ -209,7 +209,16 @@ export function createDealUpdateSummary({
       }
       const value = parseDealUpdateSummary(raw, dealId);
       if (channel === "summary") {
-        if (state.revision && state.revision !== value.source_revision) return;
+        if (state.revision && state.revision !== value.source_revision) {
+          if (state.expanded) return;
+          state = {
+            ...state,
+            rows: [],
+            cursor: null,
+            revision: null,
+            history: historyBusy ? { kind: "loading" } : { kind: "idle" },
+          };
+        }
         state = { ...state, summary: { kind: "ready", value } };
       } else {
         if (cursor && state.revision !== value.source_revision) throw Error("History revision changed");
@@ -222,14 +231,19 @@ export function createDealUpdateSummary({
           `${last.at}/${last.source}/${last.id}` <= `${first.at}/${first.source}/${first.id}`
         )
           throw Error("Invalid continuation order");
-        const rows = cursor ? [...state.rows, ...value.history.entries] : value.history.entries;
+        const unchanged = !cursor && state.revision === value.source_revision;
+        const rows = cursor
+          ? [...state.rows, ...value.history.entries]
+          : unchanged
+            ? state.rows
+            : value.history.entries;
         if (new Set(rows.map((e) => `${e.source}:${e.id}`)).size !== rows.length) throw Error("Repeated continuation");
         state = {
           ...state,
           summary: { kind: "ready", value },
           history: { kind: "ready", value: null },
           rows,
-          cursor: value.history.next_cursor,
+          cursor: unchanged ? state.cursor : value.history.next_cursor,
           revision: value.source_revision,
         };
       }
@@ -246,7 +260,11 @@ export function createDealUpdateSummary({
         state.revision === state.summary.value.source_revision
       )
         return;
-      state = { ...state, [channel]: { kind: "error" } };
+      state = {
+        ...state,
+        [channel]: { kind: "error" },
+        ...(channel === "history" && !cursor && state.summary.kind === "loading" ? { summary: { kind: "error" } } : {}),
+      };
     } finally {
       controllers.delete(c);
       if (gen === generation) {
@@ -262,9 +280,6 @@ export function createDealUpdateSummary({
       invalidate();
       state = {
         ...state,
-        rows: [],
-        cursor: null,
-        revision: null,
         history: { kind: "idle" },
         summary: { kind: "loading" },
       };

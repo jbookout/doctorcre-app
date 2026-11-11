@@ -123,12 +123,17 @@ export function mountDealUpdateSummary(
   };
   details.addEventListener("toggle", toggle);
   older.onclick = () => void model.more();
-  retry.onclick = () => void model.refresh();
+  retry.onclick = () => void refresh();
   const retire = () => model.dispose();
   window.addEventListener("doctorcre-session-invalidated", retire);
   void model.refresh();
+  function refresh() {
+    if (model.state().retired) return Promise.resolve();
+    historyChanged();
+    return model.refresh();
+  }
   return {
-    refresh: () => model.refresh(),
+    refresh,
     dispose() {
       window.removeEventListener("doctorcre-session-invalidated", retire);
       details.removeEventListener("toggle", toggle);

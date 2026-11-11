@@ -344,3 +344,32 @@ test("retirement clears every settled summary and history state", async () => {
     assert.equal(view.state().history.kind, "idle", phase);
   }
 });
+test("unchanged refresh retains loaded older pages and cursor; changed collapsed source retires cached pages", async () => {
+  let revision = "a";
+  const view = createDealUpdateSummary({
+    dealId: deal,
+    read: async (args) => {
+      const v = response(revision, args.cursor ? null : "older");
+      v.history.entries = v.history.entries.slice(args.cursor ? 2 : 0, args.cursor ? 3 : 2);
+      return v;
+    },
+    changed() {},
+  });
+  await view.refresh();
+  await view.expand();
+  await view.more();
+  assert.equal(view.state().rows.length, 3);
+  await view.refresh();
+  assert.equal(view.state().rows.length, 3);
+  assert.equal(view.state().cursor, null);
+  view.collapse();
+  revision = "b";
+  await view.refresh();
+  assert.equal(view.state().rows.length, 0);
+  assert.equal(view.state().revision, null);
+  assert.equal(view.state().history.kind, "idle");
+  await view.expand();
+  assert.equal(view.state().revision, "b");
+  assert.equal(view.state().rows.length, 2);
+  view.dispose();
+});
