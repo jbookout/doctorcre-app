@@ -130,14 +130,16 @@ export async function proveReachability(options: {
     ...options,
     observe,
     readRelease: async () => {
-      if (!/^[a-f0-9]{40}$/.test(options.producerCommit)) throw unavailable("Producer merge commit required");
+      if (!/^[a-f0-9]{40}$/.test(options.producerCommit) || /^0+$/.test(options.producerCommit))
+        throw unavailable("Producer merge commit required");
       const response = await proofFetch(new URL("/release", options.producerOrigin), {
         signal: signal(),
         cache: "no-store",
       });
       if (!response.ok) throw unavailable("Producer release unavailable");
       const release = await response.json();
-      if (!/^[a-f0-9]{40}$/.test(release.git_sha || "")) throw unavailable("Producer identity unavailable");
+      if (!/^[a-f0-9]{40}$/.test(release.git_sha || "") || /^0+$/.test(release.git_sha))
+        throw unavailable("Producer identity unavailable");
       await requireContainingRelease(options.producerCommit, release.git_sha, {
         cwd: options.producerRepository,
         signal: signal(),
