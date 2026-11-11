@@ -5,6 +5,7 @@ import { inspectPhoneAccessibility } from "../scripts/phone-accessibility.ts";
 import { createQaServer } from "../scripts/qa-fixture-server.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { chromium } from "./browser-harness.mjs";
+import { directoryFixture } from "./fixtures/vendor-directory.synthetic.mjs";
 
 test("Home audit rejects a new unreachable target at 390px", async (t) => {
   const root = await temporaryDirectory("review-837-obstructed-", t);
@@ -198,24 +199,36 @@ test("A replacement at the same selector with a different action refuses identit
   assert.equal(await page.locator("#row").getAttribute("href"), "#different-action");
 });
 
-test("Scroll-driven repaint settles without replaying the scroll on each geometry attempt", async (t) => {
+test("Directory refresh across a minute preserves phone target identity", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-11T21:00:59Z") });
+  const url = "http://localhost/api/v1/business/vendors/00000000-0000-4000-8000-000000000009";
+  const before = directoryFixture(url);
+  t.mock.timers.tick(2000);
+  const after = directoryFixture(url);
+  t.mock.timers.reset();
+  assert.notDeepEqual(before.source, after.source, "Read freshness advances independently of record updates");
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  assert.ok(before.record && typeof before.record === "object" && "updated_at" in before.record);
+  assert.ok(after.record && typeof after.record === "object" && "updated_at" in after.record);
   await page.setContent(
-    '<a id="row" href="#record" style="position:absolute;top:2200px;width:100px;height:60px">Open record</a>',
+    `<a id="row" href="#record" style="position:absolute;top:2200px;width:100px;height:60px">Updated ${before.record.updated_at}</a>`,
   );
-  await page.evaluate(() => {
-    window.addEventListener("scroll", () => {
-      const row = document.getElementById("row");
-      if (!row) throw Error("Missing row");
-      requestAnimationFrame(() => {
-        row.replaceWith(row.cloneNode(true));
-        Reflect.set(window, "repaints", Number(Reflect.get(window, "repaints") || 0) + 1);
-      });
-    });
-  });
+  await page.evaluate((updated) => {
+    window.addEventListener(
+      "scroll",
+      () => {
+        const row = document.getElementById("row");
+        if (!row) throw Error("Missing row");
+        const replacement = row.cloneNode(true);
+        replacement.textContent = `Updated ${updated}`;
+        row.replaceWith(replacement);
+      },
+      { once: true },
+    );
+  }, after.record.updated_at);
   const audit = await inspectPhoneAccessibility(page);
   assert.deepEqual(audit.covered, []);
-  assert.ok(await page.evaluate(() => Number(Reflect.get(window, "repaints")) > 0));
+  assert.equal(await page.locator("#row").textContent(), `Updated ${after.record.updated_at}`);
 });
