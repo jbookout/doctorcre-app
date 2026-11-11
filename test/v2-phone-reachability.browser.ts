@@ -51,8 +51,8 @@ const cases = [
   ],
   [
     "scrolled",
-    false,
-    '<section style="overflow:auto;width:100px;height:50px"><p style="height:100px;margin:0"></p><button style="width:60px;height:60px">Scrolled</button></section>',
+    true,
+    '<section style="overflow:auto;width:100px;height:100px"><p style="height:100px;margin:0"></p><button style="width:20px;height:60px">Scrolled</button></section>',
   ],
   [
     "sr-only",
@@ -68,7 +68,7 @@ test("Browser authority determines phone target membership across 25 reachabilit
   await page.route("http://reachability.test/**", (route) =>
     route.fulfill({
       contentType: "text/html",
-      body: `<!doctype html><html lang="en"><head><title>Reachability matrix</title><style>button,summary,a{width:20px;height:20px;min-width:0;min-height:0;padding:0}</style></head><body><main><h1>Reachability</h1>${cases.map(([id, , html]) => (id === "open-shadow" ? html : html.replace(/<(button|a|div|ul)\b/, `<$1 id="${id}"`))).join("")}</main></body></html>`,
+      body: `<!doctype html><html lang="en"><head><title>Reachability matrix</title><style>button,summary,a{width:20px;height:20px;min-width:0;min-height:0;padding:0}</style></head><body><main><h1>Reachability</h1>${cases.map(([id, , html]) => (["open-shadow", "sr-only"].includes(id) ? html : html.replace(/<(button|a|div|ul)\b/, `<$1 id="${id}"`))).join("")}</main></body></html>`,
     }),
   );
   await page.goto("http://reachability.test/");
@@ -87,6 +87,11 @@ test("Browser authority determines phone target membership across 25 reachabilit
   await t.test("delegated button is counted without its list", () => {
     assert.ok(audit.small.some((target) => target.id === "delegated-button"));
     assert.ok(!audit.small.some((target) => target.tag === "UL"));
+  });
+  await t.test("scrolled button keeps its full rendered size", () => {
+    const target = audit.small.find((target) => target.id === "scrolled");
+    assert.equal(target?.width, 20);
+    assert.equal(target?.height, 60);
   });
   await t.test("partial clip reports the visible 20 px box", () => {
     assert.equal(audit.small.find((target) => target.id === "partial-clip")?.width, 20);
@@ -145,7 +150,7 @@ for (const kind of ["hidden-child", "sr-only"])
       const box = await page.locator("#target").boundingBox();
       assert.ok(box);
       await page.touchscreen.tap(box.x + 10, box.y + 10);
-      assert.equal(await page.evaluate(() => (window as unknown as { tapped: number }).tapped), 1);
+      assert.equal(await page.evaluate(() => Reflect.get(window, "tapped")), 1);
       console.log(JSON.stringify({ kind, box, tapped: 1, small: audit.small }));
       assert.ok(
         audit.small.some((x) => x.id === "target"),
@@ -156,3 +161,31 @@ for (const kind of ["hidden-child", "sr-only"])
       assert.ok(!audit.small.some((x) => x.id === "clipped"), "Clipped label is not a physical tap target");
     }
   });
+
+test("Chromium clips target boxes through their own and ancestor clip paths", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent(`<main>
+    <button id="inset" style="width:60px;height:60px;clip-path:inset(0 40px 0 0)">Inset</button>
+    <section style="clip-path:inset(50%)"><button id="ancestor">Hidden by ancestor</button></section>
+    <button id="own-zero" style="clip-path:circle(0);width:60px;height:60px">Hidden by self</button>
+    <section style="overflow:hidden;width:30px;height:60px"><section style="overflow:clip;width:20px;height:60px"><button id="nested" style="width:60px;height:60px">Nested</button></section></section>
+    <button id="far" style="position:absolute;top:20000000px;width:20px;height:20px;padding:0">Far</button>
+  </main>`);
+  const audit = await inspectPhoneAccessibility(page);
+  for (const id of ["inset", "nested", "far"])
+    assert.equal(audit.small.find((target) => target.id === id)?.width, 20, `${id} visible width`);
+  for (const id of ["ancestor", "own-zero"])
+    assert.ok(!audit.small.some((target) => target.id === id), `${id} has no pointer area`);
+});
+
+test("Phone audit refuses coarse bounds when a nonrectangular clip may remove all pointer area", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent(
+    '<section style="width:100px;height:100px;clip-path:circle(50%)"><button style="width:10px;height:10px;padding:0">Clipped corner</button></section>',
+  );
+  await assert.rejects(inspectPhoneAccessibility(page), /exact nonrectangular clip-path geometry/);
+});

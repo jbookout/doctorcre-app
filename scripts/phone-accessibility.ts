@@ -35,27 +35,81 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       return false;
     };
     const candidates = [...this.values()];
+    const elements = new Set(candidates.map(({ element }) => element));
+    for (const { element } of candidates)
+      if (element instanceof HTMLInputElement) for (const label of element.labels || []) elements.add(label);
+    // Expand the document root past every rendered target so viewport position never excludes one.
+    const margin =
+      Math.ceil(
+        [...elements].reduce(
+          (extent, element) => {
+            const rect = element.getBoundingClientRect();
+            return Math.max(
+              extent,
+              Math.abs(rect.left),
+              Math.abs(rect.top),
+              Math.abs(rect.right),
+              Math.abs(rect.bottom),
+            );
+          },
+          Math.max(innerWidth, innerHeight),
+        ),
+      ) + 1;
+    const boxes = await new Promise<Map<Element, { width: number; height: number }>>((resolve) => {
+      const boxes = new Map<Element, { width: number; height: number }>();
+      if (!elements.size) {
+        resolve(boxes);
+        return;
+      }
+      // Chromium applies overflow, legacy clip and clip-path through the full ancestor chain.
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries)
+            boxes.set(entry.target, { width: entry.intersectionRect.width, height: entry.intersectionRect.height });
+          if (boxes.size === elements.size) {
+            observer.disconnect();
+            resolve(boxes);
+          }
+        },
+        { root: document, rootMargin: `${margin}px` },
+      );
+      for (const element of elements) observer.observe(element);
+    });
+    const clippedBox = (node: Element) => {
+      const box = boxes.get(node) || { width: 0, height: 0 };
+      if (box.width > 0 && box.height > 0)
+        for (let current: Element | null = node; current; current = parent(current)) {
+          const clip = getComputedStyle(current).clipPath;
+          if (clip !== "none" && (!clip.startsWith("inset(") || clip.includes("round")))
+            throw Error(`Phone target needs exact nonrectangular clip-path geometry: ${clip}`);
+        }
+      return box;
+    };
+    const visible = (node: Element) =>
+      node.checkVisibility({ checkVisibilityCSS: true, visibilityProperty: true, contentVisibilityAuto: true }) &&
+      !hasInertAncestor(node) &&
+      !node.matches(":disabled");
     for (const candidate of candidates) {
       const node = candidate.element;
-      const rect = node.getBoundingClientRect();
-      candidate.reachable =
-        node.checkVisibility({ checkVisibilityCSS: true, visibilityProperty: true, contentVisibilityAuto: true }) &&
-        !hasInertAncestor(node) &&
-        !node.matches(":disabled") &&
-        rect.width > 0 &&
-        rect.height > 0;
+      const box = visible(node) ? clippedBox(node) : { width: 0, height: 0 };
+      candidate.reachable = box.width > 0 && box.height > 0;
       const label =
         node instanceof HTMLInputElement && ["checkbox", "radio"].includes(node.type)
-          ? [...(node.labels || [])].find((label) => label.checkVisibility() && !hasInertAncestor(label))
+          ? [...(node.labels || [])].find((label) => {
+              if (!visible(label)) return false;
+              const box = clippedBox(label);
+              return box.width > 0 && box.height > 0;
+            })
           : null;
-      candidate.box = (label || node).getBoundingClientRect();
+      candidate.box = label ? clippedBox(label) : box;
     }
-    // Delegation routes activation to descendants. A listener-only container is a target only when it has none.
     const targets = candidates.filter(
       (candidate) =>
         candidate.reachable &&
         (candidate.sources.some((source) => source !== "listener") ||
-          !candidates.some((other) => other !== candidate && contains(candidate.element, other.element))),
+          !candidates.some(
+            (other) => other.reachable && other !== candidate && contains(candidate.element, other.element),
+          )),
     );
     const undersized = (candidate: TapCandidate) => candidate.box.width < 44 || candidate.box.height < 44;
     const describeTarget = (node: Element) => ({
@@ -68,7 +122,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       class: node.getAttribute("class") || "",
       text: (node.getAttribute("aria-label") || node.textContent || "").trim().slice(0, 80),
     });
-    const small = targets.filter(undersized).map(({ element }) => describeTarget(element));
+    const small = targets.filter(undersized).map(({ element, box }) => ({ ...describeTarget(element), ...box }));
     const clipped = targets
       .map(({ element }) => element)
       .filter(
@@ -227,7 +281,10 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
       awaitPromise: true,
       returnByValue: true,
     });
-    if (exceptionDetails || !result.value) throw Error("Could not measure accessible DOM targets");
+    if (exceptionDetails || !result.value)
+      throw Error(
+        `Could not measure accessible DOM targets: ${exceptionDetails?.exception?.description || "no measurements"}`,
+      );
     measurements = result.value;
   } finally {
     try {

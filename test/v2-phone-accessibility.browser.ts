@@ -84,6 +84,31 @@ test("V2 surfaces fit phone and desktop in both accessible themes", async (t) =>
       const rows = await walkV2Accessibility(page, server.origin, async (name) => {
         await page.screenshot({ path: `${shots}/${name}-${width}-${theme}.png`, fullPage: true });
         await writeFile(`${shots}/${name}-${width}-${theme}.aria.txt`, await page.locator("body").ariaSnapshot());
+        if (width === 390 && name === "Tours library") {
+          const layout = await page.locator('label[for="tour-filter"]').evaluate((label) => {
+            const text = document.createRange();
+            text.selectNodeContents(label.firstChild || label);
+            const input = label.querySelector("input");
+            if (!input) throw Error("Tour filter input is missing");
+            return {
+              text: text.getBoundingClientRect().toJSON(),
+              input: input.getBoundingClientRect().toJSON(),
+              lineHeight: parseFloat(getComputedStyle(label).lineHeight),
+            };
+          });
+          assert.ok(layout.text.bottom <= layout.input.top, "Find a tour sits above its input");
+          assert.ok(layout.text.height <= layout.lineHeight + 1, "Find a tour stays on one line");
+        }
+        if (width === 390 && name === "Relationships") {
+          const box = await page.locator('label[for="networkSearch"]').boundingBox();
+          assert.equal(box?.width, 334, "Relationships search label keeps its full width");
+          assert.equal(box?.height, 44, "Relationships search label keeps its touch height");
+        }
+        if (width === 390 && name === "Vendors Suggested") {
+          const box = await page.locator('label[for="searchInput"]').boundingBox();
+          assert.equal(box?.width, 1, "Search label keeps its original sr-only width");
+          assert.equal(box?.height, 1, "Search label keeps its original sr-only height");
+        }
         if (name === "Tour and cheat sheet") {
           const editing = page.locator("#route-editing");
           if (!(await editing.evaluate((node) => node instanceof HTMLDetailsElement && node.open)))
