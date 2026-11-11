@@ -5,12 +5,8 @@ export function createFixtureClientPortalClient() {
         throw new Error('Portal unavailable. Check the portal name and password, then try again.');
       return {
         slug: 'demo-practice',
-        roadmap: { current_phase: 'negotiation', phases: [
-          { slug: 'on_deck', label: 'Prospective Client' }, { slug: 'research', label: 'Research' },
-          { slug: 'site_selection', label: 'Site selection' }, { slug: 'negotiation', label: 'Negotiation' },
-          { slug: 'legal', label: 'Legal' }, { slug: 'diligence', label: 'Diligence' },
-          { slug: 'closing', label: 'Closing' }, { slug: 'closed', label: 'Closed' },
-        ] },
+        roadmap: {current_phase:null,phases:[]},
+        publications: [{kind:'milestone',title:'Demo published milestone',content:'A synthetic update chosen for client sharing.'}],
         materials: [
           { kind: 'document', title: 'Demo terms overview', content: 'Synthetic shared material. Review the proposed terms with your CARR advisor.' },
           { kind: 'tour', title: 'Demo tour summary', content: 'Synthetic tour. Two example locations are ready for discussion.' },

@@ -52,7 +52,7 @@ zero-tech-debt: no legacy publication implementation exists to delete. No pollin
 
 Recovered from retained app revision 65d066fbfede0d34c6a1600d9f8f1f40752d2334. The copied 1.1.0 contract and its SHA-256 are in contracts/client-publications.v1/source.json. No CARR source changes belong to this PR.
 
-A deliverable command contains its file ID and exact integer deliverable_version. Publishing from Finalized files uses the freshly loaded file version. Withdrawal uses the version retained in the publication list, including when the file later becomes private or stale. CARR alone decides which rows the preview and client read expose. The client reader accepts the new empty roadmap and explicit publications while preserving legacy URL/password/lock behavior.
+A deliverable command contains its file ID and exact integer deliverable_version. Publishing from Finalized files uses the freshly loaded file version. Withdrawal uses the version retained in the publication list, including when the file later becomes private or stale. CARR alone decides which rows the preview and client read expose. The client reader accepts the new empty roadmap and explicit publications while preserving legacy URL/password/lock behavior. Legacy automatic phases are ignored, even before the producer has deployed; they never become published milestones.
 
 Known server refusals show fixed hints and require refresh. Unknown outcomes retain the complete command and key. The formal model adds a receipt state independent of loading, with guards matching save and receipt handling. It abstracts UUIDs, SQL authorization, file bytes and numeric versions. Executable tests cover the actual numeric version checks.
 
