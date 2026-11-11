@@ -1247,16 +1247,15 @@ function updateDetailTimestamp() {
   if (time) { time.dateTime = at; time.textContent = new Date(at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true}); }
 }
 async function refreshEvidence(detail, id, seq) {
-  const evidence = await loadEvidence(state.client, detail);
+  const evidence = await loadEvidence(detail);
   if (state.panelDeal !== id || seq !== panelReadSequence) return;
-  if (evidence.threads.state === 'refused') { refusePanelDetail({status:evidence.threads.status}); return; }
   if (!$('panelEvidenceSection')?.open) return;
   const root = $('panelEvidence');
   const template = document.createElement('div'); template.innerHTML = renderEvidence(evidence);
   if (disposeEvidence && root.innerHTML === template.innerHTML) return;
   const expanded = new Set([...root.querySelectorAll('details[open]')].map(n => n.querySelector('summary')?.textContent));
   disposeEvidence?.();
-  disposeEvidence = mountEvidence(root, {client:state.client,detail,onDenied:refusePanelDetail,initialView:evidence});
+  disposeEvidence = mountEvidence(root, {detail,initialView:evidence});
   root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
 }
 function paintPanel(detail) {

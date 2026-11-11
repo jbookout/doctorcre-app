@@ -1,6 +1,6 @@
 import { newestFirst } from './change-receipts.mjs';
 import { sourceTime } from './email-source-line.js';
-import { correspondenceState, meetingEvidence, readinessRequest, readinessState, threadReferences, unavailableEvidence } from './correspondence-model.js';
+import { meetingEvidence, unavailableEvidence } from './correspondence-model.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
 function evidenceGroup(title, state) {
@@ -14,47 +14,20 @@ export function renderEvidence(view = {}) {
   const groups = [['Threads',view.threads],['Meetings',view.meetings]].filter(([,state]) => state?.state);
   return groups.length ? `<section class="correspondence-evidence" aria-label="Evidence"><h3>Evidence</h3>${groups.map(([title,state]) => evidenceGroup(title,state)).join('')}</section>` : '';
 }
-async function boundedRead(read, timeoutMs) {
-  let timer;
-  try {
-    // eslint-disable-next-line no-restricted-syntax -- One timeoutMs evidence-read deadline, default 8000ms; the timer is cleared in finally and failures return null without retry.
-    return await Promise.race([Promise.resolve().then(read), new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs); })]);
-  } catch (error) { if ([401,403].includes(error?.status)) throw error; return null; } finally { clearTimeout(timer); }
+export async function loadEvidence(detail = {}) {
+  const meetings = meetingEvidence(detail.activities);
+  if (!Array.isArray(detail.email_threads)) return { threads: unavailableEvidence(), meetings };
+  const items = newestFirst(detail.email_threads.map(row => ({ kind: 'email-thread', title: row.subject || '(No subject)', when: row.latest_message_at })), item => item.when);
+  return { threads: { state: 'ready', count: items.length, items }, meetings };
 }
-export async function loadEvidence(client, detail = {}, { timeoutMs = 8000 } = {}) {
-  if (Array.isArray(detail.email_threads)) {
-    const items = newestFirst(detail.email_threads.map(row => ({ kind: 'email-thread', title: row.subject || '(No subject)', when: row.latest_message_at })), item => item.when);
-    return { threads: { state: 'ready', count: items.length, items }, meetings: meetingEvidence(detail.activities) };
-  }
-  try {
-    const readiness = readinessState(await boundedRead(() => client.correspondenceReadiness(readinessRequest()), timeoutMs));
-    const { references, complete } = threadReferences(detail);
-    // No discovery verb exists. The get-deal-room activity pointer is the link to
-    // THIS deal; native ids are never inferred from names, note ids or deal ids.
-    const results = await Promise.all(references.map(async identity => correspondenceState(
-      await boundedRead(() => client.readCorrespondenceThread(identity), timeoutMs), identity)));
-    const items = newestFirst(results.flatMap(result => result.items), item => item.when);
-    const failed = results.some(result => result.state !== 'ready');
-    const threads = !complete ? unavailableEvidence('thread_coverage_unavailable')
-      : !references.length ? unavailableEvidence(readiness.reason === 'adapter_unavailable' ? readiness.reason : 'native_identity_unavailable')
-      : failed ? unavailableEvidence(results.find(result => result.state !== 'ready').reason)
-        : { state: 'ready', count: items.length, items };
-    return { threads, meetings: meetingEvidence(detail.activities) };
-  } catch (error) {
-    if (![401,403].includes(error?.status)) throw error;
-    const refused = {state:'refused',items:[],count:null,status:error.status};
-    return {threads:refused,meetings:refused};
-  }
-}
-export function mountEvidence(root, { client, detail = {}, timeoutMs, onDenied, initialView } = {}) {
+export function mountEvidence(root, { detail = {}, initialView } = {}) {
   let disposed = false, generation = 0;
   async function refresh() {
     const current = ++generation;
     // Replace only the thread group so meeting disclosures and focus survive.
     paint({threads:{state:'loading',items:[]},meetings:meetingEvidence(detail.activities)});
-    const view = await loadEvidence(client, detail, {timeoutMs});
+    const view = await loadEvidence(detail);
     if (disposed || current !== generation) return;
-    if (view.threads.state === 'refused') { root.innerHTML = renderEvidence(view); onDenied?.({status:view.threads.status}); return; }
     paint(view);
   }
   function paint(view) {

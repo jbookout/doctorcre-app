@@ -1,0 +1,8 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "6096367f1254d83702ea2ebd86eda8dd7e3bf95d",
+  "path": "mcp-server/contracts/lead-reachability.v2.json",
+  "recording_path": "mcp-server/test/fixtures/lead-reachability.v2.json",
+  "pull_request": "https://github.com/DoctorCRE/carr-system/pull/3197",
+  "sha256": "f2fb2e9563f2872d1a64b15555c3eeb3e1e7d697466e9b21228e71da6e8b1c3c"
+}

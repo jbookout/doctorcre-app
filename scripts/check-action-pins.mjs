@@ -11,11 +11,11 @@ export async function checkActionPins(root = fileURLToPath(new URL('../', import
   assert.ok(manifest.actions && typeof manifest.actions === 'object' && !Array.isArray(manifest.actions));
   const runtimes = {
     'actions/checkout': 'node24',
+    'actions/cache': 'node24',
     'actions/setup-node': 'node24',
     'actions/upload-artifact': 'node24',
     'actions/download-artifact': 'node24',
     'actions/setup-python': 'node20',
-    'actions/cache': 'node20',
     'mikepenz/action-junit-report': 'node24',
   };
   const check = (action, sha, label = action) => {
@@ -42,13 +42,22 @@ export async function checkActionPins(root = fileURLToPath(new URL('../', import
       input: await readFile(file, 'utf8'), encoding: 'utf8', timeout: 900_000, stdio: ['pipe', 'pipe', 'pipe'],
     }));
     const jobs = Object.values(document.jobs ?? {});
-    for (const entry of [...jobs, ...jobs.flatMap(job => job.steps ?? []), ...(document.runs?.steps ?? [])]) {
+    const entries = [
+      ...jobs.map(entry => ({ entry, checkoutPath: undefined })),
+      ...jobs.flatMap(job => {
+        const checkoutPath = job.steps?.find(step => step.uses?.startsWith('actions/checkout@') && !step.with?.repository)?.with?.path;
+        return (job.steps ?? []).map(entry => ({ entry, checkoutPath }));
+      }),
+      ...(document.runs?.steps ?? []).map(entry => ({ entry, checkoutPath: undefined })),
+    ];
+    for (const { entry, checkoutPath } of entries) {
       if (!Object.hasOwn(entry, 'uses')) continue;
       const ref = entry.uses;
       const label = `${file}: ${ref}`;
       assert.equal(typeof ref, 'string', label);
       if (ref.startsWith('./')) {
-        const local = await realpath(join(root, ref));
+        const relative = checkoutPath && ref.startsWith(`./${checkoutPath}/`) ? ref.slice(checkoutPath.length + 3) : ref;
+        const local = await realpath(join(root, relative));
         assert.ok(local.startsWith(root + sep), 'local action must stay inside repository');
         const target = jobs.includes(entry) ? local
           : join(local, (await readdir(local)).includes('action.yml') ? 'action.yml' : 'action.yaml');

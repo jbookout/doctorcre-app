@@ -54,12 +54,54 @@ test("early ready is retained until the caller awaits it", { timeout: 60000 }, a
   assert.equal(await probe.ready, ready);
 });
 
-test("late readiness after Closing is discarded and reaped", { timeout: 60000 }, async () => {
-  const probe = fixtureProbe({ scenario: "late-ready" });
+test("late readiness after Closing is discarded and reaped", { timeout: 60000 }, async (t) => {
+  const spawn = cp.spawn;
+  let deliverReady: (() => void) | undefined;
+  let markHeld: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    markHeld = resolve;
+  });
+  t.mock.method(cp, "spawn", (...args: Parameters<typeof cp.spawn>) => {
+    const child = spawn(...args);
+    const emit = child.emit;
+    child.emit = function (event: string | symbol, ...values: unknown[]) {
+      const message = values[0];
+      if (event === "message" && typeof message === "object" && message !== null && "origin" in message) {
+        deliverReady = () => emit.call(child, event, ...values);
+        markHeld();
+        return true;
+      }
+      return emit.call(this, event, ...values);
+    };
+    return child;
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  const probe = fixtureProbe({
+    server: {
+      args: [
+        "--input-type=module",
+        "-e",
+        `import { createServer } from "node:http";
+const server = createServer((_, response) => response.end());
+server.listen(0, "127.0.0.1", () => console.log("http://127.0.0.1:" + server.address().port));`,
+      ],
+    },
+  });
+  t.after(() => probe.close());
   await probe.started;
+  await Promise.race([held, probe.ready]);
+  assert.equal(Boolean(probe.ownership), false);
   const rejection = assert.rejects(probe.ready, /closed/);
-  await probe.close();
+  const closed = probe.close();
   await rejection;
+  assert.ok(deliverReady);
+  deliverReady();
+  await closed;
+  await assert.rejects(probe.ready, /closed/);
   const owned = probe.ownership;
   assert.ok(owned);
   await assert.rejects(fetch(owned.origin));
@@ -71,7 +113,6 @@ test("held readiness cannot expire the exercise budget", { timeout: 60000 }, asy
   let expire: (() => void) | undefined;
   let armed = 0;
   const probe = fixtureProbe({
-    scenario: "late-ready",
     scheduleExercise: (callback) => {
       armed++;
       expire = callback;
