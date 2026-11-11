@@ -90,12 +90,25 @@ for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule
   assert.equal(await page.locator('[data-inbox-row]').count(), 0);
 });
 
-for (const fragment of ['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeBrief', 'homeReplyOutcomes']) test(`legacy Home bookmark ${fragment}`, async t => {
+for (const fragment of ['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeReplyOutcomes']) test(`legacy Home bookmark ${fragment}`, async t => {
   const run = await scenario(t, { root: join(outDir, 'site'), now: NOW, page: {} });
   const { page } = run;
   await run.open(`/?review=2#${fragment}`);
   await page.waitForURL(`**/review-workflows?review=2#${fragment}`, { timeout: 5000 });
   await page.locator(`#${fragment}`).waitFor({ state: 'attached' });
+});
+
+for (const width of [390, 1440]) test(`legacy Home bookmark homeBrief keeps the inline brief on Home at ${width}px`, async t => {
+  const run = await scenario(t, { root: join(outDir, 'site'), now: NOW, page: { viewport: { width, height: 900 } } });
+  const { page } = run;
+  await run.open('/?review=2#homeBrief');
+  await page.getByRole('heading', { name: 'Welcome home.' }).waitFor();
+  await page.locator('#homeBrief #docMorningBrief').waitFor({ state: 'visible' });
+  const url = new URL(page.url());
+  assert.equal(url.pathname, '/');
+  assert.equal(url.search, '?review=2');
+  assert.equal(url.hash, '#homeBrief');
+  assert.equal(await page.getByRole('dialog').count(), 0);
 });
 
 test('Calendar rail leaves page tools in the center at narrow desktop sizes', async t => {
