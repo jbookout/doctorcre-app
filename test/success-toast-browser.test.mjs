@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chromium,fixtureServer} from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 for (const surface of ['tasks','prototype']) test(`${surface} success uses the shared two-second hold and fade`,async t=>{
  const server=await fixtureServer();t.after(()=>server.close());

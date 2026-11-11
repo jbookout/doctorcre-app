@@ -1,7 +1,8 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium, fixtureServer, waitForAsync } from './browser-harness.mjs';
+import { chromium, waitForAsync } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { store, CONVERSATION, JOE_ASK, ANSWER } from './doc-request-fixture.mjs';

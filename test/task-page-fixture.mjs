@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 export async function openTasks(t, hooks = '') {
   const server = await fixtureServer();

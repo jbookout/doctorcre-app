@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assertQuietVendorBehavior } from "../scripts/prove-quiet-vendors-malformed-snapshot.ts";
-import { chromium, fixtureServer } from "./browser-harness.mjs";
+import { chromium } from "./browser-harness.mjs";
+import { ownedFixtureServer as fixtureServer } from "./fixture-probe.ts";
 
 for (const width of [390, 1280])
   for (const theme of ["light", "dark"] as const) {

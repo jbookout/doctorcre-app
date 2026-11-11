@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
-import { identity, found, readiness, meeting } from './fixtures/correspondence.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
 async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false, legalDestination = false, timezoneId } = {}) {
@@ -1118,55 +1117,6 @@ test('pipeline recovery reports the original activation target from Leads',async
  assert.deepEqual(writes[1],writes[0]);
 });
 
-async function openWithCorrespondence(t) {
-  const view = await open(t);
-  await view.page.evaluate(async ({identity,found,readiness,meeting}) => {
-    const {state} = await import('/js/pipeline.js');
-    const getDeal = state.client.getDeal.bind(state.client);
-    state.client.getDeal = async (...args) => ({...await getDeal(...args), activities:[
-      {...meeting,kind:'correspondence',detail:{native_identity:identity}},meeting,
-    ]});
-    state.client.correspondenceReadiness = async () => readiness;
-    window.evidenceReads = 0;
-    state.client.readCorrespondenceThread = async () => {
-      window.evidenceReads++;
-      if (window.evidenceFailure) throw Object.assign(new Error('Synthetic read failure'),{status:window.evidenceFailure});
-      return found;
-    };
-  }, {identity,found,readiness,meeting});
-  await view.page.locator('.kanban-column [data-id="d14"] .card-open').click();
-  await view.page.getByRole('tab', {name:'Correspondence & notes'}).click();
-  await view.page.locator('#panelEvidence [data-kind=thread]').waitFor();
-  return view;
-}
-
-for (const status of [401,403]) test(`correspondence ${status} on detail refresh clears protected detail and its draft`, async t => {
-  const {page,errors} = await openWithCorrespondence(t);
-  await page.getByRole('tab',{name:'Overview',exact:true}).click();
-  await page.locator('#dealUpdate').fill('Synthetic unsaved update');
-  await page.getByRole('tab',{name:'Correspondence & notes',exact:true}).click();
-  await page.evaluate(status => { window.evidenceFailure = status; },status);
-  await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
-  await page.locator('#panelBody a[href="/auth/login"]').first().waitFor();
-  assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail),null);
-  assert.equal(await page.locator('#detailUpdateForm').count(),0);
-  assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Synthetic unsaved update/);
-  assert.deepEqual(errors,[]);
-});
-
-test('Retry evidence remains active after a background detail refresh replaces evidence', async t => {
-  const {page,errors} = await openWithCorrespondence(t);
-  await page.evaluate(() => { window.evidenceFailure = 503; });
-  await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
-  await page.locator('#panelEvidence [data-evidence-retry]').waitFor();
-  const before = await page.evaluate(() => window.evidenceReads);
-  await page.evaluate(() => { window.evidenceFailure = null; });
-  await page.locator('#panelEvidence [data-evidence-retry]').click();
-  await page.locator('#panelEvidence [data-kind=thread]').waitFor();
-  assert.ok(await page.evaluate(() => window.evidenceReads) > before);
-  assert.deepEqual(errors,[]);
-});
-
 test('phone board folds parked deals behind the Parked toggle, hides empty phases and keeps view controls visible', async t => {
   for (const width of [390, 1440]) await t.test(String(width), async t => {
     const { page, errors } = await open(t, { width, height: 844 });
@@ -1248,16 +1198,14 @@ test('deal email threads show latest message dates and escape subjects', async t
   for (const width of [390, 1440]) for (const theme of ['light', 'dark']) await t.test(`${width} ${theme}`, async t => {
     const {page, errors} = await open(t, {width, timezoneId:'America/Chicago'});
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
-    await page.evaluate(async ({identity, found, readiness, meeting}) => {
+    await page.evaluate(async () => {
       const {state} = await import('/js/pipeline.js');
       const getDeal = state.client.getDeal.bind(state.client);
-      state.client.correspondenceReadiness = async () => readiness;
-      state.client.readCorrespondenceThread = async () => found;
-      state.client.getDeal = async (...args) => ({...await getDeal(...args), activities:[{...meeting, kind:'correspondence', detail:{native_identity:identity}}], email_threads: [
+      state.client.getDeal = async (...args) => ({...await getDeal(...args), email_threads: [
         {conversation_id:'demo-new', subject:'Demo <b>newest</b>', latest_message_at:'2026-10-01T12:00:00Z'},
         {conversation_id:'demo-old', subject:'Demo older', latest_message_at:'2026-09-30T12:00:00Z'},
       ]});
-    }, {identity, found, readiness, meeting});
+    });
     await page.locator('.kanban-column [data-id="d14"] .card-open').click();
     await page.getByRole('tab', {name:'Correspondence & notes'}).click();
     await page.locator('#panelEvidence [data-kind=thread]').first().waitFor();

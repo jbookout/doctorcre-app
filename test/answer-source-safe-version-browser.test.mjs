@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { assertAnswerSourceVersions } from '../scripts/prove-answer-source-safe-version.mjs';
 
 test('mountAnswerBlocks refuses unsafe sources at phone and desktop widths in both themes', async t => {

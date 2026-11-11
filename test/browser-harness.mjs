@@ -110,8 +110,8 @@ export const chromium = browserEngine(playwrightChromium);
 export const webkit = browserEngine(playwrightWebkit);
 webkit.skip = webkitSkipReason();
 
-export async function fixtureServer({ root } = {}) {
-  const server = await startFixtureServer({ env: root ? { DOCTORCRE_FIXTURE_ROOT: root } : {} });
+export async function fixtureServer({ root } = {}, capability) {
+  const server = await startFixtureServer({ env: root ? { DOCTORCRE_FIXTURE_ROOT: root } : {} }, capability);
   return { origin: server.url, close: server.stop };
 }
 

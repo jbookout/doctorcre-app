@@ -2,7 +2,8 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium, fixtureServer, animationsSettled, settles } from './browser-harness.mjs';
+import { chromium, animationsSettled, settles } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 let browser, server;
 const evidence = process.env.DEAL_ROOM_OVERLAY_EVIDENCE || 'out/test-artifacts/deal-room-overlays';

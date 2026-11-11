@@ -1,0 +1,26 @@
+name: Set up Playwright browsers
+description: Reuse browser binaries and bound missing Ubuntu dependency installation.
+inputs:
+  working-directory:
+    description: App checkout directory relative to the workspace.
+    default: .
+  browsers:
+    description: Space-separated Playwright browser names.
+    default: chromium webkit
+runs:
+  using: composite
+  steps:
+    - id: version
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: node -p '"version=" + require("playwright-core/package.json").version' >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-${{ steps.version.outputs.version }}-${{ inputs.browsers }}
+    - name: Install browsers and missing OS dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      run: python3 "$GITHUB_ACTION_PATH/../../../scripts/browser-setup.py" $BROWSERS
