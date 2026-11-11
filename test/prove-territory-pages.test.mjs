@@ -9,6 +9,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixture } from '../scripts/fixture-http.mjs';
+import { assertProofDeadlineCleanup } from './proof-browser-harness.mjs';
 import { prove } from '../scripts/prove-territory-pages.mjs';
 import { chromium } from '../scripts/proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -36,15 +37,12 @@ for(const count of [0,20,21])test(`insufficient natural subjects ${count}`,async
 test('near miss visible total fails exactly',async t=>{await assert.rejects(prove(await setup(t,{mismatch:true})),e=>!e.exitCode&&e.code==='ERR_ASSERTION');});
 test('containing release and unreachable CDP exit 78',async t=>{const options=await setup(t);await assert.rejects(prove({...options,fixture:false,cdpUrl:'http://127.0.0.1:1',timeoutMs:2000}),e=>e.exitCode===78);});
 for(const mode of ['stalled evaluation','late launch'])test(`timeout drains ${mode}`,async t=>{
-  const options=await setup(t);let owned;
-  const engine={launch:async args=>{
-    owned=await chromium.launch({ ...args, args: [...CHROMIUM_SAFETY_ARGS, ...(args.args || [])] });
-    if(mode==='late launch')await new Promise(r=>setTimeout(r,1800));
-    else {const create=owned.newPage.bind(owned);owned.newPage=async options=>{const page=await create(options);const go=page.goto.bind(page);page.goto=async(...args)=>{await go(...args);return page.evaluate(()=>new Promise(()=>{}));};return page;};}
-    return owned;
-  }};
-  await assert.rejects(prove({...options,engine,timeoutMs:1400}),e=>e.exitCode===78);
-  assert.equal(owned?.isConnected(),false,'zero connected owned browsers');
+  const options = await setup(t);
+  await assertProofDeadlineCleanup(t, {
+    entry: 'scripts/prove-territory-pages.mjs',
+    args: ['--origin', options.origin, '--expected-commit', sha, '--fixture', '--recording', options.recordingUrl],
+    mode, timeoutMs: 1400, evaluationTarget: 'locatorAll',
+  });
 });
 for(const [mode,count,code]of [['pass',45,0],['insufficient',1,78]])test(`CLI ${mode} exits ${code}`,async t=>{
   const options=await setup(t,{count});
@@ -82,7 +80,47 @@ test('fixture mode refuses nonloopback origins before any read',async()=>{await 
 test('controlled cold asset startup reaches evaluation before deadline', async t => {
   const options = await setup(t);
   const root = temporaryDirectory('territory-timing-', t), preload = join(root, 'preload.mjs');
-  await writeFile(preload, "import { registerHooks, syncBuiltinESMExports } from 'node:module';\nimport http from 'node:http';\nimport { chromium } from 'playwright';\nconst launch = chromium.launch.bind(chromium);\nchromium.launch = async options => {\n  globalThis.reviewDeadline = Date.now() + 1400;\n  const browser = await launch(options);\n  const create = browser.newPage.bind(browser);\n  browser.newPage = async (...args) => {\n    const page = await create(...args);\n    const go = page.goto.bind(page);\n    page.goto = async (url, options) => {\n      await go(url, { ...options, ...(options?.timeout < 400 ? { timeout: 6 } : {}) });\n      process.stderr.write('TIMING_PROBE_EVALUATION_REACHED\\n');\n      return page.evaluate(() => new Promise(() => {}));\n    };\n    return page;\n  };\n  return browser;\n};\nconst server = http.createServer;\nhttp.createServer = function (...args) {\n  const i = args.findIndex(a => typeof a === 'function');\n  if (i >= 0) {\n    const handler = args[i];\n    args[i] = (req, res) => {\n      if (req.url === '/leads') setTimeout(() => handler(req, res), 100);\n      else handler(req, res);\n    };\n  }\n  return server.apply(this, args);\n};\nsyncBuiltinESMExports();\nregisterHooks({load(url, context, next) {\n  const result = next(url, context);\n  if (url.endsWith('/scripts/fixture-app-assets.mjs')) {\n    result.source = String(result.source).replace('export async function appAssetSnapshot(builtRoot, sourceRoot = process.cwd()) {', 'export async function appAssetSnapshot(builtRoot, sourceRoot = process.cwd()) { await new Promise(r=>setTimeout(r, Math.max(0, globalThis.reviewDeadline-Date.now()-250)));');\n  }\n  return result;\n}});\n".replace("from 'playwright'", `from ${JSON.stringify(import.meta.resolve('playwright'))}`));
+  await writeFile(preload, `import { registerHooks, syncBuiltinESMExports } from 'node:module';
+import http from 'node:http';
+import { chromium } from 'playwright';
+const launch = chromium.launch.bind(chromium);
+chromium.launch = async options => {
+  globalThis.reviewDeadline = Date.now() + 1400;
+  const browser = await launch(options);
+  const create = browser.newPage.bind(browser);
+  browser.newPage = async (...args) => {
+    const page = await create(...args);
+    const go = page.goto.bind(page);
+    page.goto = async (url, options) => {
+      await go(url, { ...options, ...(options?.timeout < 400 ? { timeout: 6 } : {}) });
+      process.stderr.write('TIMING_PROBE_EVALUATION_REACHED\\n');
+      return page.evaluate(() => new Promise(() => {}));
+    };
+    return page;
+  };
+  return browser;
+};
+const server = http.createServer;
+http.createServer = function (...args) {
+  const i = args.findIndex(a => typeof a === 'function');
+  if (i >= 0) {
+    const handler = args[i];
+    args[i] = (req, res) => {
+      if (req.url === '/leads') setTimeout(() => handler(req, res), 100);
+      else handler(req, res);
+    };
+  }
+  return server.apply(this, args);
+};
+syncBuiltinESMExports();
+registerHooks({load(url, context, next) {
+  const result = next(url, context);
+  if (url.endsWith('/scripts/fixture-app-assets.mjs')) {
+    result.source = String(result.source).replace('return await loadFixtureAssets', 'await new Promise(r=>setTimeout(r, Math.max(0, globalThis.reviewDeadline-Date.now()-250))); return await loadFixtureAssets');
+  }
+  return result;
+}});
+`.replace("from 'playwright'", `from ${JSON.stringify(import.meta.resolve('playwright'))}`));
   let result;
   try { result = await exec(process.execPath, ['--import', preload, 'scripts/prove-territory-pages.mjs', '--origin', options.origin, '--expected-commit', sha, '--fixture', '--recording', options.recordingUrl, '--timeout-ms', '1400'], { timeout: 35000 }); }
   catch (error) { result = error; }

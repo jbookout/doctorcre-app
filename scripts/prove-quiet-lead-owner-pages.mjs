@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { chromium } from './proof-browser.mjs';
 import { chromium as cdpChromium } from 'playwright';
-import { launchProofBrowser, readAppRelease, startProofFixtureAssets } from './app-release-reader.mjs';
+import { launchProofBrowser, readAppRelease, prepareProofFixtureAssets, startProofFixtureAssets } from './app-release-reader.mjs';
 import { workspace, detail } from '../test/leads-workspace-fixture.mjs';
 
 const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
@@ -17,6 +17,8 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   const base = new URL(origin);
   assert.ok(base.href === `${base.origin}/` && !base.username && !base.password && ['https:', 'http:'].includes(base.protocol), 'origin only');
   assert.ok(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 300000, 'bounded deadline');
+  const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
+  const preparedAssets = fixture ? await prepareProofFixtureAssets(sourceRoot) : undefined;
   const controller = new AbortController(), deadline = Date.now() + timeoutMs;
   let expire;
   const expired = new Promise((_, reject) => { expire = () => { const error = unavailable('Proof deadline exceeded'); controller.abort(error); reject(error); }; });
@@ -60,7 +62,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
       page = await bounded(acquisition);
     } catch (error) { throw unavailable(`Browser session unavailable: ${error.message}`); }
     if (fixture) {
-      fixtureAssets = await bounded(startProofFixtureAssets(fileURLToPath(new URL('../', import.meta.url)), controller.signal));
+      fixtureAssets = await bounded(startProofFixtureAssets(preparedAssets, controller.signal));
       await bounded(page.route('**/*', async route => {
         const request = route.request(), url = new URL(request.url());
         if (url.origin !== fixtureAssets.origin) return route.abort();
