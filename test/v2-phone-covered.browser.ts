@@ -128,3 +128,46 @@ test("Scroll replacement measures the current activation area", async (t) => {
   const audit = await inspectPhoneAccessibility(page);
   assert.equal(audit.small.find((target) => target.id === "replaced")?.width, 43);
 });
+
+test("Geometry-time row replacement never reports the row covered by its own child", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const replacements of [1, 8, Infinity]) {
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    try {
+      await page.setContent(`<main><button style="width:60px;height:60px">First</button>
+        <a href="#" id="row" class="record-row" style="position:absolute;top:2200px;left:13px;width:364px;height:162px;display:block"><span style="display:block;width:100%;height:100%">Demo Partner 30</span></a></main>`);
+      await page.evaluate((limit) => {
+        let count = 0;
+        const observer = new IntersectionObserver((entries) => {
+          if (!entries.some((entry) => entry.isIntersecting) || count >= limit) return;
+          const row = document.getElementById("row");
+          if (!row) throw Error("Missing fixture row");
+          const replacement = row.cloneNode(true);
+          row.replaceWith(replacement);
+          count++;
+          Reflect.set(window, "rowReplacements", count);
+          observer.unobserve(row);
+          observer.observe(replacement as Element);
+        });
+        observer.observe(document.getElementById("row") as Element);
+      }, replacements);
+      for (const reverse of [false, false, true]) {
+        const result = await inspectPhoneAccessibility(page, page.mainFrame(), reverse).then(
+          (audit) => ({ audit, error: null }),
+          (error: unknown) => ({ audit: null, error }),
+        );
+        if (result.error) {
+          assert.notEqual(replacements, 1, "One replacement must recover");
+          assert.match(String(result.error), /unstable-identity/);
+        } else {
+          assert.notEqual(replacements, Infinity, "Persistent replacement must refuse evidence");
+          assert.deepEqual(result.audit?.covered, [], "Current row owns its center after geometry-time replacement");
+        }
+      }
+      assert.ok(await page.evaluate(() => Number(Reflect.get(window, "rowReplacements"))) > 0);
+    } finally {
+      await page.close();
+    }
+  }
+});
