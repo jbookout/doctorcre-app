@@ -1,6 +1,6 @@
 # Tour List proposal ports
 
-Card: WR586.S5.J16
+Card: WR586.S5.J19
 
 The package host accepts `proposals` containing the authenticated host's publication ID and revision, receipt-producing read/save functions, and existing sign-out and retirement callbacks. It registers Tour List alongside existing package panels. The controller belongs to the mounted publication, survives fragment navigation, and disposes before another publication mounts in the same element.
 
@@ -28,11 +28,19 @@ The retained model is `test/models/portal-tour-list/TourList.tla`. It abstracts 
 | Retired entry removal | `retired entries preserve original IDs and notes and require explicit removal before saving` |
 | Stay | Existing single-flight test rejects a second pending save |
 
-## Remaining integration
+## HTTP transport
 
-This is a partial source prerequisite. The pinned producer contract explicitly has no public HTTP route. Its authenticated SQL connection is forbidden to the app. No HTTP path, credential or response envelope has been invented. The public host must supply these read/save functions after its transport contract is published and deployed. This branch does not implement or attest server-side CSRF, origin, rate limits or connection deadlines. It does not alter legacy URLs, passwords or hosting.
+The host accepts either an injected `transport` or an explicit `slug` alongside its publication scope and existing lifecycle callbacks. A slug constructs `proposalHttpTransport` behind the existing receipt parser. It uses the origin-form routes from CARR PR 3206 at c2d5de0db4af858e41d692c7f736b98d5200e233, `mcp-server/src/portal-web.ts`.
 
-A signed-in staging journey, independent taste score and production proof remain required. The component browser tests use the producer recording and contract-checked synthetic replies through the production parser; they do not prove live transport or remote persistence. No runnable production proof CLI exists for this transport yet. The future proof must read a containing `/app-release`, compare the exact displayed IDs/version/notes with an independent authorized proposal read, navigate away and back, and inspect an existing authorized save receipt. It must not create synthetic production choices. Exit 78 means the release or authorized evidence is unavailable.
+Read uses GET `/<slug>/proposals/<publication UUID>`. Save first reads GET `/<slug>/status` for `{authenticated:true,csrf:string}`, then POSTs to the proposal route with `X-Portal-CSRF`, JSON content type and exactly `{publication_version,request:{version,selected,notes,idempotency_key}}`. Every fetch uses same-origin mode and credentials, no-store, and refuses redirects. No base URL or credential is configured or persisted. A single ten-second abort deadline covers status, transport and response parsing. Disposal cancels the same work. Explicit retry refreshes CSRF but retains the exact publication revision and frozen proposal. There is no automatic retry, cache, queue or fan-out. Server admission, shared rate limits and circuit breakers remain CARR's authority.
+
+Known status/code pairs map through existing controller transitions. Unauthenticated expires the session and clears private state. Stale version and retired map to conflict. CSRF, origin, rate limit, unknown error codes and unavailable saves map to uncertain and keep the frozen request. Unknown 409 codes never become discardable conflicts. Read failures map to unavailable, except unauthenticated which expires. No new controller transition was added. TLC was rerun against the retained model.
+
+`portal-proposal-http.test.ts` checks each refusal and frozen retry, exact JSON keys and transport options, status/save/body deadline and cancellation. `portal-proposal-http.browser.ts` loads current-source assets through `appAssetSnapshot()` and `startWorkerFixture()`, mounts the host with a slug, then saves, retries an unknown outcome and reloads exact membership and notes in both themes at 390 and 1440. HTTP replies use the pinned producer receipt through the production parser. These synthetic browser replies do not attest server authentication or SQL persistence.
+
+## Remaining deployment evidence
+
+This draft depends on CARR PR 3206 deploying with the portal host mounted on its configured same origin and serving the app shell. It does not alter legacy URLs, passwords or hosting. Signed-in staging, independent taste and production persistence remain unverified. A runnable production proof CLI remains absent. A future read-only proof must compare exact displayed IDs, version and notes with an authorized independent read and require containing app and CARR releases. The worker was forbidden production calls and subagents.
 
 ## Design and debt pass
 

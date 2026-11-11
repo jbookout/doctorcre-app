@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { build } from "esbuild";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium } from "./browser-harness.mjs";
 
 const publication = JSON.parse(readFileSync("test/fixtures/portal/example-health.market-study.json", "utf8"));
@@ -17,6 +19,7 @@ publication.properties = [
 const css = ["css/tokens.css", "portal/styles.css", "portal/tour-list.css"]
   .map((p) => readFileSync(p, "utf8"))
   .join("\n");
+const assets = await appAssetSnapshot();
 const bundle = await build({
   stdin: {
     contents: `
@@ -44,16 +47,18 @@ window.mount();`,
 for (const width of [390, 1440])
   for (const theme of ["light", "dark"])
     test(`proposal host route lifetime, transport, keyboard and retirement ${width} ${theme}`, async (t) => {
+      const server = await startWorkerFixture({ assets, env: { APP_ENV: "fixture" } });
+      t.after(() => server.close());
       const browser = await chromium.launch();
       t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height: 950 } });
-      await page.route("http://localhost/**", (route) =>
+      await page.route(`${server.origin}/portal/`, (route) =>
         route.fulfill({
           contentType: "text/html",
           body: `<!doctype html><html lang="en" data-theme="${theme}"><head><title>Proposal host fixture</title><style>${css}</style></head><body><div id="root"></div></body></html>`,
         }),
       );
-      await page.goto("http://localhost/portal/#tour-list");
+      await page.goto(`${server.origin}/portal/#tour-list`);
       await page.addScriptTag({ content: bundle.outputFiles[0]?.text ?? "" });
       await page.locator('[data-state="ready"]').waitFor();
       assert.equal(await page.getByRole("textbox").inputValue(), "Client note");

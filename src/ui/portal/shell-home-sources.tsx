@@ -6,6 +6,7 @@ import type { ContextMarker } from "./home-map";
 import { HomeMap } from "./home-map";
 import type { CarrMarketStudyV1, ContextAnchor, Development, Rich } from "./package";
 import { portalAsset } from "./package";
+import { proposalHttpTransport } from "./proposal-http";
 import type { ProposalScope, ProposalTransport } from "./proposal-ports";
 import { proposalSelectionPorts } from "./proposal-ports";
 import { trackShellGeometry } from "./shell-geometry";
@@ -21,10 +22,8 @@ export type PortalModule = {
   available: (publication: MarketStudy) => boolean;
   render: (publication: MarketStudy, openProperty: (id: string) => void) => ReactNode;
 };
-export type PortalProposals = { scope: ProposalScope; transport: ProposalTransport } & Pick<
-  SelectionPorts,
-  "signOut" | "clearPrivateState" | "returnToGate"
->;
+export type PortalProposals = { scope: ProposalScope } & ({ transport: ProposalTransport } | { slug: string }) &
+  Pick<SelectionPorts, "signOut" | "clearPrivateState" | "returnToGate">;
 export type PortalOptions = { package: MarketStudy; modules?: readonly PortalModule[]; proposals?: PortalProposals };
 
 export function ExternalLink({ url, children }: { url: string; children: ReactNode }) {
@@ -474,7 +473,17 @@ function renderMarketStudy(container: HTMLElement, options: PortalOptions) {
   const model = options.proposals
     ? createTourList(
         options.package.properties,
-        proposalSelectionPorts({ ...options.proposals, properties: options.package.properties }),
+        proposalSelectionPorts({
+          ...options.proposals,
+          properties: options.package.properties,
+          transport:
+            "transport" in options.proposals
+              ? options.proposals.transport
+              : proposalHttpTransport({
+                  slug: options.proposals.slug,
+                  publicationId: options.proposals.scope.publication_id,
+                }),
+        }),
       )
     : undefined;
   const renderedOptions = model
