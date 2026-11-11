@@ -16,18 +16,21 @@ Each object contains `propertyRef`, `label`, `name` and `detail`, all strings.
 Copy those exact displayed fields from the reviewed public projection, not from the page being tested.
 The proof observes each loaded packet response. It checks the packet stop count
 against `rows`, checks that a supplied presentation summary names that count,
-and compares the displayed summary exactly with the packet summary. Legacy
-packets without presentation metadata use the count-based "in this report."
-summary. Presentation 2.0.0 supplies "in tour order.". Expected row labels remain
+and compares the displayed summary exactly with the packet summary. Both the
+app and proof use the production parser. Packets without presentation metadata
+are the recorded 1.x format and are explicitly refused with an older-format
+message. CARR 3182 regenerates presentation 2.0.0 on every read, including
+existing grants. Deploy CARR 3182 before this app change. Presentation 2.0.0
+supplies "in tour order.". Expected row labels remain
 exact displayed text, including "Stop A" for presentation 2.0.0.
 `pdfSha256` is the lowercase SHA-256 of the reviewed PDF for that projection.
 Keep this file outside Git and logs. The proof output excludes links, cookies, rows and assertion values.
 
 Exit 0 means all grants passed at 1440 and 390 widths in light and dark with a stable containing app release.
-Exit 1 means a displayed value or permission assertion failed on a containing release.
+Exit 1 means a displayed value, permission, or supported packet format assertion failed on a containing release.
 Exit 78 means the release, browser, network or independent input evidence was insufficient.
 The proof refuses older, unrelated and unavailable release identities.
-The app release identity does not attest the independent CARR deployment. Deploy CARR PR 3181 before running this proof for acceptance.
+The app release identity does not attest the independent CARR deployment. Deploy CARR PRs 3181 and 3182 before running this proof for acceptance.
 
 The proof statechart is [proof.mmd](statecharts/client-grants/proof.mmd).
 Its model abstracts network and browser acquisition into one step. Executable tests cover late launch and stalled evaluation separately.

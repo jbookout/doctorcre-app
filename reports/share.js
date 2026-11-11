@@ -1,4 +1,4 @@
-import { parsePublicTourPacket, packetMapPoints, appendPublicTourFacts } from "../src/ui/public-tour-packet.ts";
+import { UnsupportedPublicTourPacketError, parsePublicTourPacket, packetMapPoints, appendPublicTourFacts } from "../src/ui/public-tour-packet.ts";
 import { mountTourClientDownload } from "../js/ui-tour-client-download.js";
 import { mountNavigation } from "../js/navigation.js";
 
@@ -61,7 +61,7 @@ mountNavigation(document, location.pathname, { report: true });
 
   function setStatus(message) { status.textContent = message; }
 
-  function showUnavailable() {
+  function showUnavailable(error) {
     invalidated = true; projection = null;
     printButton.hidden = true;
     setDownloadAvailable(false);
@@ -72,7 +72,9 @@ mountNavigation(document, location.pathname, { report: true });
     document.querySelector("#packet-itinerary").replaceChildren();
     document.querySelector('#tour-map').replaceChildren();
     setStatus("This shared report is unavailable.");
-    summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
+    summary.textContent = error instanceof UnsupportedPublicTourPacketError
+      ? error.message
+      : "Access may have expired or been removed. Please ask your broker for an updated Tour.";
     list.setAttribute("aria-busy", "false");
     for (const node of [openButton, document.querySelector(".tour-flow"), document.querySelector("#map-section"), list.closest("section"), feedbackStatus]) node.hidden = true;
   }
@@ -337,8 +339,8 @@ mountNavigation(document, location.pathname, { report: true });
       localStorage.setItem(contextKey,linkContext);
       await loadTour({opening:true});
       });
-    } catch {
-      showUnavailable();
+    } catch (error) {
+      showUnavailable(error);
     }
   }
 

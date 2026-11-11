@@ -40,13 +40,28 @@ function identity(row: Record<string, unknown>) {
     throw new Error("Invalid public stop");
   return { property_ref: row.property_ref, route_sequence: row.route_sequence, route_label: row.route_label };
 }
+export class UnsupportedPublicTourPacketError extends Error {
+  constructor() {
+    super(
+      "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
+    );
+    this.name = "UnsupportedPublicTourPacketError";
+  }
+}
 export function parsePublicTourPacket(value: unknown) {
   const input = record(value);
   if (!Array.isArray(input.stops) || !input.stops.length || input.stops.length > 50)
     throw new Error("Invalid public packet");
-  const presentation = record(input.presentation);
-  if (presentation.version !== "2.0.0" || !Array.isArray(presentation.stops))
-    throw new Error("Unsupported packet template");
+  const presentation = input.presentation === undefined ? { version: "1.x" } : record(input.presentation);
+  switch (presentation.version) {
+    case "1.x":
+      throw new UnsupportedPublicTourPacketError();
+    case "2.0.0":
+      break;
+    default:
+      throw new Error("Unsupported packet template");
+  }
+  if (!Array.isArray(presentation.stops)) throw new Error("Invalid packet presentation");
   const stops = presentation.stops
     .map((value) => {
       const row = record(value);

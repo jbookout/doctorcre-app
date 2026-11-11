@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import type { Browser, LaunchOptions, Response } from "playwright";
 import { chromium } from "playwright";
+import { parsePublicTourPacket, UnsupportedPublicTourPacketError } from "../src/ui/public-tour-packet.ts";
 import { launchProofBrowser, proofFetch, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
@@ -68,13 +69,11 @@ export function parseEvidence(value: unknown, origin: string): Evidence {
 }
 
 export function packetSummary(packet: unknown, rowCount: number): string {
-  assert.ok(object(packet) && Array.isArray(packet.stops), "packet stops required");
-  const count = packet.stops.length;
+  const parsed = parsePublicTourPacket(packet);
+  const count = parsed.length;
   assert.equal(count, rowCount, "packet stop count matches independent rows");
   const quantity = `${count} ${count === 1 ? "property" : "properties"}`;
-  if (!object(packet.presentation)) return `${quantity} in this report.`;
-  const summary = packet.presentation.summary;
-  assert.ok(typeof summary === "string", "packet summary required");
+  const summary = parsed.template.summary;
   assert.equal(
     summary.match(/^\d+ (?:property|properties)\b/)?.[0],
     quantity,
@@ -238,7 +237,12 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
     return { status: "passed", release, layouts: 4, grants: 3, requests };
   } catch (error) {
     if (lifetime.signal.aborted) throw lifetime.signal.reason;
-    if (error instanceof assert.AssertionError || (object(error) && error.exitCode === 78)) throw error;
+    if (
+      error instanceof assert.AssertionError ||
+      error instanceof UnsupportedPublicTourPacketError ||
+      (object(error) && error.exitCode === 78)
+    )
+      throw error;
     throw insufficient("Client journey evidence unavailable");
   } finally {
     clearTimeout(timer);
@@ -284,7 +288,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     );
   } catch (error) {
     const exitCode =
-      error instanceof assert.AssertionError
+      error instanceof assert.AssertionError || error instanceof UnsupportedPublicTourPacketError
         ? 1
         : object(error) && typeof error.exitCode === "number"
           ? error.exitCode
@@ -292,7 +296,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(
       JSON.stringify({
         status: exitCode === 78 ? "insufficient_evidence" : "failed",
-        error: exitCode === 1 ? "Client link assertion failed" : "Client proof evidence unavailable",
+        error:
+          error instanceof UnsupportedPublicTourPacketError
+            ? error.message
+            : exitCode === 1
+              ? "Client link assertion failed"
+              : "Client proof evidence unavailable",
       }),
     );
     process.exitCode = exitCode;

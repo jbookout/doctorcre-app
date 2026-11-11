@@ -13,6 +13,9 @@ import { parseEvidence, prove } from "../scripts/prove-client-links.ts";
 
 const commit = "1".repeat(40);
 const recorded = JSON.parse(await readFile(new URL("./fixtures/client-links/producer.json", import.meta.url), "utf8"));
+const legacy = JSON.parse(
+  await readFile(new URL("./fixtures/client-links/legacy-producer.json", import.meta.url), "utf8"),
+);
 const pdf = Buffer.from("%PDF-1.4 synthetic reviewed packet");
 const row = {
   propertyRef: "property:public:synthetic_property_01",
@@ -25,7 +28,13 @@ const outDir = temporaryDirectory("client-links-proof-");
 after(() => rm(outDir, { recursive: true, force: true }));
 await buildArtifact({ root: new URL("../", import.meta.url).pathname, outDir, commit });
 
-async function fixture(t: test.TestContext, nearMiss = false, badSummary = false, interrupted = false) {
+async function fixture(
+  t: test.TestContext,
+  nearMiss = false,
+  badSummary = false,
+  interrupted = false,
+  legacyPacket = false,
+) {
   const html = await readFile(outDir + "/site/reports/share.html", "utf8");
   const share = await readFile(outDir + "/site/reports/share.js", "utf8");
   const css = await readFile(outDir + "/site/reports/share.css", "utf8");
@@ -105,7 +114,9 @@ async function fixture(t: test.TestContext, nearMiss = false, badSummary = false
                     }
                   : nearMiss
                     ? recorded.responses.nearMiss
-                    : recorded.responses.packet,
+                    : legacyPacket
+                      ? legacy.responses.packet
+                      : recorded.responses.packet,
               },
             });
           }
@@ -138,6 +149,36 @@ async function fixture(t: test.TestContext, nearMiss = false, badSummary = false
 
 test("client proof opens real report and enforces revoked and download scopes in all layouts", async (t) => {
   assert.equal((await prove(await fixture(t))).status, "passed");
+});
+
+test("recorded production 1.x is clearly refused without report or download controls in every layout", async (t) => {
+  const options = await fixture(t, false, false, false, true);
+  const browser = await options.engine.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  try {
+    for (const width of [1440, 390])
+      for (const colorScheme of ["light", "dark"] as const) {
+        const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
+        try {
+          const page = await context.newPage();
+          await page.goto(options.evidence.active);
+          await page.getByRole("button", { name: "Open tour", exact: true }).click();
+          await page.waitForFunction(
+            () => document.querySelector("#status")?.textContent === "This shared report is unavailable.",
+          );
+          assert.equal(
+            await page.locator("#report-summary").textContent(),
+            "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
+          );
+          assert.equal(await page.locator("#report-list > li").count(), 0);
+          assert.equal(await page.getByRole("button", { name: "Download PDF", exact: true }).count(), 0);
+          assert.equal(await page.getByRole("button", { name: "Print or save PDF", exact: true }).isVisible(), false);
+        } finally {
+          await context.close();
+        }
+      }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("client download controls follow projected capability before open and after refusal in every layout", async (t) => {
@@ -216,6 +257,7 @@ test("client proof classifies unavailable browser as insufficient evidence", asy
 
 for (const mode of [
   "pass",
+  "legacy packet",
   "near miss",
   "summary mismatch",
   "late launch",
@@ -227,7 +269,7 @@ for (const mode of [
     const interrupted = mode === "interrupted observation";
     const timeout = mode === "late launch" || mode === "stalled evaluation" || interrupted;
     const badSummary = mode === "summary mismatch";
-    const options = await fixture(t, nearMiss, badSummary, interrupted);
+    const options = await fixture(t, nearMiss, badSummary, interrupted, mode === "legacy packet");
     const root = temporaryDirectory("client-proof-cli-", t);
     const evidenceFile = `${root}/evidence.json`;
     const preload = `${root}/browser.mjs`;
@@ -242,6 +284,8 @@ import { chromium } from ${JSON.stringify(import.meta.resolve("playwright"))};
 import { CHROMIUM_SAFETY_ARGS } from ${JSON.stringify(new URL("../scripts/chromium-safety-args.mjs", import.meta.url).href)};
 const chromiumDriver = { launch: chromium.launch.bind(chromium) };
 const recorded = ${JSON.stringify(recorded)};
+const legacy = ${JSON.stringify(legacy)};
+const legacyPacket = ${mode === "legacy packet"};
 const pdf = Buffer.from(${JSON.stringify(pdf.toString())});
 const nearMiss = ${nearMiss};
 const badSummary = ${badSummary};
@@ -285,11 +329,16 @@ chromium.launch = async options => {
       ],
       { timeout: 40000 },
     );
-    if (nearMiss || badSummary || timeout)
+    if (nearMiss || badSummary || timeout || mode === "legacy packet")
       await assert.rejects(execution, (error: unknown) => {
         assert.ok(error && typeof error === "object" && "code" in error && "stdout" in error);
         assert.equal(error.code, timeout ? 78 : 1, "stderr" in error ? String(error.stderr) : "no stderr");
         assert.equal(JSON.parse(String(error.stdout)).status, timeout ? "insufficient_evidence" : "failed");
+        if (mode === "legacy packet")
+          assert.equal(
+            JSON.parse(String(error.stdout)).error,
+            "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
+          );
         return true;
       });
     else assert.equal(JSON.parse((await execution).stdout).status, "passed");

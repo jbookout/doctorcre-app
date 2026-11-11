@@ -167,12 +167,14 @@ test("test fixtures never hand-set the producer download capability", async () =
   assert.deepEqual(violations, [], "Replay recorded producer responses instead of choosing can_download in a fixture");
 });
 
-
 test("recorded production 1.x packets have an explicit refusal through the real parser", () => {
-  const legacy = JSON.parse(readFileSync(new URL("./fixtures/client-links/legacy-producer.json", import.meta.url), "utf8"));
+  const legacy = JSON.parse(
+    readFileSync(new URL("./fixtures/client-links/legacy-producer.json", import.meta.url), "utf8"),
+  );
   for (const name of ["packet", "nearMiss"])
     assert.throws(() => parsePublicTourPacket(legacy.responses[name]), {
       name: "UnsupportedPublicTourPacketError",
-      message: "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
+      message:
+        "This report uses an older packet format. Please reopen the shared link after the report service is updated.",
     });
 });
