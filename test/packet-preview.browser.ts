@@ -3,6 +3,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { packetFixturePdf } from "../scripts/packet-fixture.ts";
+import { observePacketPreview } from "../scripts/prove-packet-facts.ts";
 import { chromium } from "./browser-harness.mjs";
 import packet from "./fixtures/packet-parity/share.json" with { type: "json" };
 
@@ -263,6 +264,53 @@ test("a late packet response cannot reopen a preview after leaving", async () =>
     assert.equal(page.workers().length, 0);
   } finally {
     release();
+    await browser.close();
+  }
+});
+
+test("packet proof waits for the final PDF page after every property stop is counted", async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/api/tours/pdf/download") return route.fulfill({ contentType: "application/pdf", body: pdf });
+      const asset = sourceAssets.get(path);
+      return asset ? route.fulfill(asset) : route.abort();
+    });
+    await page.addInitScript(() => {
+      const setAttribute = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function (name, value) {
+        if (this instanceof HTMLCanvasElement && name === "aria-label" && value.startsWith("Packet page 3 ")) {
+          Object.defineProperty(this, "dataset", { value: {} });
+        }
+        return setAttribute.call(this, name, value);
+      };
+    });
+    await page.goto(`https://app.test/tours/packet-preview.html?render_job_id=${job}`);
+    await page.waitForFunction(() => document.querySelectorAll('canvas[data-rendered="true"]').length === 2);
+    let ready = false;
+    const observation = observePacketPreview(page, pdf).then((stops) => {
+      ready = true;
+      return stops;
+    });
+    try {
+      await assert.rejects(
+        page.waitForFunction(() => false, undefined, { timeout: 500 }),
+        /Timeout/,
+      );
+      assert.equal(ready, false, "two property stops cannot certify all three PDF pages ready");
+    } finally {
+      await page
+        .locator("canvas")
+        .nth(2)
+        .evaluate((canvas) => canvas.setAttribute("data-rendered", "true"));
+      assert.equal((await observation).length, packet.stops.length);
+    }
+    assert.equal(ready, true);
+    assert.equal(await page.locator('canvas[data-rendered="true"]').count(), 3);
+    assert.equal((await observePacketPreview(page, pdf)).length, packet.stops.length);
+  } finally {
     await browser.close();
   }
 });

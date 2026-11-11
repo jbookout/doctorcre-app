@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import { readPacketPresentation } from '../../src/ui/packet-facts.ts';
 import assert from 'node:assert/strict';
 import { get } from 'node:http';
 import { temporaryDirectory } from '../../scripts/temp-directory.mjs';
@@ -216,4 +217,24 @@ test('Journey fixture refuses outside-root file URLs and raw encoded traversal',
       console.log(`outside-root probe ${path}: ${result.status}, sentinel=false`);
     }
   } finally { await local.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('Share lifecycle serves the packet presentation through the real consumer parser', async ({ browser }) => {
+  const local = await localFixture(browser);
+  try {
+    const token = 'synthetic-contract-probe';
+    await local.page.request.post('/api/tours/share/issue', {
+      data: { token_digest: 'sha256:' + createHash('sha256').update(token).digest('hex') },
+    });
+    await local.page.request.post('/api/share/exchange', { data: { token } });
+    const response = await local.page.request.get('/api/share/report');
+    assert.equal(response.status(), 200);
+    const { data } = await response.json();
+    const presentation = readPacketPresentation(data);
+    assert.ok(presentation, 'share journey response must satisfy the versioned packet parser');
+    assert.deepEqual(presentation.stops.map(stop => stop.name), fixture.tour.property_names);
+    assert.deepEqual(presentation.stops.map(stop => stop.property_ref), data.stops.map(stop => stop.property_ref));
+  } finally {
+    await local.close();
+  }
 });

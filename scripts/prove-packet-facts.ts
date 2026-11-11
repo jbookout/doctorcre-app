@@ -2,10 +2,23 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import type { Page } from "playwright";
 import { readPacketPresentation } from "../src/ui/packet-facts.ts";
 import { packetFixturePdf } from "./packet-fixture.ts";
 import { comparePacketStops, observePdf } from "./packet-pdf-observation.ts";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
+
+export async function observePacketPreview(page: Page, bytes: Uint8Array) {
+  const previewStops = await observePdf(bytes);
+  await page.waitForFunction((count) => {
+    const pages = Array.from(document.querySelectorAll("canvas[data-rendered=true]"));
+    return (
+      pages.length === count &&
+      pages.every((canvas) => canvas instanceof HTMLCanvasElement && canvas.width > 0 && canvas.height > 0)
+    );
+  }, previewStops.length);
+  return previewStops;
+}
 
 export async function provePacket(options: {
   origin: string;
@@ -108,14 +121,7 @@ export async function provePacket(options: {
       const response = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/tours/pdf/download");
       await page.goto(new URL(href, origin).href);
       const previewBytes = await (await response).body();
-      const previewStops = await observePdf(previewBytes);
-      await page.waitForFunction((count) => {
-        const pages = Array.from(document.querySelectorAll("canvas[data-rendered=true]"));
-        return (
-          pages.length === count &&
-          pages.every((canvas) => canvas instanceof HTMLCanvasElement && canvas.width > 0 && canvas.height > 0)
-        );
-      }, previewStops.length);
+      const previewStops = await observePacketPreview(page, previewBytes);
       const downloading = page.waitForEvent("download");
       await page.getByRole("link", { name: "Download this PDF", exact: true }).click();
       const download = await downloading;
