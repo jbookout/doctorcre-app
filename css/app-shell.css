@@ -389,7 +389,7 @@ body.report-shell { padding-left: var(--layout-rail); padding-bottom: 34px; }
 #appStatusSlot .deployment-badge, #appStatusSlot .sync, #appStatusSlot .capture { padding: 2px var(--space-1); }
 #appStatusSlot footer { margin: 0; padding: 0; border: 0; font-size: var(--font-size-1); }
 #appStatusSlot .home-updated { width: auto; justify-content: flex-start; }
-#appStatusSlot button { min-width: 28px; min-height: 28px; }
+#appStatusSlot button { min-width: 44px; min-height: 44px; }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   #appStatusSlot { flex: none; gap: var(--space-2); }
   #appStatusSlot > [data-layout-slot="status"], #appStatusSlot .top-actions { flex-wrap: nowrap; gap: var(--space-2); }

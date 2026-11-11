@@ -289,7 +289,8 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
   panel.querySelector("#accountSignOut").onclick = async (event) => {
     if (boot.mode === "fixture") { panel.querySelector("#accountStatus").textContent = "Demo account"; return; }
     if (!session?.csrf_token) { panel.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
-    event.target.disabled = true;
+    const button = event.currentTarget;
+    button.disabled = true;
     try {
       // The auth service responds with a redirect to /. Fetch must not follow
       // that redirect into a fresh login flow before we check revocation.
@@ -303,7 +304,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       if (after.status !== 401) throw new Error();
       session = null;
       boundary.revoke('signed-out');
-    } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; } }
+    } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; button.disabled = false; } }
   };
   if (pathname === "/calls") root.querySelector(".app-shell-call-availability").hidden = true;
   if (pathname !== "/calls" && !root.getElementById("callModeDialog")) {
@@ -312,7 +313,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       const call = await mountGlobalCallMode(root);
       if (boundary?.revoked) { call.dispose(); return; }
       root.querySelector("#callModeButton").onclick = () => { close(); call.open(); };
-      root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
+      root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.currentTarget);
     });
   }
 }
