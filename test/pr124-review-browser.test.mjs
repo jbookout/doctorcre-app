@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { parseNeeds } from '../src/ui/deal-client-needs-model.ts';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
@@ -56,6 +57,10 @@ async function liveDetailRead(page) {
  const reads={status:200,delayed:null,delayNext:false};
  await page.route('**/mcp',async route=>{
    const request=route.request().postDataJSON();
+   if (request.params.name === 'read-deal-client-needs-v1') {
+     const payload = parseNeeds({schema_version:'client-needs.v1',subject:'deal',subject_id:request.params.arguments.deal,as_of:new Date().toISOString(),state:'empty',rows:[],next_offset:null},{deal:request.params.arguments.deal,client:wire.client_id,offset:0});
+     return route.fulfill({status:reads.status,contentType:'application/json',body:JSON.stringify({jsonrpc:'2.0',id:request.id,result:{content:[{type:'text',text:JSON.stringify(payload)}]}})});
+   }
    assert.equal(request.params.name,'get-deal-room');
    const status=reads.status;
    if(reads.delayNext) {

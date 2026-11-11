@@ -181,6 +181,7 @@ test("new need creates once, pagination advances, unavailable reads reload and n
   await model.load();
   await model.load(true);
   assert.equal(calls[2]?.offset, 50);
+  assert.equal(model.rows.length, 1, "Live pages keep one card per need identity");
   model.edit();
   const save = model.save({ ...need, vendor: id, withdrawn: false });
   assert.equal(String(model.state.kind), "pending");

@@ -144,7 +144,7 @@ export function createNeedAuthor(
         { ...options, offset },
       );
       if (seq !== generation) return;
-      rows = more ? [...rows, ...page.rows] : page.rows;
+      rows = more ? [...new Map([...rows, ...page.rows].map((need) => [need.id, need])).values()] : page.rows;
       next = page.next_offset;
       set({ kind: "listing" });
     } catch {
