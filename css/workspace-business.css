@@ -281,3 +281,7 @@ body.record-open { overflow: hidden; }
   .vendor-meetings:not([open]) > summary { min-height: 60px; }
   .vendor-meetings:not([open]) > summary h2 { font-size: var(--font-size-1); }
 }
+
+.back-home { display: inline-flex; align-items: center; min-height: var(--touch); min-width: var(--touch); }
+
+.vendor-meetings a { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; }
