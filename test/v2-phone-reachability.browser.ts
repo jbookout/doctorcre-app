@@ -241,46 +241,72 @@ for (const focusable of [false, true])
     }
   });
 
-for (const child of ["text", "decoration", "action"])
-  test(`Self-listener button ownership with ${child}`, async (t) => {
-    const browser = await chromium.launch();
-    t.after(() => browser.close());
-    const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
-    await page.setContent(
-      `<main><button id="retry" style="width:60px;height:60px;padding:0">${child === "text" ? "Retry" : child === "decoration" ? "<span>Retry</span>" : '<span id="small" data-action="retry" role="button" tabindex="0" style="display:block;width:20px;height:20px">X</span>'}</button></main>`,
-    );
-    await page.evaluate((child) => {
-      const button = document.querySelector("button");
-      if (!button) throw Error("Retry button missing");
-      const call = {
-        handleClick(target: EventTarget | null) {
-          Reflect.set(window, "tapped", target instanceof Element ? target.id : "");
-        },
-      };
-      button.onclick =
-        child === "action"
-          ? (event) => {
-              if (event.target instanceof Element && event.target.closest("[data-action]"))
-                Reflect.set(window, "tapped", "small");
-            }
-          : (event) => call.handleClick(event.target);
-    }, child);
-    await page.locator(child === "action" ? "#small" : "#retry").tap();
-    assert.equal(
-      await page.evaluate(() => Reflect.get(window, "tapped")),
-      child === "action" ? "small" : child === "decoration" ? "" : "retry",
-    );
-    for (const reverse of [false, false, true]) {
-      const audit = await inspectPhoneAccessibility(page, page.mainFrame(), reverse);
-      if (child === "action") {
-        assert.equal(audit.small.find((target) => target.id === "small")?.width, 20);
-        assert.equal(audit.small.find((target) => target.id === "small")?.height, 20);
-      } else {
-        assert.deepEqual(audit.small, []);
+for (const size of [20, 60])
+  for (const child of ["text", "decoration", "action"])
+    test(`Self-listener button ownership with ${child} at ${size}px`, async (t) => {
+      const browser = await chromium.launch();
+      t.after(() => browser.close());
+      const page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+      await page.setContent(
+        `<main><button id="retry" style="width:${size}px;height:${size}px;padding:0">${child === "text" ? "Retry" : child === "decoration" ? "<span>Retry</span>" : '<span id="small" data-action="retry" style="display:block;width:20px;height:20px">X</span>'}</button></main>`,
+      );
+      await page.evaluate((child) => {
+        const button = document.querySelector("button");
+        if (!button) throw Error("Retry button missing");
+        const call = {
+          handleClick(target: EventTarget | null) {
+            Reflect.set(window, "tapped", target instanceof Element ? target.id : "");
+          },
+        };
+        button.onclick =
+          child === "action"
+            ? (event) => {
+                if (event.target instanceof Element && event.target.closest("[data-action]"))
+                  Reflect.set(window, "tapped", "small");
+              }
+            : (event) => call.handleClick(event.target);
+      }, child);
+      await page.locator(child === "action" ? "#small" : "#retry").tap();
+      assert.equal(
+        await page.evaluate(() => Reflect.get(window, "tapped")),
+        child === "action" ? "small" : child === "decoration" ? "" : "retry",
+      );
+      for (const reverse of [false, false, true]) {
+        const audit = await inspectPhoneAccessibility(page, page.mainFrame(), reverse);
+        if (child === "action") {
+          assert.equal(audit.small.find((target) => target.id === "small")?.width, 20);
+          assert.equal(audit.small.find((target) => target.id === "small")?.height, 20);
+        } else if (size === 20) {
+          assert.equal(audit.small.find((target) => target.id === "retry")?.width, 20);
+          assert.equal(audit.small.find((target) => target.id === "retry")?.height, 20);
+        } else {
+          assert.deepEqual(audit.small, []);
+        }
+        assert.deepEqual(audit.covered, []);
       }
-      assert.deepEqual(audit.covered, []);
-    }
+    });
+
+test("Self-listener with an independently listening child refuses opaque forwarding", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent(
+    '<button id="owner" style="width:60px;height:60px"><span id="small" style="display:block;width:20px;height:20px">X</span></button>',
+  );
+  await page.evaluate(() => {
+    const button = document.querySelector("button");
+    const small = document.getElementById("small");
+    if (!button || !small) throw Error("Targets missing");
+    const call = {
+      handleClick(target: EventTarget | null) {
+        Reflect.set(window, "tapped", target);
+      },
+    };
+    button.onclick = (event) => call.handleClick(event.target);
+    small.addEventListener("click", () => Reflect.set(window, "childTapped", true));
   });
+  await assert.rejects(inspectPhoneAccessibility(page), /unknown target dispatch semantics/);
+});
 
 for (const dispatch of ["dynamic selector", "target id"])
   test(`Unknown delegated dispatch refuses clean evidence: ${dispatch}`, async (t) => {
