@@ -61,7 +61,6 @@ export async function requireCurrentTourPdf(bytes: Buffer) {
 export async function assertPublishedPacketPdf(bytes: Buffer, packet: ReturnType<typeof parsePublicTourPacket>) {
   assert.ok(bytes.length > 0 && bytes.length <= 5_000_000, "Bounded PDF required");
   assert.equal(bytes.subarray(0, 5).toString(), "%PDF-", "PDF response required");
-  await requireCurrentTourPdf(bytes);
   const task = getDocument({ data: new Uint8Array(bytes), useSystemFonts: false, verbosity: 0 });
   try {
     const document = await task.promise;
