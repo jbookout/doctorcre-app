@@ -271,3 +271,7 @@ dialog::backdrop { background: var(--scrim); }
   .territory-evidence tr { display: grid; grid-template-columns: 1fr 1fr; padding-block: .5rem; }
   .territory-evidence td:last-child { grid-column: 1 / -1; }
 }
+
+
+.skip:not(:focus) { clip-path: inset(50%); }
+.skip:focus { min-width: 44px; min-height: 44px; align-content: center; }

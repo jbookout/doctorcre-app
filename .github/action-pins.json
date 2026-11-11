@@ -56,6 +56,15 @@
       "metadata_blob": "285103284016eb9cf223c22c150624f26c211886",
       "release_url": "https://github.com/mikepenz/action-junit-report/releases/tag/v6.7.0",
       "tag_url": "https://api.github.com/repos/mikepenz/action-junit-report/git/refs/tags/v6.7.0"
+    },
+    "actions/cache": {
+      "sha": "5a3ec84eff668545956fd18022155c47e93e2684",
+      "tag": "v4.2.3",
+      "release_url": "https://github.com/actions/cache/releases/tag/v4.2.3",
+      "runtime": "node20",
+      "canonical_tag_sha": "5a3ec84eff668545956fd18022155c47e93e2684",
+      "tag_url": "https://api.github.com/repos/actions/cache/git/refs/tags/v4.2.3",
+      "metadata_blob": "7af7458c1d5570d2bde23488e55b9f6991abe4eb"
     }
   }
 }
