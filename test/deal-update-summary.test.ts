@@ -316,3 +316,31 @@ test("late summary failure preserves the source-matched summary supplied by hist
   assert.equal(view.state().revision, "b");
   view.dispose();
 });
+test("retirement clears every settled summary and history state", async () => {
+  for (const phase of ["collapsed", "summary_error", "history_error", "continuation_error", "ready"]) {
+    let calls = 0;
+    const view = createDealUpdateSummary({
+      dealId: deal,
+      read: async (args) => {
+        calls++;
+        if (
+          phase === "summary_error" ||
+          (phase === "history_error" && calls === 2) ||
+          (phase === "continuation_error" && args.cursor)
+        )
+          throw Error();
+        return response("a", "older");
+      },
+      changed() {},
+    });
+    await view.refresh();
+    if (!["collapsed", "summary_error"].includes(phase)) await view.expand();
+    if (phase === "continuation_error") await view.more();
+    view.dispose();
+    assert.equal(view.state().retired, true, phase);
+    assert.equal(view.state().rows.length, 0, phase);
+    assert.equal(view.state().cursor, null, phase);
+    assert.equal(view.state().summary.kind, "idle", phase);
+    assert.equal(view.state().history.kind, "idle", phase);
+  }
+});
