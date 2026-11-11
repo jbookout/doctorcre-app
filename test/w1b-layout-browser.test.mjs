@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { animationsSettled, chromium, waitForAsync } from './browser-harness.mjs';
+import { animationsSettled, chromium, waitForAsync, WAIT_MS } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { workspace, detail, id, emptyQuietFollowUps } from './leads-workspace-fixture.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
 const contract = (await import("../js/routes.js")).routeContract;
-async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
+async function open(t,{holdPipelineBoot=false,width=1440,height=960,hasTouch=false,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height},hasTouch,timezoneId,reducedMotion:clock?'reduce':motion});
+  if(holdPipelineBoot) await page.addInitScript(()=>{
+    globalThis.__pipelineBoot = new Promise(resolve => { globalThis.__releasePipelineBoot = resolve; });
+  });
   if(clock) await page.clock.install({time:new Date(now)});
   if(deniedStorage) await page.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Unavailable','SecurityError');}});});
   const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
@@ -40,11 +43,29 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{type:'text',text:JSON.stringify(body)}]}})});
     }
     if(url.pathname.startsWith('/api/')||url.pathname==='/app-release') return route.fulfill({contentType:'application/json',body:'{}'});
+    if(holdPipelineBoot && url.pathname==='/js/pipeline.js'){
+      const source=await readFile(new URL('js/pipeline.js',root),'utf8');
+      const assignment='  state.client = resolved.mode';
+      assert.equal(source.split(assignment).length,2,'held boot targets exactly one pipeline client acquisition');
+      return route.fulfill({contentType:'text/javascript',body:source.replace(assignment,'  globalThis.__pipelineBootHeld = true; await globalThis.__pipelineBoot;\n'+assignment)});
+    }
     const file=url.pathname==='/deals'&&url.searchParams.get('view')==='board'?'pipeline.html':url.pathname==='/'&&url.searchParams.get('view')==='charts'?'charts.html':contract.routes[url.pathname]||url.pathname.slice(1);
     try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
-  const goto=async path=>{await page.goto('http://localhost'+path);await page.locator('#appSyncTime[datetime]').waitFor({state:'attached'});if(path.startsWith('/leads'))await page.locator('.lead-card').first().waitFor();};
-  return{page,goto,errors,writes};
+  const goto=async (path,{timeout=WAIT_MS}={})=>{
+    const deadline=performance.now()+timeout;
+    const remaining=()=>Math.max(1,deadline-performance.now());
+    try{
+      await page.goto('http://localhost'+path,{timeout:remaining()});
+      await page.locator('#appSyncTime[datetime]').waitFor({state:'attached',timeout:remaining()});
+      if(path.startsWith('/leads')) await page.locator('.lead-card').first().waitFor({timeout:remaining()});
+      if(path.startsWith('/deals?view=board')) await page.locator('.kanban-card[data-id="d14"]').waitFor({timeout:remaining()});
+    }catch(error){
+      try{await browser.close();}catch(cleanup){throw new AggregateError([error,cleanup],'Navigation and cleanup failed');}
+      throw error;
+    }
+  };
+  return{page,goto,errors,writes,close:()=>browser.close()};
 }
 const fits=async(page,label)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,label);
 
@@ -510,4 +531,47 @@ test('Recent moves screenshot evidence', async t => {
   await page.screenshot({animations:'disabled',path:`${process.env.MOVES_SCREENSHOT_DIR}/${width}-${theme}.png`});
   await page.close();
  }
+});
+
+test('pipeline acquisition refuses shell-only readiness and closes on deadline',async t=>{
+ const {page,goto}=await open(t,{holdPipelineBoot:true});
+ await assert.rejects(goto('/deals?view=board',{timeout:1500}),/Timeout/);
+ assert.equal(page.isClosed(),true);
+});
+
+test('pipeline acquisition waits for held boot before client use and drains after exercise',async t=>{
+ const {page,goto,close,errors}=await open(t,{holdPipelineBoot:true});
+ const acquiring=goto('/deals?view=board');
+ await page.locator('#appSyncTime[datetime]').waitFor({state:'attached'});
+ await page.waitForFunction(()=>globalThis.__pipelineBootHeld);
+ assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.client),null);
+ await page.evaluate(()=>globalThis.__releasePipelineBoot());
+ await acquiring;
+ assert.equal(await page.locator('.kanban-card[data-id="d14"]').isVisible(),true);
+ await page.evaluate(async()=>{
+   const {state}=await import('/js/pipeline.js');
+   await state.client.addDealNote({deal:'d14',text:'Synthetic held boot note',idempotency_key:'demo-held-boot'});
+ });
+ assert.deepEqual(errors,[]);
+ await close();
+ assert.equal(page.isClosed(),true);
+ await close();
+});
+
+test('closing during held pipeline acquisition rejects and leaves no late page',async t=>{
+ const {page,goto,close}=await open(t,{holdPipelineBoot:true});
+ const acquiring=goto('/deals?view=board');
+ const rejected=assert.rejects(acquiring,/closed/);
+ await page.waitForFunction(()=>globalThis.__pipelineBootHeld);
+ await close();
+ await rejected;
+ assert.equal(page.isClosed(),true);
+ await close();
+});
+
+test('failed pipeline navigation closes its context and preserves the failure',async t=>{
+ const {page,goto}=await open(t);
+ await page.route('**/deals?view=board',route=>route.abort('failed'));
+ await assert.rejects(goto('/deals?view=board'),/ERR_FAILED/);
+ assert.equal(page.isClosed(),true);
 });
