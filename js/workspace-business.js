@@ -125,7 +125,7 @@ async function syncVendorClientNeeds(host, vendor) {
       }
       if (result.kind !== 'payload' || result.isError) throw new Error('Client needs unavailable');
       return result.payload;
-    });
+    }, mountLocalTicker);
   } catch {
     if (host.isConnected) host.textContent = 'Client needs unavailable.';
   }

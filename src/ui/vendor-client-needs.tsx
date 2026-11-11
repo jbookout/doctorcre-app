@@ -7,7 +7,10 @@ type State =
   | { kind: "reading" | "unavailable" | "refused" }
   | { kind: "ready"; page: ReturnType<typeof parseClientNeeds> };
 type Load = (query: NeedsQuery, signal: AbortSignal) => Promise<unknown>;
-function ClientNeeds({ vendor, load }: { vendor: string; load: Load }) {
+type MountClock = (options: { tick: () => void; intervalMs: number; idleMs: number; maxTicks: number }) => {
+  dispose(): void;
+};
+function ClientNeeds({ vendor, load, mountClock }: { vendor: string; load: Load; mountClock: MountClock }) {
   const [query, setQuery] = useState<NeedsQuery>({ vendor, offset: 0, limit: 5 });
   const [state, setState] = useState<State>({ kind: "reading" });
   useEffect(() => {
@@ -23,6 +26,20 @@ function ClientNeeds({ vendor, load }: { vendor: string; load: Load }) {
       });
     return () => controller.abort();
   }, [query, load]);
+  useEffect(() => {
+    if (state.kind !== "ready" || !state.page.rows.length) return;
+    const deadline = Math.min(...state.page.rows.map((row) => Date.parse(row.fresh_until)));
+    const clock = mountClock({
+      intervalMs: Math.max(1, Math.min(2_147_483_647, deadline - Date.now())),
+      idleMs: Number.POSITIVE_INFINITY,
+      maxTicks: 1,
+      tick: () => {
+        const rows = state.page.rows.filter((row) => Date.parse(row.fresh_until) > Date.now());
+        setState({ kind: "ready", page: { ...state.page, rows, state: rows.length ? "ready" : "empty" } });
+      },
+    });
+    return () => clock.dispose();
+  }, [state, mountClock]);
   function read(offset = 0) {
     setState({ kind: "reading" });
     setQuery({ vendor, offset, limit: 5 });
@@ -125,7 +142,7 @@ function ClientNeeds({ vendor, load }: { vendor: string; load: Load }) {
     </section>
   );
 }
-export function mountVendorClientNeeds(host: HTMLElement, vendor: string, load: Load) {
+export function mountVendorClientNeeds(host: HTMLElement, vendor: string, load: Load, mountClock: MountClock) {
   const root = createRoot(host);
   let disposed = false;
   function dispose() {
@@ -135,6 +152,6 @@ export function mountVendorClientNeeds(host: HTMLElement, vendor: string, load: 
     flushSync(() => root.unmount());
   }
   window.addEventListener("doctorcre-session-invalidated", dispose);
-  flushSync(() => root.render(<ClientNeeds vendor={vendor} load={load} />));
+  flushSync(() => root.render(<ClientNeeds vendor={vendor} load={load} mountClock={mountClock} />));
   return { dispose };
 }

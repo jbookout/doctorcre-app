@@ -169,15 +169,6 @@ test("approved needs expire at the earliest deadline and on panel resume without
           const errors: string[] = [];
           page.on("pageerror", (error) => errors.push(error.message));
           await page.route("https://**", (route) => route.abort());
-          await page.route("**/api/v1/business/**", (route) => {
-            const body = directoryFixture(
-              route.request().url().replace(recorded.subject_id, "00000000-0000-4000-8000-000000000001"),
-              { now },
-            );
-            body.source.valid_until = new Date(now + 600_000).toISOString();
-            if (body.record) Reflect.set(body.record, "id", recorded.subject_id);
-            return route.fulfill({ json: body });
-          });
           await page.route("**/mcp", (route) => {
             const req = route.request().postDataJSON();
             const needs = req.params.name === "read-vendor-client-needs-v1";
@@ -188,6 +179,25 @@ test("approved needs expire at the earliest deadline and on panel resume without
                 id: req.id,
                 result: { content: [{ type: "text", text: JSON.stringify(needs ? response : {}) }] },
               },
+            });
+          });
+          await page.route("**/js/needs-clock-probe.js", (route) =>
+            route.fulfill({
+              contentType: "application/javascript",
+              body: `import { mountVendorClientNeeds } from '/js/ui-vendor-client-needs.js';
+              import { mountLocalTicker } from '/js/visibility-poll.mjs';
+              import { createMcpRequests } from '/js/mcp-requests.mjs';
+              const request = createMcpRequests({ fetchImpl: fetch });
+              mountVendorClientNeeds(document.querySelector('main'), ${JSON.stringify(recorded.subject_id)},
+                async (query, signal) => (await request('read-vendor-client-needs-v1', query, { signal })).payload,
+                mountLocalTicker);`,
+            }),
+          );
+          await page.route("**/vendors?*", async (route) => {
+            const response = await route.fetch();
+            await route.fulfill({
+              response,
+              body: '<!doctype html><html><head><script type="module" src="/js/needs-clock-probe.js"></script></head><body><main></main></body></html>',
             });
           });
           const navigation = await page.goto(`${server.origin}/vendors?record=${recorded.subject_id}`);
