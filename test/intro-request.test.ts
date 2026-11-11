@@ -338,3 +338,79 @@ test("an unavailable fresh read blocks writing without claiming the source chang
   assert.equal(h.model.view().status, "changed_source");
   assert.equal(h.model.view().message, "This offered path could not be verified. Refresh and review it again.");
 });
+
+for (const mutation of ["restricted", "removed", "stale", "changed", "already-requested"])
+  test(`uncommitted recovery revalidates ${mutation} before any new write`, async () => {
+    const h = harness();
+    h.model.open(h.network, offerId);
+    const write = h.client.linkParties;
+    h.client.linkParties = async () => { throw Error("failed before commit"); };
+    await h.model.submit("2026-11-10", "Note", true);
+    assert.equal(h.model.view().status, "unknown");
+    h.client.linkParties = write;
+    assert.ok(h.network.nodes[0]);
+    assert.ok(h.network.edges[0]);
+    if (mutation === "restricted") h.network.nodes[0].restricted = true;
+    if (mutation === "removed") h.network.suggestions = [];
+    if (mutation === "stale") h.network.valid_until = "2000-01-01T00:00:00Z";
+    if (mutation === "changed") h.network.nodes[0].name = "Changed identity";
+    if (mutation === "already-requested") h.network.edges.push({ ...h.network.edges[0], kind: "intro_requested" });
+    await h.model.recover();
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.model.view().status, "changed_source");
+  });
+
+test("committed recovery remains possible after offer suppression and endpoint restriction", async () => {
+  const h = harness();
+  h.model.open(h.network, offerId);
+  h.lost();
+  await h.model.submit("2026-11-10", "Note", true);
+  assert.ok(h.network.nodes[0]);
+  h.network.nodes[0].restricted = true;
+  h.network.suggestions = [];
+  await h.model.recover();
+  assert.equal(h.model.view().status, "confirmed");
+  assert.equal(h.network.edges.filter(e => e.kind === "intro_requested").length, 1);
+});
+
+test("uncommitted recovery retains its key when current eligibility is verified", async () => {
+  const h = harness();
+  h.model.open(h.network, offerId);
+  const write = h.client.linkParties;
+  const attempted: Write[] = [];
+  h.client.linkParties = async args => { attempted.push(args); throw Error("failed before commit"); };
+  await h.model.submit("2026-11-10", "Note", true);
+  h.client.linkParties = write;
+  await h.model.recover();
+  assert.equal(h.model.view().status, "confirmed");
+  assert.deepEqual(h.calls[0], attempted[0]);
+});
+
+for (const failure of [{status:401}, {status:403}, {code:"session_changed"}])
+  test(`preflight session refusal clears the review ${JSON.stringify(failure)}`, async () => {
+    const h = harness();
+    h.model.open(h.network, offerId);
+    h.client.getRelationshipNetwork = async () => { throw Object.assign(Error("Session ended"), failure); };
+    await h.model.submit("2026-11-10", "Private note", true);
+    assert.equal(h.model.view().status, "retired");
+    assert.equal(h.model.view().path, null);
+    assert.equal(h.model.view().request, null);
+    assert.equal(h.calls.length, 0);
+  });
+
+for (const rejects of [false, true])
+  test(`retirement ignores a pending preflight that ${rejects ? "rejects" : "resolves"} later`, async () => {
+    const h = harness();
+    h.model.open(h.network, offerId);
+    const pending = Promise.withResolvers<ReturnType<typeof fixture>>();
+    h.client.getRelationshipNetwork = () => pending.promise;
+    const sending = h.model.submit("2026-11-10", "Private note", true);
+    h.model.retire();
+    if (rejects) pending.reject(Object.assign(Error("Session ended"), {status:401}));
+    else pending.resolve(h.network);
+    await sending;
+    assert.equal(h.model.view().status, "retired");
+    assert.equal(h.model.view().path, null);
+    assert.equal(h.model.view().request, null);
+    assert.equal(h.calls.length, 0);
+  });
