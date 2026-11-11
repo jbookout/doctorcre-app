@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { Ajv } from "ajv";
-import { chromium } from "playwright";
+import { chromium, type Page } from "playwright";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { proveExact } from "../scripts/prove-exact-action-cards.ts";
-import { settles } from "./browser-harness.mjs";
+import { cdpEndpoint } from "./cdp-fixture.ts";
 
 const rows: {
   ref: string;
@@ -84,6 +84,55 @@ async function fixture() {
   });
   return { ...server, calls };
 }
+async function gotoEndedSession(page: Page, url: string) {
+  await page.goto(url);
+  await page.waitForURL("**/public-shell/session-ended.html?**");
+}
+
+test("session refusal replaces initial navigation before its pending load and discloses no private card", async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const events: string[] = [];
+  try {
+    const page = await browser.newPage();
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) events.push(new URL(frame.url()).pathname);
+    });
+    await page.route("**/a/**", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        body: (await response.text()).replace("</body>", '<img src="/held-initial-load"></body>'),
+      });
+    });
+    await page.route("**/held-initial-load", async (route) => {
+      await gate;
+      await route.fulfill({ body: "" });
+    });
+    await page.route("**/auth/session", async (route) => {
+      events.push("session 401");
+      await route.fulfill({ status: 401, json: { error: "not_authenticated" } });
+    });
+    await gotoEndedSession(page, `${server.origin}/a/${call.ref}?mode=live`);
+    assert.deepEqual(events.slice(0, 3), [`/a/${call.ref}`, "session 401", "/public-shell/session-ended.html"]);
+    assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
+    const login = page.locator("a[href*=return_to]");
+    await login.waitFor();
+    assert.equal(
+      new URL((await login.getAttribute("href")) || "", server.origin).searchParams.get("return_to"),
+      `/a/${call.ref}`,
+    );
+  } finally {
+    release();
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("cold navigation and existing tab show all three exact cards without inbox reads at phone and desktop sizes", async () => {
   const server = await fixture(),
     browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
@@ -197,17 +246,7 @@ test("production proof CLI exits 0, 1 and 78 through a real browser fixture", as
       args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
     });
   try {
-    const session = await browser.newBrowserCDPSession();
-    const result = await session.send("Browser.getBrowserCommandLine");
-    const directory = result.arguments
-      .find((arg: string) => arg.startsWith("--user-data-dir="))
-      ?.slice("--user-data-dir=".length);
-    assert.ok(directory);
-    let port = "";
-    await settles(async () => {
-      port = (await readFile(`${directory}/DevToolsActivePort`, "utf8")).split("\n")[0] || "";
-      assert.match(port, /^[1-9]\d*$/);
-    });
+    const endpoint = await cdpEndpoint(browser);
     const args = [
       "scripts/prove-exact-action-cards.ts",
       "--origin",
@@ -229,7 +268,7 @@ test("production proof CLI exits 0, 1 and 78 through a real browser fixture", as
       "--foreign-ref",
       foreignRef,
       "--cdp-url",
-      `http://127.0.0.1:${port}`,
+      endpoint,
     ];
     assert.equal(JSON.parse((await exec(process.execPath, args, { timeout: 45000 })).stdout).status, "passed");
     const wrong = [...args];
