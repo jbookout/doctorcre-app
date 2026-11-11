@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
-import type { Page } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { chromium } from "playwright";
 import { launchProofBrowser, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
@@ -67,12 +67,19 @@ export async function prove(options: {
     await requireContainingRelease(options.expectedCommit, release.source_commit, { signal: controller.signal });
     if (!options.tourUrl || new URL(options.tourUrl).origin !== options.origin || !options.storageState)
       throw insufficient();
-    browser = await launchProofBrowser(
-      chromium,
-      { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() },
-      { signal: controller.signal },
-    );
-    const context = await browser.newContext({ storageState: options.storageState, serviceWorkers: "block" });
+    let context: BrowserContext;
+    let page: Page;
+    try {
+      browser = await launchProofBrowser(
+        chromium,
+        { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() },
+        { signal: controller.signal },
+      );
+      context = await browser.newContext({ storageState: options.storageState, serviceWorkers: "block" });
+      page = await context.newPage();
+    } catch (error) {
+      throw Object.assign(insufficient(), { cause: error });
+    }
     let writes = 0,
       requests = 0;
     await context.route("**/*", (route) => {
@@ -84,7 +91,6 @@ export async function prove(options: {
       }
       return route.continue();
     });
-    const page = await context.newPage();
     page.setDefaultTimeout(remaining());
     const observations = [];
     for (const width of [1440, 390])

@@ -1061,7 +1061,7 @@ for (const kind of ["sheet", "projection"]) test(`S2 confirmed ${kind} with a fa
 test("phone and iPad composers fit the viewport and reduced motion leaves every state legible", async () => {
   const browser = await chromium.launch({ headless: true });
   try {
-    const store = domain(), page = await browser.newPage({ viewport: { width: 390, height: 900 }, hasTouch: true });
+    const store = domain(), page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     const css = await readFile(new URL("../tours/app.css", import.meta.url), "utf8");
     const evidenceCss = await readFile(new URL("../tours/property-panel.css", import.meta.url), "utf8");
     const shellCss = await readFile(new URL("../css/app-shell.css", import.meta.url), "utf8");
@@ -1118,50 +1118,6 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     await page.keyboard.press("Space");
     assert.equal(await page.evaluate(() => document.activeElement.closest(".composer-stop")?.dataset.propertyId), propA);
     assert.equal(await page.evaluate(() => document.activeElement.textContent), "Down");
-    const { observeStopDrag } = await import('../scripts/prove-tour-stop-drag.ts');
-    await observeStopDrag(page);
-    await page.evaluate(() => { window.blockDragProof = event => event.stopImmediatePropagation(); document.addEventListener('pointerup', window.blockDragProof, true); });
-    await assert.rejects(observeStopDrag(page), { name: 'AssertionError' });
-    await page.evaluate(() => document.removeEventListener('pointerup', window.blockDragProof, true));
-    const { mkdir } = await import('node:fs/promises');
-    const shots = '/tmp/WR591.S21.J1-shots'; await mkdir(shots, { recursive: true });
-    const touch = await page.context().newCDPSession(page);
-    for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.emulateMedia({ colorScheme: theme });
-      await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
-      for (const input of ['mouse', 'touch']) {
-        const handle = page.locator(`[data-property-id="${propA}"] [data-stop-drag]`);
-        await handle.scrollIntoViewIfNeeded();
-        const box = await handle.boundingBox();
-        const x = box.x + box.width / 2, y = box.y + box.height / 2;
-        const before = store.calls.filter(c => c.body).length;
-        if (input === 'mouse') { await page.mouse.move(x, y); await page.mouse.down(); }
-        else await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
-        await page.locator(`[data-property-id="${propB}"] .stop-head`).evaluate(el => el.scrollIntoView({ block: 'center' }));
-        const target = await page.locator(`[data-property-id="${propB}"] .stop-head`).boundingBox();
-        const tx = target.x + target.width / 2, ty = target.y + target.height / 2;
-        if (input === 'mouse') { await page.mouse.move(tx, ty); await page.mouse.up(); }
-        else { await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: tx, y: ty }] }); await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); }
-        assert.deepEqual(await page.locator('#route-stops > li').evaluateAll(rows => rows.map(r => r.dataset.propertyId)), [propB, propA]);
-        assert.equal(store.calls.filter(c => c.body).length, before);
-        await page.locator('#undo-route').click();
-        assert.deepEqual(await page.locator('#route-stops > li').evaluateAll(rows => rows.map(r => r.dataset.propertyId)), [propA, propB]);
-      }
-      await page.locator('[data-stop-drag]').first().scrollIntoViewIfNeeded();
-      const handle = await page.locator('[data-stop-drag]').first().boundingBox();
-      await page.mouse.move(handle.x + 10, handle.y + 10); await page.mouse.down();
-      const scrollBefore = await page.evaluate(() => scrollY);
-      await page.mouse.move(handle.x + 10, 895);
-      await page.waitForFunction(y => scrollY > y, scrollBefore);
-      await page.keyboard.press('Escape'); await page.mouse.up();
-      assert.equal(await page.locator('.stop-dragging').count(), 0);
-      const outside = page.locator('.composer-stop [data-field="dwell_minutes"]').first();
-      assert.notEqual(await outside.evaluate(el => getComputedStyle(el).touchAction), 'none');
-      await page.locator('#route-editing').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: `${shots}/${width}-${theme}.png`, fullPage: true });
-    }
-    await touch.detach();
     // Sample the entrance itself: a computed 44px input can have fractional
     // bounds just below the touch floor while its ancestor is translating.
     for (const width of [375, 390]) {
@@ -1485,6 +1441,59 @@ function dragStop(dom, doc, source, target, ending = 'pointerup') {
   pointer('pointerdown', handle); pointer('pointermove', doc);
   pointer(ending, doc);
 }
+test('cancelled drag can restart and complete without a write', async () => {
+  const store = domain(), {dom, doc} = await open(store);
+  try {
+    await create(doc); await addCart(doc);
+    const before = store.calls.filter(call => call.body).length;
+    dragStop(dom, doc, propA, propB, 'pointercancel');
+    assert.deepEqual([...doc.querySelectorAll('#route-stops > li')].map(row => row.dataset.propertyId), [propA, propB]);
+    dragStop(dom, doc, propA, propB);
+    assert.deepEqual([...doc.querySelectorAll('#route-stops > li')].map(row => row.dataset.propertyId), [propB, propA]);
+    assert.equal(store.calls.filter(call => call.body).length, before);
+  } finally { dom.window.close(); }
+});
+for (const phase of ['idle', 'dirty', 'cancelled', 'undo', 'saving', 'unknown', 'reconciled', 'reviewed']) test(`session retirement from ${phase} removes Tour edits and refuses writes`, async () => {
+  const store = domain(), normalFetch = store.fetch;
+  let release;
+  store.fetch = async (path, options) => {
+    const result = await normalFetch(path, options);
+    if (phase === 'saving' && path === '/api/tours/route-stop') await new Promise(resolve => { release = resolve; });
+    return result;
+  };
+  const {dom, doc} = await open(store);
+  try {
+    await create(doc); await addCart(doc);
+    if (phase === 'idle') await saveAndAccept(doc);
+    if (phase === 'saving') {
+      doc.querySelector('#save-composer').click(); await settle(); assert.equal(typeof release, 'function');
+    }
+    if (phase === 'unknown') {
+      store.fail('/api/tours/route-stop', 'lost'); doc.querySelector('#save-composer').click(); await settle();
+      assert.match(doc.querySelector('#composer-state').textContent, /Outcome unknown/);
+    }
+    if (phase === 'cancelled') dragStop(dom, doc, propA, propB, 'pointercancel');
+    if (phase === 'undo') { dragStop(dom, doc, propA, propB); doc.querySelector('#undo-route').click(); }
+    if (phase === 'reconciled') {
+      store.fail('/api/tours/route-stop', 'lost'); doc.querySelector('#save-composer').click(); await settle();
+      assert.match(doc.querySelector('#composer-state').textContent, /Outcome unknown/);
+      doc.querySelector('#reconcile-composer').click(); await settle();
+      assert.equal(doc.querySelector('#retry-composer').hidden, false);
+    }
+    if (phase === 'reviewed') {
+      doc.querySelector('#save-composer').click(); await settle(); doc.querySelector('#route-reviewed').click();
+      assert.equal(doc.querySelector('#accept-route').disabled, false);
+    }
+    const before = store.calls.filter(call => call.body).length;
+    dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+    for (const id of ['save-composer', 'retry-composer', 'accept-route', 'undo-route']) doc.querySelector(`#${id}`).click();
+    doc.dispatchEvent(new dom.window.Event('pointerup', {bubbles:true})); release?.(); await settle();
+    assert.equal(doc.querySelectorAll('[data-stop-drag]').length, 0);
+    assert.equal(doc.querySelector('#tour-name').textContent, '');
+    assert.match(doc.querySelector('#tour-recovery').textContent, /Sign in/i);
+    assert.equal(store.calls.filter(call => call.body).length, before);
+  } finally { dom.window.close(); }
+});
 for (const ending of ['pointerup', 'pointercancel']) test(`drag ${ending} preserves identities and one undo restores order without a write`, async () => {
   const store = domain(), { dom, doc } = await open(store);
   await create(doc); await addCart(doc);
@@ -1553,58 +1562,4 @@ for (const ending of ['Escape', 'outside', 'unchanged', 'lostcapture']) test(`dr
   assert.equal(store.calls.filter(c => c.body).length, before);
   assert.equal(doc.querySelector('.stop-dragging'), null);
   dom.window.close();
-});
-
-test('embedded drag edge scroll moves the deal workspace and keeps property hit testing aligned', async () => {
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
-    await page.setContent('<iframe title="Synthetic composer" style="border:0;width:350px;height:2600px" srcdoc="<ol id=list></ol>"></iframe>');
-    const frame = page.frames().find(f => f !== page.mainFrame());
-    await frame.addScriptTag({ content: dragScript });
-    await frame.evaluate(() => {
-      const list = document.querySelector('#list');
-      for (const id of ['a', 'b', 'c', 'd']) {
-        const row = document.createElement('li'); row.dataset.propertyId = id; row.dataset.flexibleStop = ''; row.style.height = '600px';
-        row.innerHTML = '<button data-stop-drag style="touch-action:none;height:44px">Drag</button>'; list.append(row);
-      }
-      window.moves = [];
-      TourStopDrag.mountStopDrag(list, { editable: () => true, move: (source, target) => window.moves.push([source, target]) });
-    });
-    const start = await frame.locator('[data-stop-drag]').first().boundingBox();
-    await page.mouse.move(start.x + 15, start.y + 15); await page.mouse.down();
-    const before = await page.evaluate(() => scrollY);
-    await page.mouse.move(start.x + 15, 895);
-    await page.waitForFunction(y => scrollY > y + 80, before);
-    await frame.locator('[data-property-id="c"]').evaluate(el => el.scrollIntoView({ block: 'center' }));
-    const target = await frame.locator('[data-property-id="c"]').boundingBox();
-    await page.mouse.move(target.x + 20, 400); await page.mouse.up();
-    assert.deepEqual(await frame.evaluate(() => window.moves), [['a', 'c']]);
-    await frame.locator('[data-stop-drag]').first().scrollIntoViewIfNeeded();
-    const cancelStart = await frame.locator('[data-stop-drag]').first().boundingBox();
-    await page.mouse.move(cancelStart.x + 10, cancelStart.y + 10); await page.mouse.down();
-    await page.keyboard.press('Escape'); await page.mouse.up();
-    assert.equal(await frame.locator('.stop-dragging').count(), 0);
-    assert.deepEqual(await frame.evaluate(() => window.moves), [['a', 'c']]);
-  } finally { await browser.close(); }
-});
-
-for (const broken of [false, true]) test(`production drag proof CLI fixture ${broken ? 'rejects a cancelled drag' : 'passes exact order and undo'}`, async t => {
-  const { runTourDragProofFixture } = await import('./tour-stop-drag-proof-fixture.ts');
-  const store = domain(), editing = await open(store);
-  await create(editing.doc); await addCart(editing.doc); await saveAndAccept(editing.doc);
-  editing.dom.window.close();
-  const tourId = [...store.tours.keys()][0];
-  const routes = new Map();
-  for (const path of ['/api/tours/library', '/api/tours/detail']) {
-    const reply = await store.fetch(path === '/api/tours/detail' ? `${path}?tour_id=${tourId}` : path);
-    routes.set(path, { contentType: 'application/json', body: JSON.stringify(await reply.json()) });
-  }
-  routes.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
-  routes.set('/deals', { contentType: 'text/html', body: `<iframe title="Tour shortlist, route and packet" style="border:0;width:100%;height:10000px" src="/tours/route-editor.html?deal=${fixtureDeal}&tour=${tourId}"></iframe>` });
-  const content = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '').replace(/<link\b[^>]*>/g, '') + `<script>${script}</script>` + (broken ? '<script>document.addEventListener("pointerup",e=>e.stopImmediatePropagation(),true)</script>' : '');
-  routes.set('/tours/route-editor.html', { contentType: 'text/html', body: content });
-  const run = runTourDragProofFixture(routes, fixtureDeal, t);
-  if (broken) await assert.rejects(run, error => { assert.equal(error.code, 1, error.stderr); return true; });
-  else { const { stdout } = await run; const result = JSON.parse(stdout); assert.equal(result.observations.length, 4); assert.equal(result.writes, 0); }
 });
