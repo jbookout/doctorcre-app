@@ -86,7 +86,7 @@ export async function prove({
         await page.setViewportSize({ width, height: 900 });
         await page.emulateMedia({ colorScheme: theme });
         await page.evaluate(async () => {
-          const modulePath = "/js/ui-host.js";
+          const modulePath = "/js/ui-host.generated.js";
           const api: { mountAskComposer: MountComposer } = await import(modulePath);
           const mount = api.mountAskComposer;
           if (typeof mount !== "function") throw Error("mountAskComposer export missing");

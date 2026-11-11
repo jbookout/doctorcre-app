@@ -67,7 +67,7 @@ test('bounded DOM, idempotent mounting, independent block reset and disposal',as
  const page=await browser.newPage();t.after(()=>page.close());
  await page.goto(server.origin+'/doc-chats');
  await page.evaluate(async()=>{
-  const api=await import('/js/ui-answers.js');
+  const api=await import('/js/ui-answers.generated.js');
   const host=document.createElement('div');host.id='reader-test';document.body.append(host);
   const columns=Array.from({length:20},(_,i)=>({key:`c${i}`,label:`Column ${i}`,type:'text'}));
   const table={type:'table.v1',id:'max',columns,rows:Array.from({length:200},()=>Object.fromEntries(columns.map(c=>[c.key,{value:null}])))};
@@ -116,7 +116,7 @@ test('long chart labels stay readable within a 390px page on focus and hover',as
    await page.goto(server.origin+'/doc-chats');
    const label='x'.repeat(2000),columnLabel=longCaption?'y'.repeat(200):'Rent';
    await page.evaluate(async({kind,label,columnLabel})=>{
-    const api=await import('/js/ui-answers.js');
+    const api=await import('/js/ui-answers.generated.js');
     const turn=document.createElement('li');turn.className='turn';
     const host=document.createElement('div');host.className='turn-answer';host.id='long-answer';
     turn.append(host);document.querySelector('#turnList').append(turn);

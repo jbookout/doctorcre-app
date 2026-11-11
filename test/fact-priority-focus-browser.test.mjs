@@ -21,7 +21,7 @@ test('priority is keyboard reachable and Enter clears the selection', async t =>
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage(); await page.goto(server.origin);
   await page.evaluate(async recordings => {
-    const { mountFactReview } = await import('/js/ui-facts.js');
+    const { mountFactReview } = await import('/js/ui-facts.generated.js');
     const { createLiveClient } = await import('/js/live-client.js');
     const { FACT_TERMS } = await import('/js/client.js');
     const client = createLiveClient({ fetchImpl: async (_url, init) => Response.json({ result: { content: [{ type: 'text', text: JSON.stringify(JSON.parse(init.body).params.name === 'list-fact-review' ? recordings.initial : recordings.documents) }] } }) });

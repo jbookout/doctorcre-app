@@ -1,4 +1,4 @@
-import { mountWatchControl } from './ui-watches.js';
+import { mountWatchControl } from './ui-watches.generated.js';
 import { workCard } from './work-card.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
@@ -1095,7 +1095,7 @@ function mountChecklist(detail) {
     update(value) { latest = value; mounted?.update({dealId: value.deal.id, checklist: value.checklist}); },
     dispose() { retired = true; mounted?.dispose(); },
   };
-  void import('./ui-checklist.js').then(({mountDealChecklist}) => {
+  void import('./ui-checklist.generated.js').then(({mountDealChecklist}) => {
     if (retired) return;
     mounted = mountDealChecklist(host, {dealId: latest.deal.id, checklist: latest.checklist});
   }).catch(() => { if (!retired) host.textContent = 'Checklist unavailable. Reopen the deal to try again.'; });
@@ -1285,7 +1285,7 @@ function paintPanel(detail) {
     observer.disconnect();
     terms.textContent = 'Loading terms…';
     try {
-      const { mountFactReview } = await import('./ui-facts.js');
+      const { mountFactReview } = await import('./ui-facts.generated.js');
       if (disposed) return;
       terms.replaceChildren();
       mounted = mountFactReview(terms, { client: state.client, entityRef: detail.deal.id, terms: FACT_TERMS });
@@ -1314,7 +1314,7 @@ function paintPanel(detail) {
       marketLoading = true;
       root.textContent = 'Loading comparable terms…';
       try {
-        const { mountMarketTerms } = await import('./ui-market.js');
+        const { mountMarketTerms } = await import('./ui-market.generated.js');
         if (marketDisposed) return;
         const element = document.createElement('div');
         const mounted = mountMarketTerms(element, { client: state.client, entityRef: detail.deal.id, submarket: detail.deal.submarket, useType: detail.deal.use_type, dealName: ref => { const match = state.deals.get(ref); return match ? dealTitle(match) : null; } });
@@ -1335,7 +1335,7 @@ function paintPanel(detail) {
       root.textContent = 'Loading tours…';
       try {
         const [{ mountDealTours }, { createPlannerClient }] = await Promise.all([
-          import('./ui-deal-tours.js'), import('../tours/planner-client.js'),
+          import('./ui-deal-tours.generated.js'), import('../tours/planner-client.js'),
         ]);
         if (toursDisposed) return;
         root.replaceChildren();
@@ -1361,7 +1361,7 @@ function paintPanel(detail) {
       const root = $('workspace-documents');
       root.textContent = 'Loading documents…';
       try {
-        const { mountDealDocuments } = await import('./ui-deal-documents.js');
+        const { mountDealDocuments } = await import('./ui-deal-documents.generated.js');
         if (documentsDisposed) return;
         root.replaceChildren();
         documentsMounted = mountDealDocuments(root, { dealId: detail.deal.id, client: state.client });
@@ -1374,6 +1374,8 @@ function paintPanel(detail) {
       } finally { documentsLoading = false; }
     },
     refresh() { return documentsMounted?.refresh(); },
+    hasUnsavedChanges() { return documentsMounted?.hasUnsavedChanges() || false; },
+    confirmLeave() { return documentsMounted?.confirmLeave() ?? true; },
     dispose() { documentsDisposed = true; documentsMounted?.dispose(); },
   };
   selectWorkspaceTab(workspaceTab);
@@ -1381,6 +1383,7 @@ function paintPanel(detail) {
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
+  if (!fromHistory && dealDocumentsPanel && !dealDocumentsPanel.confirmLeave()) return;
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   disposeChecklist();
   disposeWatchControl();
@@ -1437,6 +1440,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   }
 }
 async function closeWorkspace({ fromHistory = false } = {}) {
+  if (!fromHistory && dealDocumentsPanel && !dealDocumentsPanel.confirmLeave()) return;
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   disposeChecklist();
   disposeWatchControl();
@@ -1708,7 +1712,7 @@ function wire() {
       if (destinationIndex !== workspaceHistoryIndex) { history.go(workspaceHistoryIndex - destinationIndex); return; }
       const restored = restoreTourHistory; restoreTourHistory = null; restored(); return;
     }
-    if (dealToursPanel?.hasUnsavedChanges()) {
+    if (dealToursPanel?.hasUnsavedChanges() || dealDocumentsPanel?.hasUnsavedChanges()) {
       const distance = destinationIndex - workspaceHistoryIndex;
       if (!distance) return;
       const restored = new Promise(resolve => { restoreTourHistory = resolve; });
@@ -1716,7 +1720,7 @@ function wire() {
       if (departurePending) return;
       departurePending = true;
       await restored;
-      const leave = await dealToursPanel?.confirmLeave();
+      const leave = (dealDocumentsPanel?.confirmLeave() ?? true) && (await dealToursPanel?.confirmLeave() ?? true);
       departurePending = false;
       if (leave) history.go(distance);
       return;

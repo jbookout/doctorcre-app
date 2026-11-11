@@ -13,6 +13,6 @@ export default {
   entry: [...config.entry, ...entries.map(({ path }) => path)],
   paths: {
     ...config.paths,
-    ...Object.fromEntries(entries.map(({ name, path }) => [`/js/${name}.js`, [path]])),
+    ...Object.fromEntries(entries.map(({ name, path }) => [`/js/${name}.generated.js`, [path]])),
   },
 };

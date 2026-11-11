@@ -21,11 +21,15 @@ export type Attachment = {
   bytes: number;
 };
 export type Material = Omit<Attachment, "attachment_id">;
-export function parseReservation(value: unknown, deal: string) {
+export function parseReservation(
+  value: unknown,
+  deal: string,
+  destination: "documents" | "deliverables" = "documents",
+) {
   if (
     !record(value) ||
     value.ok !== true ||
-    value.schema_version !== "deal-document-intake.v1" ||
+    value.schema_version !== (destination === "documents" ? "deal-document-intake.v1" : "deal-deliverables.v1") ||
     !record(value.deliverable)
   )
     throw Error("Invalid reservation");

@@ -37,7 +37,7 @@ async function fixture(t,mode='equal'){
   const source={older,descendant,unrelated,unknown:'f'.repeat(40)}[mode]||expectedCommit;
   const snapshot=new Map(assets);
   if(mode==='failure'||mode==='near-miss'){
-    const row=snapshot.get('/js/ui-reasons.js');snapshot.set('/js/ui-reasons.js',{...row,body:row.body.toString().replaceAll('matching loaded',mode==='failure'?'incorrect loaded':'1 matching loaded')});
+    const row=snapshot.get('/js/ui-reasons.generated.js');snapshot.set('/js/ui-reasons.generated.js',{...row,body:row.body.toString().replaceAll('matching loaded',mode==='failure'?'incorrect loaded':'1 matching loaded')});
   }
   const server=await startWorkerFixture({assets:snapshot,env:{APP_ENV:'production',GIT_SHA:source,CARR:{fetch:async request=>{
     if(new URL(request.url).pathname==='/mcp'){

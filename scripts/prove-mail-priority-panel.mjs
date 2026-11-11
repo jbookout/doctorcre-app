@@ -53,7 +53,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     if (!['ready', 'empty'].includes(raw?.state)) throw unavailable('Natural mailbox response unavailable');
     await bounded(page.waitForFunction(() => document.querySelector('section[aria-label="Mail priorities"]')?.getAttribute('aria-busy') === 'false', null, { timeout: remaining() }));
     const assertions = await bounded(page.evaluate(async raw => {
-      const { parseMailPage } = await import('/js/ui-mail-priorities.js');
+      const { parseMailPage } = await import('/js/ui-mail-priorities.generated.js');
       const snapshot = parseMailPage(raw);
       const host = document.querySelector('section[aria-label="Mail priorities"]');
       if (!host) throw Error('Mail priorities panel missing');

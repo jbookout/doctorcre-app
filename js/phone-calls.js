@@ -171,7 +171,7 @@ async function review(id) {
   $('phoneReview').insertAdjacentHTML('afterbegin', questions.length ? `<section id="phoneQuestions"><h3>Questions to answer</h3>${questions.map(q => `<form class="phone-row" data-question="${esc(q.id)}"><p>${esc(q.question)}</p><label>Answer <textarea name="answer" maxlength="1000" required ${answering.has(id + ':' + q.id) ? 'disabled' : ''} ${answers.has(id + ':' + q.id) ? 'readonly' : ''}>${esc(answers.get(id + ':' + q.id)?.answer || '')}</textarea></label><button type="submit" ${answering.has(id + ':' + q.id) ? 'disabled' : ''}>Submit answer</button><p role="status"></p></form>`).join('')}</section>` : '');
   if (result.report) {
     try {
-      const { mountCallReview } = await import('./ui-call.js');
+      const { mountCallReview } = await import('./ui-call.generated.js');
       if (disposed || generation !== reviewGeneration || currentId !== id) return;
       guide = mountCallReview($('phoneOutcomes'), { sessionId: id, client: () => client,
         describe: callChangeText, dateLabel: dayLabel, undoRefusal });

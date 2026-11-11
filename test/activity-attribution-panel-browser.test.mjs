@@ -22,7 +22,7 @@ test('recorded registered producer and production parser agree',async t=>{
  assert.equal(createHash('sha256').update(bytes).digest('hex'),provenance.producer_sha256);
  assert.equal(createHash('sha256').update(await readFile(new URL('./fixtures/activity-attribution-panel/recordings.json',import.meta.url))).digest('hex'),provenance.recordings_sha256);
  const {family,parseActivityDealAttribution}=await import('data:text/javascript;base64,'+bytes.toString('base64'));
- const appParser=async value=>page.evaluate(async ({value,id})=>{const {parseActivityDealAttribution}=await import('/js/ui-activity-attribution.js');return parseActivityDealAttribution(value,id);},{value,id});
+ const appParser=async value=>page.evaluate(async ({value,id})=>{const {parseActivityDealAttribution}=await import('/js/ui-activity-attribution.generated.js');return parseActivityDealAttribution(value,id);},{value,id});
  for(const row of recordings.cases){
   let calls=0;
   const actual=await family.createTools()['read-activity-deal-attribution'].handler({query:async(sql,args)=>{calls++;assert.deepEqual(args,[id,'joe']);return {rows:row.snapshot?[{snapshot:row.snapshot}]:[]};}},{id,slug:'joe',human:true},{activity_id:id});
@@ -33,7 +33,7 @@ test('recorded registered producer and production parser agree',async t=>{
  for(const bad of [{...good,schema:undefined,schema_version:good.schema},{...good,credited_activity_count:0},{...good,candidates:[good.direct]},{...good,activity:{...good.activity,id:'bad'}},{...good,direct:{...good.direct,label:''}},{...good,direct:{...good.direct,deal_version:0}}]){
   assert.throws(()=>parseActivityDealAttribution(bad));await assert.rejects(appParser(bad));
  }
- await assert.rejects(page.evaluate(async value=>(await import('/js/ui-activity-attribution.js')).parseActivityDealAttribution(value,'22222222-2222-4222-8222-222222222222'),good));
+ await assert.rejects(page.evaluate(async value=>(await import('/js/ui-activity-attribution.generated.js')).parseActivityDealAttribution(value,'22222222-2222-4222-8222-222222222222'),good));
 });
 async function open(t,{width=1280,theme='light',pipeline=false}={}){
  const fixture=await fixtureServer();t.after(()=>fixture.close());
@@ -50,7 +50,7 @@ async function open(t,{width=1280,theme='light',pipeline=false}={}){
   window.probe={calls:0,payload:window.recordings.cases[0].response,denied:0};
   window.makeView=()=>mountActivityAttribution(host,{
    read:async(activity,signal)=>{window.probe.calls++;window.probe.args={activity,aborted:signal.aborted};if(window.probe.failure)throw window.probe.failure;return window.probe.pending || window.probe.payload;},
-   load:async()=>{if(window.probe.importPending)await window.probe.importPending;return import('/js/ui-activity-attribution.js');},
+   load:async()=>{if(window.probe.importPending)await window.probe.importPending;return import('/js/ui-activity-attribution.generated.js');},
    onDenied:()=>window.probe.denied++,
   });window.view=window.makeView();
  });

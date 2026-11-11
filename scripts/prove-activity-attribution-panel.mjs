@@ -25,7 +25,7 @@ export async function observeNatural(page, origin) {
   const activityId=await button.getAttribute('data-attribution-id');
   const response=await page.evaluate(async activityId=>{
     const {createActivityAttributionRead}=await import('/js/deal-timeline.js');
-    const {parseActivityDealAttribution}=await import('/js/ui-activity-attribution.js');
+    const {parseActivityDealAttribution}=await import('/js/ui-activity-attribution.generated.js');
     return parseActivityDealAttribution(await createActivityAttributionRead()(activityId),activityId);
   },activityId);
   await button.click();

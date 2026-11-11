@@ -34,7 +34,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`co
     assert.equal(await summary.evaluate(node => node.parentElement.open), false);
   }
   const lifecycle = await page.evaluate(async fixture => {
-    const { mountCalendarPanels } = await import('/js/ui-calendar-panels.js');
+    const { mountCalendarPanels } = await import('/js/ui-calendar-panels.generated.js');
     const left = document.createElement('div'), right = document.createElement('div');
     document.body.append(left, right);
     const panel = await mountCalendarPanels(left, right);

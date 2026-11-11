@@ -65,10 +65,9 @@ export const UI_ENTRIES = {
   'ui-next-step': 'home/missing-next-step',
   'ui-task-done': 'home/task-done',
   'ui-deal-reviews': 'home/deal-update-reviews',
-  'deal-room-forms.generated': 'deal-room-forms',
+  'ui-deal-room-forms': 'deal-room-forms',
 };
-const UI_ASSET_PATTERNS = [...Object.keys(UI_ENTRIES).map(name => `js/${name}.js`), 'js/ui-shared-*.generated.js'];
-const UI_OUTPUTS = new Set([...UI_ASSET_PATTERNS.slice(0, -1), 'public-shell/sw.js']);
+const UI_OUTPUTS = new Set([...Object.keys(UI_ENTRIES).map(name => `js/${name}.generated.js`), 'public-shell/sw.js']);
 export const isUiAsset = path => UI_OUTPUTS.has(path) || /^js\/ui-shared-[A-Z0-9]+\.generated\.js$/.test(path);
 
 export async function uiBundle(readSource, entry = UI_ENTRY) {
@@ -81,7 +80,7 @@ export async function uiAssets(readSource) {
     entryPoints: Object.fromEntries(Object.entries(UI_ENTRIES).map(([name, path]) => [
       name, `${UI_SOURCE}/${path}`,
     ])),
-    splitting: true, outdir: 'js', chunkNames: 'ui-shared-[hash].generated',
+    splitting: true, outdir: 'js', entryNames: '[name].generated', chunkNames: 'ui-shared-[hash].generated',
   });
   const assets = new Map(result.outputFiles.map(file => [posix.relative(INSTALL, file.path), Buffer.from(file.contents)]));
   const worker = await buildUi(readSource, { entryPoints: [`${UI_SOURCE}/worker/service-worker.ts`], format: 'iife' });

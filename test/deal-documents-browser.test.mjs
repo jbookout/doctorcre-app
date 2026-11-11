@@ -95,7 +95,7 @@ test('Documents shows a canonical email PDF and follows the panel statechart', a
       assert.equal(await page.locator('[data-document-id]').count(),0);
       await componentDocument(page, server.url, {owner:'documents cap', dispose: page => page.evaluate(() => window.documentCap?.dispose())});
       await page.evaluate(async document => {
-        const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+        const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
         const target = window.document.createElement('div'); window.document.body.append(target);
         let offset = 0;
         window.documentCap = mountDealDocuments(target, {dealId: '11111111-1111-4111-8111-111111111111', client: {
@@ -135,7 +135,7 @@ test('Documents retries next pages and clears or disposes every in-flight state'
           await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
           await componentDocument(page, server.url, {owner:'documents lifecycle', dispose: page => page.evaluate(() => window.documentsTest?.panel.dispose())});
           await page.evaluate(async ({deal,document}) => {
-            const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+            const { mountDealDocuments } = await import('/js/ui-deal-documents.generated.js');
             const target = window.document.createElement('div');
             window.document.body.replaceChildren(target);
             const pending = [], requests = [];

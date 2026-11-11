@@ -11,7 +11,7 @@ import { execFile } from 'node:child_process';
 export const territoryResponse = JSON.parse(readFileSync(new URL('../test/fixtures/territory-evidence-current-history-view/recordings.json', import.meta.url))).response;
 
 export async function exerciseEvidenceHistory(response) {
-  const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.js');
+  const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.generated.js');
   const results = [];
   const check = (name, ok) => { if (!ok) throw new Error(name); results.push({ name, passed: true }); };
   const settle = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -127,7 +127,7 @@ export async function prove({ origin, commit, timeoutMs = 30000, engine = chromi
       }
     }
     await init;
-    const queue = ['/js/ui-territory-evidence.js'];
+    const queue = ['/js/ui-territory-evidence.generated.js'];
     for (let i = 0; i < queue.length; i++) {
       if (queue.length > 19) throw unavailable('Module asset cap exceeded');
       const path = queue[i], bytes = await fetchBytes(path); assets.set(path, bytes);

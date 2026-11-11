@@ -17,7 +17,7 @@ async function fixture(t, mode = 'healthy') {
   const responses = new Map(snapshot);
   responses.set('/app-release', { body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }), contentType: 'application/json' });
   if (mode === 'protected') for (const path of snapshot.keys()) responses.set(path, { status: 403 });
-  if (mode === 'broken' || mode === 'stall') responses.set('/js/ui-facts.js', { contentType: 'text/javascript',
+  if (mode === 'broken' || mode === 'stall') responses.set('/js/ui-facts.generated.js', { contentType: 'text/javascript',
     body: mode === 'broken' ? 'export function mountFactReview(){throw Error("broken module")}' : 'await new Promise(()=>{});' });
   const server = await startFixture({ routes: responses });
   t.after(() => server.close());

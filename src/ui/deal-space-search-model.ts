@@ -180,7 +180,23 @@ export type Phase =
   | "handed-to-cart"
   | "retired";
 export type SearchCall = (verb: string, args: Record<string, unknown>) => Promise<unknown>;
+type SourceField = "name" | "requirements";
+type ClientSource = {
+  client_id: string;
+  source_ref: string;
+  observed_at: string;
+  name: string;
+  requirements: string;
+  location: string;
+  use: string;
+};
+type SourceReview =
+  | { kind: "idle" | "reading" | "failed" | "changed" }
+  | { kind: "review"; source: ClientSource; choices: Partial<Record<SourceField, "keep" | "use">> }
+  | { kind: "applied" };
 export class SavedSearches {
+  sourceReview: SourceReview = { kind: "idle" };
+  private sourceEpoch = 0;
   phase: Phase = "idle";
   rows: Search[] = [];
   current: Search | null = null;
@@ -195,10 +211,107 @@ export class SavedSearches {
   readonly dealId: string;
   private call: SearchCall;
   private changed: () => void;
-  constructor(dealId: string, call: SearchCall, changed: () => void) {
+  private readClient: ((id: string) => Promise<unknown>) | undefined;
+  constructor(dealId: string, call: SearchCall, changed: () => void, readClient?: (id: string) => Promise<unknown>) {
+    this.readClient = readClient;
     this.dealId = dealId;
     this.call = call;
     this.changed = changed;
+  }
+  private async exactClient() {
+    const value = await this.call("get-deal-room", { deal: this.dealId });
+    if (!record(value) || value.deal_id !== this.dealId || !uuid(value.client_id))
+      throw Error("Deal client unavailable");
+    return value.client_id;
+  }
+  async reviewClient() {
+    if (!this.alive || this.working || this.sourceReview.kind === "reading" || !this.draft || !this.readClient) return;
+    const epoch = ++this.sourceEpoch;
+    this.sourceReview = { kind: "reading" };
+    this.publish();
+    try {
+      const clientId = await this.exactClient();
+      if (!this.alive || epoch !== this.sourceEpoch) return;
+      const value = await this.readClient(clientId);
+      if (
+        !record(value) ||
+        value.id !== clientId ||
+        typeof value.name !== "string" ||
+        !["city", "state", "vertical", "specialty", "notes"].every(
+          (key) => value[key] == null || typeof value[key] === "string",
+        )
+      )
+        throw Error("Invalid client record");
+      const binding = await this.exactClient();
+      if (!this.alive || epoch !== this.sourceEpoch) return;
+      if (binding !== clientId) {
+        this.sourceReview = { kind: "changed" };
+        return;
+      }
+      this.sourceReview = {
+        kind: "review",
+        choices: {},
+        source: {
+          client_id: clientId,
+          source_ref: `/api/v1/business/clients/${clientId}`,
+          observed_at: new Date().toISOString(),
+          name: `${value.name} space search`,
+          requirements: typeof value.notes === "string" ? value.notes : "",
+          location: [value.city, value.state].filter(Boolean).join(", "),
+          use: String(value.vertical || value.specialty || ""),
+        },
+      };
+    } catch {
+      if (this.alive && epoch === this.sourceEpoch) this.sourceReview = { kind: "failed" };
+    } finally {
+      this.publish();
+    }
+  }
+  chooseSource(field: SourceField, choice: "keep" | "use") {
+    if (!this.alive || this.working || this.sourceReview.kind !== "review") return;
+    this.sourceReview.choices[field] = choice;
+    this.publish();
+  }
+  async applySource() {
+    const review = this.sourceReview;
+    if (
+      !this.alive ||
+      this.working ||
+      !this.draft ||
+      review.kind !== "review" ||
+      !review.choices.name ||
+      !review.choices.requirements
+    )
+      return;
+    const epoch = ++this.sourceEpoch;
+    this.sourceReview = { kind: "reading" };
+    this.publish();
+    try {
+      const clientId = await this.exactClient();
+      if (!this.alive || epoch !== this.sourceEpoch || !this.draft) return;
+      if (clientId !== review.source.client_id) {
+        this.sourceReview = { kind: "changed" };
+        return;
+      }
+      const used = review.choices.name === "use" || review.choices.requirements === "use";
+      this.update({
+        ...this.draft,
+        name: review.choices.name === "use" ? review.source.name : this.draft.name,
+        requirements: review.choices.requirements === "use" ? review.source.requirements : this.draft.requirements,
+        client_prefill_source: used
+          ? {
+              client_id: clientId,
+              source_ref: review.source.source_ref,
+              observed_at: review.source.observed_at,
+            }
+          : this.draft.client_prefill_source,
+      });
+      this.sourceReview = { kind: "applied" };
+    } catch {
+      if (this.alive && epoch === this.sourceEpoch) this.sourceReview = { kind: "failed" };
+    } finally {
+      this.publish();
+    }
   }
   get dirty() {
     return (
@@ -224,6 +337,8 @@ export class SavedSearches {
     if (this.alive) this.changed();
   }
   retire() {
+    ++this.sourceEpoch;
+    this.sourceReview = { kind: "idle" };
     this.alive = false;
     this.phase = "retired";
     this.rows = [];
@@ -254,6 +369,8 @@ export class SavedSearches {
   }
   edit(row?: Search) {
     if (!this.alive || this.working || this.dirty) return;
+    ++this.sourceEpoch;
+    this.sourceReview = { kind: "idle" };
     this.current = row ?? null;
     this.searchId = row?.id ?? crypto.randomUUID();
     this.draft = row
@@ -286,6 +403,12 @@ export class SavedSearches {
   }
   update(draft: Draft) {
     if (!this.alive || this.working) return;
+    ++this.sourceEpoch;
+    if (this.sourceReview.kind === "reading") this.sourceReview = { kind: "idle" };
+    if (this.sourceReview.kind === "review" && this.draft) {
+      for (const field of ["name", "requirements"] as const)
+        if (draft[field] !== this.draft[field]) delete this.sourceReview.choices[field];
+    }
     this.draft = draft;
     this.phase = "editing";
     this.pending = null;
@@ -293,6 +416,8 @@ export class SavedSearches {
   }
   cancel() {
     if (!this.alive || this.working) return;
+    ++this.sourceEpoch;
+    this.sourceReview = { kind: "idle" };
     this.current = null;
     this.draft = null;
     this.pending = null;
@@ -321,6 +446,8 @@ export class SavedSearches {
   async write(action: "save" | "run" | "archive" | "restore") {
     if (!this.alive || this.working || !this.draft || (action !== "save" && !this.current)) return;
     if (action === "run" && (this.dirty || this.current?.status !== "saved")) return;
+    ++this.sourceEpoch;
+    this.sourceReview = { kind: "idle" };
     const criteria = this.draft.criteria;
     if (
       !this.draft.name.trim() ||

@@ -90,7 +90,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       await guard.load(remaining());
       payload = JSON.parse(await readFile(new URL('../test/fixtures/historical-close-window/recordings.json',import.meta.url))).full;
       await page.evaluate(async ({ payload }) => {
-        const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
+        const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.generated.js');
         const host = document.createElement('main'); document.body.replaceChildren(host);
         window.closeProofReads = 0;
         mountIdealClientProfile(host,{ getIdealClientProfile() { window.closeProofReads++; return Promise.resolve(payload); } });

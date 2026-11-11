@@ -94,7 +94,7 @@ async function prove({ origin, timeout, commit }: { origin: string; timeout: num
       const check = (condition: boolean, message: string) => {
         if (!condition) throw Error(message);
       };
-      const { createReplyDeviceDrafts } = await import("/js/" + "ui-email-actions.js");
+      const { createReplyDeviceDrafts } = await import("/js/" + "ui-email-actions.generated.js");
       check(typeof createReplyDeviceDrafts === "function", "Missing createReplyDeviceDrafts export");
       const data = new Map<string, string>();
       const storage = {

@@ -130,7 +130,7 @@ export async function prove({ origin, timeoutMs }) {
         if (!row || typeof row.path !== 'string' || rows.has(row.path) || !/^[a-f0-9]{64}$/.test(row.sha256 || '') || !Number.isSafeInteger(row.bytes) || row.bytes < 0) throw unavailable('Malformed manifest row');
         rows.set(row.path, row);
       }
-      const assets = new Map(), pending = ['/js/ui-action.js'];
+      const assets = new Map(), pending = ['/js/ui-action.generated.js'];
       await init;
       while (pending.length) {
         const path = pending.shift();
@@ -164,7 +164,7 @@ export async function prove({ origin, timeoutMs }) {
       });
       const page = await context.newPage();
       await page.goto(origin + '/__schedule-proof');
-      receipt.assertions = await page.evaluate(observeActionLink, origin + '/js/ui-action.js');
+      receipt.assertions = await page.evaluate(observeActionLink, origin + '/js/ui-action.generated.js');
       if (unexpected) throw Error('Unexpected business network request');
       if (JSON.stringify(await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.pathname) }))) !== JSON.stringify(receipt.release)) throw Error('Release changed during proof');
     })()]);

@@ -13,8 +13,8 @@ const css = await readFile(new URL("../tours/packet-preview.css", import.meta.ur
 const tokens = await readFile(new URL("../css/tokens.css", import.meta.url), "utf8");
 const pdf = Buffer.from(await packetFixturePdf());
 const sourceAssets = await appAssetSnapshot();
-const code = sourceAssets.get("/js/ui-packet-preview.js")?.body;
-const workerCode = sourceAssets.get("/js/ui-packet-worker.js")?.body;
+const code = sourceAssets.get("/js/ui-packet-preview.generated.js")?.body;
+const workerCode = sourceAssets.get("/js/ui-packet-worker.generated.js")?.body;
 assert.ok(code && workerCode);
 const job = "55555555-5555-4555-8555-555555555555";
 test("preview embeds the approved download bytes at desktop and phone widths", async (t) => {
@@ -33,13 +33,13 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
       const url = new URL(route.request().url());
       const moduleAsset = sourceAssets.get(url.pathname);
       if (moduleAsset && url.pathname.endsWith(".js")) return route.fulfill(moduleAsset);
-      if (url.pathname === "/js/ui-packet-worker.js")
+      if (url.pathname === "/js/ui-packet-worker.generated.js")
         return route.fulfill({ contentType: "text/javascript", body: workerCode });
       if (url.pathname === "/api/tours/pdf/download") {
         reads.push(url.search);
         return route.fulfill({ contentType: "application/pdf", body: pdf });
       }
-      if (url.pathname === "/js/ui-packet-preview.js")
+      if (url.pathname === "/js/ui-packet-preview.generated.js")
         return route.fulfill({ contentType: "text/javascript", body: code });
       if (url.pathname === "/js/theme-boot.js") return route.fulfill({ contentType: "text/javascript", body: "" });
       if (url.pathname === "/css/tokens.css") return route.fulfill({ contentType: "text/css", body: tokens });
@@ -203,7 +203,8 @@ test("a refused artifact shows unavailable without embedding a document", async 
       const moduleAsset = sourceAssets.get(path);
       if (moduleAsset && path.endsWith(".js")) return route.fulfill(moduleAsset);
       if (path === "/api/tours/pdf/download") return route.fulfill({ status: 403 });
-      if (path === "/js/ui-packet-preview.js") return route.fulfill({ contentType: "text/javascript", body: code });
+      if (path === "/js/ui-packet-preview.generated.js")
+        return route.fulfill({ contentType: "text/javascript", body: code });
       if (path.endsWith(".js")) return route.fulfill({ contentType: "text/javascript", body: "" });
       return route.fulfill({ contentType: "text/html", body: html });
     });
@@ -319,8 +320,9 @@ test("leaving a rendered preview closes its worker and clears packet content", a
       const moduleAsset = sourceAssets.get(path);
       if (moduleAsset && path.endsWith(".js")) return route.fulfill(moduleAsset);
       if (path === "/api/tours/pdf/download") return route.fulfill({ contentType: "application/pdf", body: pdf });
-      if (path === "/js/ui-packet-preview.js") return route.fulfill({ contentType: "text/javascript", body: code });
-      if (path === "/js/ui-packet-worker.js")
+      if (path === "/js/ui-packet-preview.generated.js")
+        return route.fulfill({ contentType: "text/javascript", body: code });
+      if (path === "/js/ui-packet-worker.generated.js")
         return route.fulfill({ contentType: "text/javascript", body: workerCode });
       if (path.endsWith(".js")) return route.fulfill({ contentType: "text/javascript", body: "" });
       return route.fulfill({ contentType: "text/html", body: html });
@@ -367,7 +369,8 @@ test("a late packet response cannot reopen a preview after leaving", async () =>
         }
         return;
       }
-      if (path === "/js/ui-packet-preview.js") return route.fulfill({ contentType: "text/javascript", body: code });
+      if (path === "/js/ui-packet-preview.generated.js")
+        return route.fulfill({ contentType: "text/javascript", body: code });
       if (path.endsWith(".js")) return route.fulfill({ contentType: "text/javascript", body: "" });
       return route.fulfill({ contentType: "text/html", body: html });
     });

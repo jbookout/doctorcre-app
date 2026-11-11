@@ -144,7 +144,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     emailReview?.update();
     const signedOut = snapshot?.unauthorized;
     if (!missingNextStep && !missingNextStepLoad && !signedOut && snapshot?.board?.missing_next_action?.length) {
-      missingNextStepLoad = import(missingNextStepAttempts ? `./ui-next-step.js?retry=${missingNextStepAttempts}` : './ui-next-step.js').then(({ mountMissingNextStep }) => {
+      missingNextStepLoad = import(missingNextStepAttempts ? `./ui-next-step.generated.js?retry=${missingNextStepAttempts}` : './ui-next-step.generated.js').then(({ mountMissingNextStep }) => {
         if (disposed) return;
         missingNextStep = mountMissingNextStep($('homeMissingNextStep'), ACTOR_LABEL);
         missingNextStep.update(snapshot?.unauthorized ? null : snapshot?.board || null, scope);
@@ -261,7 +261,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   $('homeBrief').addEventListener('click', async event => {
     const button = event.target.closest('[data-task-done]');
     if (!button || disposed || emailRetired) return;
-    try { taskDone = await import('./ui-task-done.js'); }
+    try { taskDone = await import('./ui-task-done.generated.js'); }
     catch { $('homeNotice').hidden = false; $('homeNotice').textContent = 'Could not load Done. Try again.'; return; }
     if (disposed || emailRetired) return;
     taskDone.complete($('homeBrief'), button, client, row => {
@@ -415,7 +415,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (result?.schema_version === 'deal-update-reviews.v1' && Array.isArray(result.proposals) && !result.proposals.length && (closed == null || Array.isArray(closed) && !closed.length)) {
         paint('No overdue reviews.'); return;
       }
-      const { mountDealUpdateReviews } = await import('./ui-deal-reviews.js');
+      const { mountDealUpdateReviews } = await import('./ui-deal-reviews.generated.js');
       if (stale()) return;
       overdueReviews = mountDealUpdateReviews({ container: host, client, initialResult: result, sourceTime, readWithDeadline, uuidv4,
         onChange: () => { readQueue.request(readHomeAgenda); void auto.refresh(); } });
@@ -477,7 +477,7 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   let reviewLoading = null;
   const openReview = async session => {
     try {
-      reviewLoading ||= Promise.all([import('./ui-call.js'), import('./call-outcomes.js')]);
+      reviewLoading ||= Promise.all([import('./ui-call.generated.js'), import('./call-outcomes.js')]);
       const [{ mountCallReviewDialog }, { callChangeText, undoRefusal, dayLabel }] = await reviewLoading;
       if (signal.aborted) return;
       review ||= mountCallReviewDialog(document, { client: () => client, describe: callChangeText, undoRefusal, dateLabel: dayLabel,
