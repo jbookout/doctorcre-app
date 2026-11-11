@@ -7,6 +7,7 @@ import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { chromium, pausedClock } from './browser-harness.mjs';
+import { presentedPacket } from './packet-presentation.fixture.ts';
 const root=new URL('../',import.meta.url);
 async function open(t) {
  const outDir=await temporaryDirectory('session-lifecycle-');
@@ -96,7 +97,8 @@ test('S1 browser: simultaneous public links keep their own context and a refresh
  await app.context.route('**/api/share/{report,map,feedback}',async route=>{
    const target=/synthetic-share=([^;]+)/.exec(route.request().headers().cookie||'')?.[1];
    const path=new URL(route.request().url()).pathname;
-   const data=path.endsWith('/report')?{stops:[{property_ref:`property:public:synthetic_property_${target}`,name:`Synthetic projection ${target}`}]}:path.endsWith('/map')?{points:[]}:{projection_ref:projection(target),permission_scopes:[],items:[]};
+   const stop={property_ref:`property:public:synthetic_property_${target}`,name:`Synthetic projection ${target}`,address:'100 Example Street',route_sequence:1,route_label:'A'};
+   const data=path.endsWith('/report')?presentedPacket([stop]):path.endsWith('/map')?{points:[{property_ref:stop.property_ref,route_sequence:1,route_label:'A',latitude:30.4,longitude:-87.2}]}:{projection_ref:projection(target),permission_scopes:[],items:[]};
    return route.fulfill({json:{data}});
  });
  await Promise.all([a.goto(`${app.origin}/share#${tokens.A}`),b.goto(`${app.origin}/share#${tokens.B}`)]);
