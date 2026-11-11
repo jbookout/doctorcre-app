@@ -69,3 +69,44 @@ test("close during CDP acquisition rejects and drains the owner", async (t) => {
   await rejection;
   assert.equal(browser.isConnected(), false);
 });
+
+for (const outcome of ["resolve", "reject"]) {
+  test(`CDP deadline closes the owner before a held port read can ${outcome}`, async (t) => {
+    const browser = await chromium.launch({ args: ["--remote-debugging-port=0", "--enable-automation"] });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let reading!: () => void;
+    const started = new Promise<void>((resolve) => { reading = resolve; });
+    t.after(async () => { release(); await browser.close(); });
+    const raw = (await import("playwright")).chromium;
+    const connect = t.mock.method(raw, "connectOverCDP");
+    let settled = false;
+    const pending = cdpEndpoint(browser, {
+      timeoutMs: 100,
+      readPortFile: async () => {
+        reading();
+        await held;
+        if (outcome === "reject") throw new Error("held read rejected");
+        return "1\n";
+      },
+    }).catch((error: unknown) => { settled = true; return error; });
+    await started;
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      assert.equal(settled, true, "deadline must settle without releasing the read");
+      assert.equal(browser.isConnected(), false, "deadline must close Chromium without releasing the read");
+    } finally { release(); }
+    assert.match(String(await pending), /CDP acquisition/);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(connect.mock.callCount(), 0, "late file reads must not start a connection");
+  });
+}
+
+test("CDP failure includes actual Chromium stderr from its owner", async (t) => {
+  const browser = await chromium.launch({ args: ["--remote-debugging-port=0", "--enable-automation"] });
+  t.after(() => browser.close());
+  await assert.rejects(cdpEndpoint(browser, {
+    timeoutMs: 100,
+    readPortFile: async () => { throw new Error("synthetic missing file"); },
+  }), /\[err\] DevTools listening on ws:\/\/127\.0\.0\.1:/);
+});
