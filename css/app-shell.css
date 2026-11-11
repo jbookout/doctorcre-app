@@ -422,7 +422,8 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 }
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
-  .has-app-layout :is(button, a, input, select, textarea, summary, [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }
+  .has-app-layout :is(button, a, input, select, textarea, summary, label[for], [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }
+  .has-app-layout label[for] { display: inline-flex; align-items: center; }
   .app-shell-account-menu a { min-height: 44px; box-sizing: border-box; }
   .app-layout-tabs > [data-layout-slot=tabs] { flex-wrap: nowrap; max-width: none; }
   .has-app-layout .skip:focus, .has-app-layout .invoice-skip:focus { min-height: 44px; display: flex; align-items: center; }

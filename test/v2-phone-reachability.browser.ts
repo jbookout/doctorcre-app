@@ -97,3 +97,16 @@ test("Native date-control accessibility children measure their rendered host onc
   assert.equal(audit.small.length, 1);
   assert.equal(audit.small[0]?.id, "date");
 });
+
+test("Phone candidates include each activation listener without a role or native control", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const events = ["click", "pointerdown", "pointerup", "touchstart", "touchend"];
+  await page.setContent(events.map((event) => `<div id="${event}" style="width:20px;height:20px">Tap</div>`).join(""));
+  await page.evaluate((events) => {
+    for (const event of events) document.getElementById(event)?.addEventListener(event, () => {});
+  }, events);
+  const audit = await inspectPhoneAccessibility(page);
+  assert.deepEqual(audit.small.map((target) => target.id).sort(), events.sort());
+});
