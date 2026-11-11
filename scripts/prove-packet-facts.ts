@@ -98,7 +98,7 @@ export async function provePacket(options: {
       const chunks: Buffer[] = [];
       for await (const chunk of stream) chunks.push(Buffer.from(chunk));
       const downloaded = Buffer.concat(chunks);
-      assert.deepEqual(previewBytes, downloaded, "Preview and download use exactly the same artifact bytes");
+      assert.ok(previewBytes.equals(downloaded), "Preview and download artifact bytes differ");
       for (const width of [1440, 390])
         for (const theme of ["light", "dark"]) {
           await page.setViewportSize({ width, height: 900 });

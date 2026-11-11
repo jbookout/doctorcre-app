@@ -42,6 +42,8 @@ for (const [fixture, code] of [
       { encoding: "utf8" },
     );
     assert.equal(result.status, code, result.stdout + result.stderr);
+    if (fixture === "near-miss")
+      assert.doesNotMatch(result.stdout, /Alpha Health Center|Beta Medical Plaza|11600 SF|1600 SF/);
   });
 
 for (const deadline of ["0", "30001", "NaN"])

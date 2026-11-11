@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isDeepStrictEqual } from "node:util";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export type PacketStop = { property: string; label: string; name: string; address: string; facts: string[] };
@@ -24,15 +25,15 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
           .join(" ")
           .trim()
           .replace(/\s+/g, " ");
-      assert.equal(band(740, 742, 0, 210), "CARR", "PDF branding");
+      assert.ok(band(740, 742, 0, 210) === "CARR", "PDF branding mismatch");
       const labels = ["PROPERTY TYPE", "SIZE", "ASKING ECONOMICS", "AVAILABILITY", "PARKING"];
       const facts = labels.map((label, i) => {
         const y = 563 - i * 58;
-        assert.equal(band(y, y, 0, 210), label, "Known PDF fact label and layout");
+        assert.ok(band(y, y, 0, 210) === label, "Known PDF fact label and layout required");
         return band(y - 14, y, 210);
       });
       const ref = band(75, 77);
-      assert.match(ref, /^Packet ref: property:public:[A-Za-z0-9_-]{16,128}$/);
+      assert.ok(/^Packet ref: property:public:[A-Za-z0-9_-]{16,128}$/.test(ref), "Public packet reference required");
       stops.push({
         property: ref.slice("Packet ref: ".length),
         label: band(745, 747),
@@ -48,6 +49,6 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
 }
 export function comparePacketStops(preview: PacketStop[], download: PacketStop[], share: PacketStop[]): void {
   assert.ok(preview.length > 0, "Populated packet required");
-  assert.deepEqual(preview, download, "Preview matches downloaded PDF field by field");
-  assert.deepEqual(share, download, "Share matches downloaded PDF field by field");
+  assert.ok(isDeepStrictEqual(preview, download), "Preview property fields differ from downloaded PDF");
+  assert.ok(isDeepStrictEqual(share, download), "Client share property fields differ from downloaded PDF");
 }
