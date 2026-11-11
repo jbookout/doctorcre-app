@@ -106,18 +106,15 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await page.goto(`${server.origin}/share-intake.html`);
         await page.evaluate((theme) => (document.documentElement.dataset.theme = theme), theme);
         const panel = page.getByRole("region", { name: "Deal Deliverables", exact: true });
-        await panel.getByRole("button", { name: /Drop one file here/ }).focus();
+
+        await panel.getByText("No deliverables yet.", { exact: false }).waitFor();
+        const keyboardButton = panel.getByRole("button", { name: /Drop one file here/ });
+        assert.equal(await keyboardButton.isEnabled(), true);
+        await keyboardButton.focus();
+        assert.equal(await keyboardButton.evaluate((element) => element === document.activeElement), true);
         const keyboardChooser = page.waitForEvent("filechooser");
         await page.keyboard.press("Enter");
         await (await keyboardChooser).setFiles([]);
-
-        await panel
-          .getByText("No deliverables yet.", { exact: false })
-          .waitFor({ timeout: 3000 })
-          .catch(async (error) => {
-            console.error(await page.locator("body").textContent());
-            throw error;
-          });
         await panel
           .getByLabel("Choose a deliverable", { exact: true })
           .setInputFiles({ name: "bad.html", mimeType: "text/html", buffer: Buffer.from("bad") });
