@@ -995,12 +995,8 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
       if (payload.record.record_version > pending.base_version && (expected ? saved?.tier === expected.tier && saved?.reason === expected.reason && saved?.recorded_by === payload.viewer : saved === null)) { view.pendingTrust = null; view.trustStatus = { id: payload.record.id, text: 'Rating confirmed' }; }
     }
     settle("ready", null, payload);
-    // The party record read supplies no deal activity/native thread index. This
-    // section reads installation readiness and states unavailable explicitly.
-    // Repainting recent activity must not restart this read or lose its state.
-    dealroomClient().then(client => loadEvidence(client)).then(result => {
+    loadEvidence().then(result => {
       if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
-      if (result.threads?.state === 'refused') { expireNow(); return; }
       view.evidence.result = result;
       renderRecordPanel();
     }).catch(() => {

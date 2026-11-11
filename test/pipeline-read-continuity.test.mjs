@@ -19,7 +19,7 @@ async function open(t, { deal = '', holdBoard = false, holdFeed = false } = {}) 
       if (file === 'js/fixture-client.js') body = body.toString().replace('export async function createFixtureClient', 'async function fixtureClient') + `
         export async function createFixtureClient(options) {
           const client = await fixtureClient(options);
-          window.panelReads ||= { getDeal: 0, correspondenceReadiness: 0, getRelationshipNetwork: 0, getPartyRecord: 0 };
+          window.panelReads ||= { getDeal: 0, getRelationshipNetwork: 0, getPartyRecord: 0 };
           for (const name of Object.keys(window.panelReads)) {
             const read = client[name].bind(client);
             client[name] = async (...args) => { window.panelReads[name]++; if (name === 'getDeal' && window.holdDetail) await new Promise(resolve => window.releaseDetail = resolve); return read(...args); };
@@ -41,9 +41,10 @@ test('one card-body tap reads one detail and leaves unopened supporting sections
   await page.locator('.kanban-card[data-id="d14"]').waitFor();
   await page.locator('.kanban-card[data-id="d14"]').click({position:{x:5,y:5}});
   await page.locator('#detailUpdateForm').waitFor();
-  assert.deepEqual(await page.evaluate(() => window.panelReads), { getDeal: 1, correspondenceReadiness: 0, getRelationshipNetwork: 0, getPartyRecord: 0 });
+  assert.deepEqual(await page.evaluate(() => window.panelReads), { getDeal: 1, getRelationshipNetwork: 0, getPartyRecord: 0 });
   await page.getByRole('tab', {name:'Correspondence & notes'}).click();
-  await page.waitForFunction(() => window.panelReads.correspondenceReadiness === 1);
+  await page.locator('#panelEvidence .correspondence-evidence').waitFor();
+  assert.equal(await page.evaluate(() => window.panelReads.getDeal), 1);
   await page.getByRole('tab',{name:'Overview',exact:true}).click();
   await page.locator('#panelContextOpen').click();
   await page.waitForFunction(() => window.panelReads.getRelationshipNetwork === 1);
@@ -109,42 +110,4 @@ test('a newer board version during an in-flight detail read queues one fresh rea
   await waitForAsync(page, () => document.querySelector('#panelTitle').textContent === 'Synthetic newer deal version', undefined, 2000);
   assert.equal(await page.evaluate(() => window.versionReads), 2, 'one follow-up read observes the known change');
   assert.equal(await page.locator('#dealUpdate').inputValue(), 'Synthetic draft while a newer version arrives');
-});
-
-test('closing an evidence disclosure cannot hide a pending authorization denial', async t => {
-  const page = await open(t);
-  await page.locator('.kanban-card[data-id="d14"] .card-open').click();
-  await page.locator('#detailUpdateForm').waitFor();
-  await page.locator('#dealUpdate').fill('Synthetic draft revoked with this session');
-  await page.evaluate(async () => {
-    const { state } = await import('/js/pipeline.js');
-    state.client.correspondenceReadiness = () => new Promise((resolve, reject) => {
-      window.refuseEvidence = () => reject(Object.assign(new Error('Synthetic authorization denial'), { status: 401 }));
-    });
-  });
-  await page.getByRole('tab', {name:'Correspondence & notes'}).click();
-  await page.waitForFunction(() => typeof window.refuseEvidence === 'function');
-  await page.locator('#panelEvidenceSection > summary').click();
-  await page.evaluate(() => window.refuseEvidence());
-  await page.getByText('Unavailable. Sign in to reload this record.', { exact: false }).waitFor();
-  assert.equal(await page.locator('#detailUpdateForm').count(), 0);
-  assert.equal(await page.locator('#panelTitle').textContent(), 'Deal');
-  await page.locator('[data-refresh-detail]').click();
-  await page.getByRole('tab',{name:'Overview',exact:true}).click();
-  await page.locator('#dealUpdate').waitFor();
-  assert.equal(await page.locator('#dealUpdate').inputValue(), '', 'denied session revokes the unsent draft');
-});
-
-test('Evidence Retry still works after closing and reopening unchanged evidence', async t => {
-  const page = await open(t);
-  await page.locator('.kanban-card[data-id="d14"] .card-open').click();
-  await page.locator('#detailUpdateForm').waitFor();
-  const summary = page.locator('#panelEvidenceSection > summary');
-  await page.getByRole('tab',{name:'Correspondence & notes',exact:true}).click();
-  await page.locator('[data-evidence-retry]').first().waitFor();
-  await summary.click();
-  await summary.click();
-  await page.waitForFunction(() => window.panelReads.correspondenceReadiness === 2);
-  await page.locator('[data-evidence-retry]').first().click();
-  await page.waitForFunction(() => window.panelReads.correspondenceReadiness === 3, null, { timeout: 2000 });
 });

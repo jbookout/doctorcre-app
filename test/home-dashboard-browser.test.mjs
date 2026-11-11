@@ -60,7 +60,6 @@ async function open(t, { preparationResponse, calendarPanelsGate, actionCompleti
         ...deal, ...await handlers['get-deal-room']({ deal: deal.id }).catch(error => { if (detailFailure === 'partial') return { critical_dates: null, next_actions: null }; throw error; }),
       }))) };
     },
-    'correspondence-readiness': args => client.correspondenceReadiness(args),
     'read-post-call-followups': () => client.getPostCallFollowups(),
     'read-deal-update-reviews': async () => ({ schema_version: 'deal-update-reviews.v1', proposals: [] }),
     'today-triage': () => client.todayTriage(),

@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       artifact_id: ${{ steps.artifact.outputs.artifact-id }}
@@ -27,7 +27,9 @@ jobs:
         with:
           node-version: 26.12.1
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
+      - uses: ./.github/actions/setup-browsers
+        with:
+          browsers: chromium webkit
       - run: npm run check
       - run: npm test
       - run: npm run build

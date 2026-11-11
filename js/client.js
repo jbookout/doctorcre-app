@@ -98,8 +98,6 @@
  * @property {(args:{idempotency_key:string,entity_ref:string,fact_key:string,base_version:number,review_version:string,decision:'approve'|'correct'|'reject',reason:string,observation_id?:string,correction?:HumanFact}) => Promise<Object>} resolveFactReview
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getRelationshipNetwork authenticated relationship-network.v1 snapshot, with observed_at and valid_until
  * @property {(args:Object) => Promise<Object>} readAssuranceHealth read-only assurance-health.v1 for an exact workflow scope
- * @property {(args?:Object) => Promise<Object>} correspondenceReadiness governed installation read, no arguments
- * @property {(args:{source_system:string,native_id:string,native_id_epoch:number}) => Promise<Object>} readCorrespondenceThread read of one recorded native identity
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getInvoiceTracker invoice-tracker.v1 snapshot
  * @property {(args:{commission_id:string,base_version:number,received_on:string,idempotency_key:string}) => Promise<Object>} markInvoicePaid record one full commission receipt
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} calendarMeetingPrep authenticated upcoming meetings with possible owned deals and preparation, no audience argument
