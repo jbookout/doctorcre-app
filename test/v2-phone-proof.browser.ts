@@ -22,6 +22,7 @@ test("Inspector measures the same-origin tour frame rather than only the parent"
   await page.frameLocator("iframe").getByRole("button").waitFor();
   const frame = page.frames().find((frame) => frame.url().endsWith("/frame"));
   assert.ok(frame);
+  assert.equal((await inspectPhoneAccessibility(page)).small.length, 0, "Parent audit excludes nested-frame targets");
   const result = await inspectPhoneAccessibility(page, frame);
   assert.equal(result.small.length, 1);
   assert.equal(result.small[0]?.text, "Small frame target");

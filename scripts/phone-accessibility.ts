@@ -3,6 +3,8 @@ import type { AxeResults } from "axe-core";
 import type { Frame, Page } from "playwright";
 
 export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.mainFrame()) {
+  if (page.context().browser()?.browserType().name() !== "chromium")
+    throw Error("Phone accessibility inspection requires Chromium's accessibility tree");
   await frame.evaluate(async () => {
     await Promise.all(
       document
@@ -12,18 +14,11 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
     );
   });
   const axeSource = await readFile(new URL("../node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
-  await page.route("**/__phone-axe.js", (route) => route.fulfill({ contentType: "text/javascript", body: axeSource }));
-  await frame.addScriptTag({ url: new URL("/__phone-axe.js", frame.url()).href });
-  const measurements = await frame.evaluate(async () => {
-    const reachableTarget = (node: Element) => {
-      const r = node.getBoundingClientRect();
-      return !node.closest("[inert]") && r.width > 0 && r.height > 0 && getComputedStyle(node).visibility !== "hidden";
-    };
-    const targets = [
-      ...document.querySelectorAll<HTMLElement>(
-        "button,a[href],input:not([type=hidden]),select,textarea,summary,[role=button],[role=tab]",
-      ),
-    ].filter(reachableTarget);
+  async function measureTargets(this: HTMLElement[]) {
+    const targets = this.filter((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
     const describe = (node: HTMLElement) => ({
       tag: node.tagName,
       width: node.getBoundingClientRect().width,
@@ -51,7 +46,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
     const positiveTabindex = [...document.querySelectorAll<HTMLElement>("[tabindex]")]
       .filter((node) => node.tabIndex > 0)
       .map(describe);
-    // The same-origin script above installs the locked axe runtime on this page.
+    // The isolated world contains the locked axe runtime injected below.
     const runtime = window as unknown as { axe?: { run(options: unknown): Promise<AxeResults> } };
     if (!runtime.axe) throw Error("axe dependency was not loaded");
     const result = await runtime.axe.run({ runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] } });
@@ -65,7 +60,85 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
         nodes: v.nodes.map((n) => ({ target: n.target, summary: n.failureSummary })),
       })),
     };
-  });
+  }
+  const cdp = await page.context().newCDPSession(page);
+  let measurements: Awaited<ReturnType<typeof measureTargets>>;
+  try {
+    let { frameTree } = await cdp.send("Page.getFrameTree");
+    const ancestry: Frame[] = [];
+    for (let current = frame, parent = current.parentFrame(); parent; current = parent, parent = current.parentFrame())
+      ancestry.unshift(current);
+    for (const child of ancestry) {
+      const index = child.parentFrame()?.childFrames().indexOf(child) ?? -1;
+      const subtree = frameTree.childFrames?.[index];
+      if (!subtree) throw Error("Inspected frame is absent from Chromium's frame tree");
+      frameTree = subtree;
+    }
+    const { executionContextId } = await cdp.send("Page.createIsolatedWorld", {
+      frameId: frameTree.frame.id,
+      worldName: "phone-accessibility",
+    });
+    const { nodes } = await cdp.send("Accessibility.getFullAXTree", { frameId: frameTree.frame.id });
+    const interactiveRoles = new Set([
+      "button",
+      "link",
+      "textbox",
+      "checkbox",
+      "radio",
+      "combobox",
+      "listbox",
+      "slider",
+      "spinbutton",
+      "tab",
+      "DisclosureTriangle",
+      "menuitem",
+      "menuitemcheckbox",
+      "menuitemradio",
+      "switch",
+      "searchbox",
+      "treeitem",
+    ]);
+    await cdp.send("Runtime.evaluate", { expression: axeSource, contextId: executionContextId });
+    const { result: targets } = await cdp.send("Runtime.evaluate", {
+      expression: "[]",
+      contextId: executionContextId,
+      objectGroup: "phone-accessibility",
+    });
+    if (!targets.objectId) throw Error("Could not create accessible target collection");
+    for (const node of nodes) {
+      if (node.ignored || !node.backendDOMNodeId || !interactiveRoles.has(String(node.role?.value))) continue;
+      const { object } = await cdp.send("DOM.resolveNode", {
+        backendNodeId: node.backendDOMNodeId,
+        executionContextId,
+        objectGroup: "phone-accessibility",
+      });
+      if (!object.objectId) throw Error("Accessible target has no DOM object");
+      const { exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
+        objectId: targets.objectId,
+        functionDeclaration: `function(target) {
+          if (target.ownerDocument !== document) return;
+          while (target.getRootNode() instanceof ShadowRoot) target = target.getRootNode().host;
+          if (!this.includes(target)) this.push(target);
+        }`,
+        arguments: [{ objectId: object.objectId }],
+      });
+      if (exceptionDetails) throw Error("Could not collect accessible DOM target");
+    }
+    const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: targets.objectId,
+      functionDeclaration: measureTargets.toString(),
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    if (exceptionDetails || !result.value) throw Error("Could not measure accessible DOM targets");
+    measurements = result.value;
+  } finally {
+    try {
+      await cdp.send("Runtime.releaseObjectGroup", { objectGroup: "phone-accessibility" });
+    } finally {
+      await cdp.detach();
+    }
+  }
   const focusOrder = [];
   await frame.evaluate(() => {
     document.body.tabIndex = -1;

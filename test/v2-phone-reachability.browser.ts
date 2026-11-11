@@ -1,0 +1,83 @@
+import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import test from "node:test";
+import { webkit } from "playwright";
+import { inspectPhoneAccessibility } from "../scripts/phone-accessibility.ts";
+import { chromium } from "./browser-harness.mjs";
+
+const cases = [
+  ["hidden", false, "<button hidden>Hidden</button>"],
+  ["display", false, '<button style="display:none">Display</button>'],
+  ["visibility", false, '<button style="visibility:hidden">Visibility</button>'],
+  ["zero", false, '<button style="width:0;height:0;border:0">Zero</button>'],
+  ["inert", false, "<button inert>Inert</button>"],
+  ["inert-child", false, "<section inert><button>Inert child</button></section>"],
+  [
+    "closed-details",
+    false,
+    '<details><summary id="closed-summary">Summary</summary><button>Closed details</button></details>',
+  ],
+  ["closed-dialog", false, "<dialog><button>Closed dialog</button></dialog>"],
+  ["popover", false, "<section popover><button>Popover</button></section>"],
+  ["until-found", false, '<section hidden="until-found"><button>Until found</button></section>'],
+  [
+    "content-visibility",
+    false,
+    '<section style="content-visibility:hidden"><button>Content visibility</button></section>',
+  ],
+  ["aria-hidden", false, '<section aria-hidden="true"><button>ARIA hidden</button></section>'],
+  ["opacity", true, '<button style="opacity:0">Opacity</button>'],
+  ["above", true, '<button style="position:absolute;top:-100px">Above</button>'],
+  ["below", true, '<button style="position:absolute;top:2000px">Below</button>'],
+  ["open-details", true, "<details open><summary>Summary</summary><button>Open details</button></details>"],
+  ["open-dialog", true, "<dialog open><button>Open dialog</button></dialog>"],
+  ["tour-day-link", true, '<a href="#tour" style="position:absolute;top:-200px">Navigate tour</a>'],
+] as const;
+
+test("Browser authority determines phone target membership across 18 reachability cases", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  await page.route("http://reachability.test/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><html lang="en"><head><title>Reachability matrix</title><style>button,summary,a{width:20px;height:20px;min-width:0;min-height:0;padding:0}</style></head><body><main><h1>Reachability</h1>${cases.map(([id, , html]) => html.replace(/<(button|a)\b/, `<$1 id="${id}"`)).join("")}</main></body></html>`,
+    }),
+  );
+  await page.goto("http://reachability.test/");
+  const audit = await inspectPhoneAccessibility(page);
+  for (const [id, expected] of cases)
+    await t.test(id, () => {
+      assert.equal(
+        audit.small.some((target) => target.id === id),
+        expected,
+        `${id} membership`,
+      );
+    });
+  await t.test("closed-details summary remains reachable", () => {
+    assert.ok(audit.small.some((target) => target.id === "closed-summary"));
+  });
+});
+
+test("Phone inspector explicitly refuses WebKit", { skip: !existsSync(webkit.executablePath()) }, async (t) => {
+  const browser = await webkit.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await assert.rejects(inspectPhoneAccessibility(page), /requires Chromium/);
+});
+
+test("Native date-control accessibility children measure their rendered host once", async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.route("http://date.test/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: '<!doctype html><html lang="en"><head><title>Date targets</title></head><body><main><h1>Date</h1><input id="date" aria-label="Date" type="date" style="height:20px"></main></body></html>',
+    }),
+  );
+  await page.goto("http://date.test/");
+  const audit = await inspectPhoneAccessibility(page);
+  assert.equal(audit.small.length, 1);
+  assert.equal(audit.small[0]?.id, "date");
+});
