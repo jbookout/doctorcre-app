@@ -77,10 +77,17 @@ for (const stage of ["Starting", "AwaitingEndpoint", "Connecting"] as const) {
   });
 }
 
-test("cleanup budget reports a stalled connection and disposes its late completion", async () => {
+test("cleanup budget reports a stalled connection and disposes its late completion", { timeout: 10000 }, async () => {
   let release: () => void = () => {};
   let pid: number | undefined;
-  let disconnected = false;
+  let finishTerminated: () => void = () => {};
+  const terminated = new Promise<void>((resolve) => {
+    finishTerminated = resolve;
+  });
+  let finishDisconnected: () => void = () => {};
+  const disconnected = new Promise<void>((resolve) => {
+    finishDisconnected = resolve;
+  });
   const waiting = new Promise<void>((resolve) => {
     release = resolve;
   });
@@ -91,6 +98,7 @@ test("cleanup budget reports a stalled connection and disposes its late completi
       launcher: (options) => {
         const child = launch(options);
         pid = child.nodeProcess.pid;
+        child.nodeProcess.once("close", () => finishTerminated());
         return child;
       },
       connect: async (endpoint, options) => {
@@ -98,7 +106,7 @@ test("cleanup budget reports a stalled connection and disposes its late completi
         const close = browser.close.bind(browser);
         browser.close = async () => {
           await close();
-          disconnected = true;
+          finishDisconnected();
         };
         await waiting;
         return browser;
@@ -108,10 +116,10 @@ test("cleanup budget reports a stalled connection and disposes its late completi
   );
   assert.ok(pid);
   const ownedPid = pid;
+  await terminated;
   assert.throws(() => process.kill(ownedPid, 0), /ESRCH/);
   release();
-  await delay(100);
-  assert.equal(disconnected, true);
+  await disconnected;
 });
 
 for (const mode of ["chunked stderr", "early readiness", "malformed endpoint", "early exit", "timeout"] as const) {
@@ -127,11 +135,11 @@ for (const mode of ["chunked stderr", "early readiness", "malformed endpoint", "
             : `process.stderr.write('DevTools listening on ${mode === "malformed endpoint" ? "https://example.com/bad" : "ws://127.0.0.1:1234/devtools/browser/test"}\\n');setInterval(()=>{},1000)`;
     await assert.rejects(
       ownedCdpFixture({
-        timeoutMs: 250,
-        launcher: async () => {
-          const child = launch({ executablePath: process.execPath, args: ["-e", script] });
+        timeoutMs: mode === "timeout" ? 250 : undefined,
+        launcher: async (options) => {
+          const child = launch({ executablePath: process.execPath, args: ["-e", script], signal: options.signal });
           pid = child.nodeProcess.pid;
-          if (mode === "early readiness") await delay(80);
+          if (mode === "early readiness") await child.waitForLineOutput(/^DevTools listening on (.*)$/, 30000);
           return child;
         },
         connect: async (endpoint) => {
