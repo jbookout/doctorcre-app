@@ -237,7 +237,7 @@ mountNavigation(document, location.pathname, { report: true });
       const detail = document.createElement("p");
       detail.textContent = item.address;
       row.append(route, heading, detail);
-      appendPacketPresentation(row, presentation.stops.find(stop => stop.property_ref === item.property_ref), presentation.notes);
+      appendPacketPresentation(row, item, presentation.notes);
       renderFeedbackControls(row, item);
       list.append(row);
     }

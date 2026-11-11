@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
-import { build } from "esbuild";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { packetFixturePdf } from "../scripts/packet-fixture.ts";
-import { packetPdfCsp } from "../scripts/packet-pdf-csp.ts";
 import { chromium } from "./browser-harness.mjs";
 import packet from "./fixtures/packet-parity/share.json" with { type: "json" };
 
@@ -11,23 +10,10 @@ const html = await readFile(new URL("../tours/packet-preview.html", import.meta.
 const css = await readFile(new URL("../tours/packet-preview.css", import.meta.url), "utf8");
 const tokens = await readFile(new URL("../css/tokens.css", import.meta.url), "utf8");
 const pdf = Buffer.from(await packetFixturePdf());
-const script = await build({
-  entryPoints: ["src/ui/packet-preview.ts"],
-  bundle: true,
-  plugins: [packetPdfCsp()],
-  write: false,
-  format: "iife",
-});
-const worker = await build({
-  entryPoints: ["src/ui/packet-worker.ts"],
-  bundle: true,
-  plugins: [packetPdfCsp()],
-  write: false,
-  format: "esm",
-});
-const workerCode = worker.outputFiles[0]?.text || "";
-const code = script.outputFiles[0]?.text;
-assert.ok(code);
+const sourceAssets = await appAssetSnapshot();
+const code = sourceAssets.get("/js/ui-packet-preview.js")?.body;
+const workerCode = sourceAssets.get("/js/ui-packet-worker.js")?.body;
+assert.ok(code && workerCode);
 const job = "55555555-5555-4555-8555-555555555555";
 test("preview embeds the approved download bytes at desktop and phone widths", async () => {
   const browser = await chromium.launch();
@@ -46,6 +32,8 @@ test("preview embeds the approved download bytes at desktop and phone widths", a
     const reads: string[] = [];
     await page.route("**/*", async (route) => {
       const url = new URL(route.request().url());
+      const moduleAsset = sourceAssets.get(url.pathname);
+      if (moduleAsset && url.pathname.endsWith(".js")) return route.fulfill(moduleAsset);
       if (url.pathname === "/js/ui-packet-worker.js")
         return route.fulfill({ contentType: "text/javascript", body: workerCode });
       if (url.pathname === "/api/tours/pdf/download") {
@@ -116,6 +104,8 @@ test("a refused artifact shows unavailable without embedding a document", async 
     const page = await browser.newPage();
     await page.route("**/*", (route) => {
       const path = new URL(route.request().url()).pathname;
+      const moduleAsset = sourceAssets.get(path);
+      if (moduleAsset && path.endsWith(".js")) return route.fulfill(moduleAsset);
       if (path === "/api/tours/pdf/download") return route.fulfill({ status: 403 });
       if (path === "/js/ui-packet-preview.js") return route.fulfill({ contentType: "text/javascript", body: code });
       if (path.endsWith(".js")) return route.fulfill({ contentType: "text/javascript", body: "" });
@@ -147,6 +137,8 @@ test("the public packet renders the same synthetic stop facts at both widths", a
     });
     await page.route("**/*", async (route) => {
       const url = new URL(route.request().url());
+      const moduleAsset = sourceAssets.get(url.pathname);
+      if (moduleAsset && url.pathname.endsWith(".js")) return route.fulfill(moduleAsset);
       const payload =
         url.pathname === "/api/share/report"
           ? packet
@@ -181,7 +173,7 @@ test("the public packet renders the same synthetic stop facts at both widths", a
             name: node.querySelector("h3")?.textContent || "",
             address: node.querySelector("h3 + p")?.textContent || "",
             facts: Array.from(node.querySelectorAll("dd"), (fact) => fact.textContent || ""),
-            brand: "CARR Healthcare Real Estate",
+            brand: node.ownerDocument.querySelector(".masthead > .eyebrow")?.textContent || "",
             appointment: node.querySelector(".packet-appointment")?.textContent || "",
             note: node.querySelector(".packet-public-note")?.textContent || "",
             asOf: node.querySelector(".packet-as-of")?.textContent || "",
@@ -206,6 +198,8 @@ test("leaving a rendered preview closes its worker and clears packet content", a
     const page = await browser.newPage();
     await page.route("**/*", (route) => {
       const path = new URL(route.request().url()).pathname;
+      const moduleAsset = sourceAssets.get(path);
+      if (moduleAsset && path.endsWith(".js")) return route.fulfill(moduleAsset);
       if (path === "/api/tours/pdf/download") return route.fulfill({ contentType: "application/pdf", body: pdf });
       if (path === "/js/ui-packet-preview.js") return route.fulfill({ contentType: "text/javascript", body: code });
       if (path === "/js/ui-packet-worker.js")
@@ -244,6 +238,8 @@ test("a late packet response cannot reopen a preview after leaving", async () =>
     const page = await browser.newPage();
     await page.route("**/*", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      const moduleAsset = sourceAssets.get(path);
+      if (moduleAsset && path.endsWith(".js")) return route.fulfill(moduleAsset);
       if (path === "/api/tours/pdf/download") {
         await gate;
         try {

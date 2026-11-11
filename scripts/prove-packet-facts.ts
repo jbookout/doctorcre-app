@@ -173,7 +173,7 @@ export async function provePacket(options: {
           name: node.querySelector("h3")?.textContent || "",
           address: node.querySelector("h3 + p")?.textContent || "",
           facts: Array.from(node.querySelectorAll("dd"), (fact) => fact.textContent || ""),
-          brand: "CARR Healthcare Real Estate",
+          brand: node.ownerDocument.querySelector(".masthead > .eyebrow")?.textContent || "",
           appointment: node.querySelector(".packet-appointment")?.textContent || "",
           note: node.querySelector(".packet-public-note")?.textContent || "",
           asOf: node.querySelector(".packet-as-of")?.textContent || "",
