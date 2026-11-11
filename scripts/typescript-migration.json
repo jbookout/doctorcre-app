@@ -971,7 +971,6 @@
     "src/ui/fact-review.tsx": "4d73d76ce647f05393ff42e68a451731725c451f15d16cf915ea950981aedc23",
     "src/ui/home-list-limit.ts": "4202e5206652dd42f511351a82e708aa5ad88f9d515b1836874aca0fd1c38fac",
     "src/ui/home/batch.ts": "fc15bf197318a293549304e5503decdd5ed035f4503516f9fccc2f997a5df75f",
-    "src/ui/home/boot.tsx": "e3afe0c5d185527671833ebdfc6f79364bd98887964ed66a7b7c0cfb98f57a6c",
     "src/ui/home/bulk-controls.tsx": "0a7f618916e1cabecb4ac404277304b6c9176d9142cb5246b631d8870bce1a98",
     "src/ui/home/deal-update-reviews.tsx": "2c88217bcc5b4bcc7e19862de473d460b372ff99b1f63ea9a6d4b544fc5d6274",
     "src/ui/home/fixture.tsx": "83884fdd0017e76f32db93bdd81345c83051807f322314d0697a6a26cc8ebf30",

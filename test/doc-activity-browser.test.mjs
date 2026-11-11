@@ -62,7 +62,7 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
   });
   await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
   await page.goto('http://localhost/doc-activity?mode=live'); await page.locator('.activity-row').first().waitFor();
-  if(firstOpen){await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));await page.locator('#morningClose').click();}
+  if(firstOpen){await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));await page.locator('#morningClose').click();}
   return {page,calls,errors,fixture,reads:()=>reads,setReadFailure:value=>{failRead=value;},holdPartner:value=>{staleRead=value;},
     waitUndo:id=>undoHolds.has(id)?Promise.resolve():new Promise(resolve=>undoReady.set(id,resolve)),releaseUndo:(id,outcome='success')=>undoHolds.get(id)?.(outcome),releaseHeld:()=>{heldRead?.();},hasHeld:()=>Boolean(heldRead),refuseUndo:()=>{refusal=true;}};
 }
@@ -71,14 +71,14 @@ test('PR123 R1: Activity models the daily morning brief and rejects unknown oper
   const preference = () => page.evaluate(() => JSON.parse(localStorage.getItem('doctorcre:morning:joe')));
   assert.equal((await preference())?.day, '2026-10-01');
   assert.ok(calls.some(call => call.name === 'morning-brief'));
-  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(panel => !panel.hidden), false);
   assert.equal(await page.locator('#morningCoverage').textContent(), '');
   const loaded = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'morning-brief');
   await page.reload(); await loaded;
   await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
-  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(panel => !panel.hidden), false);
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
-  await page.locator('#docMorningBrief[open]').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));
+  await page.locator('#docMorningBrief:not([hidden])').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));
   await page.locator('#morningClose').click();
   await page.clock.setSystemTime(new Date('2026-10-02T15:00:00Z'));
   // A day without input is idle: coming back online reads nothing until the
@@ -87,14 +87,14 @@ test('PR123 R1: Activity models the daily morning brief and rejects unknown oper
   await page.evaluate(() => dispatchEvent(new Event('online')));
   await page.waitForTimeout(200);
   assert.equal(calls.filter(call => call.name === 'morning-brief').length, briefReads);
-  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(panel => !panel.hidden), false);
   assert.equal((await preference()).day, '2026-10-01');
   await page.mouse.move(10, 10); await page.mouse.move(20, 20);
   await page.locator('#docOpen[data-brief-unseen]').waitFor();
-  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(panel => !panel.hidden), false);
   assert.equal((await preference()).day, '2026-10-01');
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
-  await page.locator('#docMorningBrief[open]').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));
+  await page.locator('#docMorningBrief:not([hidden])').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));
   assert.ok(calls.filter(call => call.name === 'morning-brief').length > briefReads);
   assert.equal((await preference()).day, '2026-10-02');
   assert.deepEqual(errors, []);

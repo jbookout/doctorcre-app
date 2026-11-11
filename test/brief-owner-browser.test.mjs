@@ -38,7 +38,7 @@ for (const width of [390,1280]) test(`partner brief controls work at ${width}px`
   assert.deepEqual(await page.locator('.morning-card .morning-owner').allTextContents(),['Dell']);
   assert.equal(await page.locator('#appTodayOwners [data-brief-owner="dell"]').getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#appTodayNext [data-layout-deal]').count(),1);
-  const fits=await page.locator('dialog').evaluate(node=>node.scrollWidth<=node.clientWidth);
+  const fits=await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth);
   assert.equal(fits,true);
   assert.equal(await page.locator('#morningOwners [data-brief-owner="dell"]').evaluate(node=>getComputedStyle(node).borderRadius===getComputedStyle(document.documentElement).getPropertyValue('--radius-round').trim()),true,'reuse the pipeline owner chip style');
   await page.locator('#morningOwners [data-brief-owner="joe"]').focus();await page.keyboard.press('Enter');

@@ -1,9 +1,9 @@
+import { readMorningBrief } from './morning-brief.js';
 import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.generated.js';
 import { createPageBudget } from './read-budget.mjs';
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { todayMove } from './today-moves.mjs';
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
-import { normalizeBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
 import { mostOverdueFirst, needsAttention, overdueActionRows, overdueLabel, overdueSince, scopedDeals } from './deal-review-model.js';
 import { businessDay } from './business-date.js';
@@ -249,10 +249,11 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     const [board, triage, meetings] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(async () => {
-        const brief = normalizeBrief(await client.morningBrief());
+        const brief = await readMorningBrief(root, () => client.morningBrief({ signal }), { signal });
         if (signal.aborted) return null;
-        if (brief) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
-        return client.todayTriage();
+        if (!brief) return null;
+        owners.setViewer(brief.sponsor);
+        return brief.sections.today.state === 'unavailable' ? null : { items: brief.sections.today.items };
       }, { signal }),
       readWithDeadline(() => client.calendarMeetingPrep({ signal: preparationSignal }), { signal: preparationSignal }),
     ]);

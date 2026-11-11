@@ -1,0 +1,21 @@
+stateDiagram-v2
+  [*] --> Reading
+  Reading --> Ready: Brief arrives
+  Reading --> Partial: Some sources fail
+  Reading --> Unavailable: Read fails
+  Ready --> Reading: Refresh
+  Partial --> Reading: Refresh
+  Unavailable --> Reading: Retry
+  Ready --> Queue: Open queue
+  Partial --> Queue: Open queue
+  Ready --> Record: Open priority
+  Partial --> Record: Open priority
+  Queue --> Ready: Return to brief
+  Record --> Ready: Return to brief
+  Reading --> Retired: Actor changes
+  Ready --> Retired: Actor changes
+  Partial --> Retired: Actor changes
+  Unavailable --> Retired: Actor changes
+  Queue --> Retired: Actor changes
+  Record --> Retired: Actor changes
+  Retired --> Reading: Verify new actor

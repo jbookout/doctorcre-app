@@ -1,9 +1,4 @@
-/* Dr. CRE's morning brief dialog, on the V2 tokens. The first card is the one
-   thing that needs Joe; it leads by position and a hairline step, never by a
-   pulse. */
-.morning-brief { box-sizing: border-box; width: min(1100px, calc(100vw - 32px)); max-width: 1100px; max-height: calc(100dvh - 32px); padding: var(--space-6); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); color: var(--fg); box-shadow: var(--shadow-overlay); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
-.morning-brief[open] { animation: none; }
-.morning-brief::backdrop { background: var(--scrim); }
+.morning-brief { box-sizing: border-box; width: 100%; max-width: 1100px; margin: 0; scroll-margin-top: var(--space-5); padding: var(--space-6); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); color: var(--fg); box-shadow: none; font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
 .morning-brief header, .morning-toolbar { display: flex; align-items: center; gap: var(--space-3); }
 .morning-brief header { justify-content: space-between; }
 .morning-brief h2, .morning-brief h3 { margin: 0; font-family: var(--font-text); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); }
@@ -35,7 +30,7 @@
 .morning-record dd { margin: var(--space-1) 0 0; font-variant-numeric: tabular-nums; }
 .morning-record summary { display: flex; align-items: center; min-height: var(--touch); color: var(--fg); cursor: pointer; }
 .morning-record .entry-original { white-space: pre-wrap; }
-@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){ .morning-brief { width: calc(100vw - 20px); padding: var(--space-4); } #morningContent, .morning-record { grid-template-columns: minmax(0, 1fr); } .morning-brief .morning-card { gap: var(--space-3); padding: var(--space-4); } }
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){ .morning-brief { padding: var(--space-4); } #morningContent, .morning-record { grid-template-columns: minmax(0, 1fr); } .morning-brief .morning-card { gap: var(--space-3); padding: var(--space-4); } }
 @media (prefers-reduced-motion: reduce) { .morning-brief button, .morning-brief .morning-card { transition: none; } }
 :root[data-motion=reduced] :is(.morning-brief button, .morning-brief .morning-card) { transition: none; }
 
@@ -65,3 +60,17 @@
 .morning-sections > details { margin-top: var(--space-3); padding: var(--space-3) var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); }
 .morning-sections summary { min-height: var(--touch); align-content: center; cursor: pointer; }
 .morning-sections li { margin-bottom: var(--space-3); }
+
+.home-inbox { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 390px); column-gap: var(--space-5); align-items: start; }
+.home-inbox > * { grid-column: 1; min-width: 0; }
+.home-inbox > .home-morning-brief { grid-column: 2; grid-row: 2 / span 30; }
+.morning-brief[hidden] { display: none; }
+.home-morning-brief .morning-brief { padding: var(--space-4); }
+.home-morning-brief #morningContent, .home-morning-brief .morning-record { grid-template-columns: minmax(0, 1fr); }
+.home-morning-brief .morning-card { padding: var(--space-3); gap: var(--space-2); }
+.home-morning-brief .morning-marker { display: none; }
+.home-morning-brief .morning-card strong { font-size: var(--font-size-2); }
+@media (max-width: 1100px) {
+  .home-inbox { display: block; }
+  .home-morning-brief { margin-block: var(--space-4); }
+}

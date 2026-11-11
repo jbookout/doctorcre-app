@@ -54,7 +54,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
 const snap=async(page,name)=>{await mkdir(new URL('out/test-artifacts/w12/',root),{recursive:true});await page.screenshot({path:new URL(`out/test-artifacts/w12/${name}.png`,root).pathname,animations:'disabled'});};
 
 test('live brief opens on request and wide record detail; desktop/phone renders, focus, original entry, no horizontal overflow',async t=>{
- const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
+ const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>!node.hidden),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();
  await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('[data-brief-record]').count(),3);assert.deepEqual(await page.locator('#docMorningBrief h3').allTextContents(),['Do first','Overnight','Today']);
  assert.doesNotMatch(await page.locator('#docMorningBrief').innerText(),/read from|records read|retry|Read again/);
  assert.doesNotMatch(await page.locator('#docMorningBrief header').innerText(),/◍/);
@@ -69,8 +69,8 @@ test('live brief opens on request and wide record detail; desktop/phone renders,
  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
  await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();await snap(page,'record-phone');
  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
- await page.locator('#morningClose').click();await page.locator('#selfAvatar').click();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();assert.equal(await page.locator('dialog[open]').count(),1);
- await page.keyboard.press('Escape');assert.equal(await page.locator('#selfAvatar').evaluate(node=>document.activeElement===node),true);
+ await page.locator('#morningClose').click();await page.locator('#selfAvatar').click();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();assert.equal(await page.locator('dialog[open]').count(),0);
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#docMorningBrief').isVisible(),true);
  assert.deepEqual(state.errors,[]);assert.ok(state.calls.filter(call=>call.name==='morning-brief').every(call=>Object.keys(call.args).length===0));
 });
 test('brief dates keep their weekday across viewer timezones with keyboard detail and Back',async t=>{
@@ -169,7 +169,7 @@ test('task title repeats stay omitted in sections and detail while refreshed ins
   assert.equal(await page.locator('.morning-record dd').last().innerText(),task.blocker_detail);
   assert.equal(await page.locator('.morning-record details').evaluate(node=>node.open),true);
   await page.locator('#morningBack').click();assert.equal(await card.evaluate(node=>node===document.activeElement),true);
-  await section.locator('summary').click();
+  assert.equal(await section.evaluate(node=>node.open),true);
   assert.ok((await section.innerText()).includes(`Your task: ${task.blocker_detail}`));
   assert.deepEqual(errors,[]);
  }
@@ -177,10 +177,10 @@ test('task title repeats stay omitted in sections and detail while refreshed ins
 test('daily preference survives navigation and refresh without narration, including legacy speech opt-in',async t=>{
  const state=await setup(t);const {page}=state;
  await page.addInitScript(()=>localStorage.setItem('doctorcre:morning:joe',JSON.stringify({...JSON.parse(localStorage.getItem('doctorcre:morning:joe')||'{}'),speech:true})));
- await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
+ await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>!node.hidden),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();
  assert.equal(await page.getByRole('button',{name:/Brief speech|Listen to morning brief|Stop morning brief/}).count(),0);assert.equal(await page.evaluate(()=>spoken.length),0);
  await page.locator('#morningClose').click();const loaded=page.waitForResponse(res=>res.url().endsWith('/mcp')&&res.request().postDataJSON()?.params?.name==='morning-brief');await page.reload();await loaded;await page.locator('#docPresence').waitFor({state:'attached'});
- assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('[data-brief-record]').first().waitFor();
+ assert.equal(await page.locator('#docMorningBrief').evaluate(node=>!node.hidden),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('[data-brief-record]').first().waitFor();
  assert.equal(await page.getByRole('button',{name:/Brief speech|Listen to morning brief|Stop morning brief/}).count(),0);assert.equal(await page.evaluate(()=>spoken.length),0);
  state.change();await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('updated demo')); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }
  assert.deepEqual(state.errors,[]);
@@ -194,7 +194,7 @@ test('V2 motion: hover is a state transition with no pulse; reduced motion is me
  for(const motion of ['no-preference','reduce'])for(const width of [1440,390]){
   const {page,goto}=await setup(t,{motion,width});await goto();
   if(width===390)await page.locator('#selfAvatar').click();
-  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('.morning-card').first().hover();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();await page.locator('.morning-card').first().hover();
   const css=await page.locator('.morning-card').first().evaluate(node=>({transform:getComputedStyle(node).transform,transition:getComputedStyle(node).transitionDuration,pulse:getComputedStyle(node.querySelector('.morning-marker')).animationName}));
   assert.equal(css.pulse,'none','V2 removed the ambient pulse');assert.equal(css.transform,'none');
   if(motion==='reduce')assert.equal(css.transition,'0s');else assert.notEqual(css.transition,'0s');
@@ -202,18 +202,18 @@ test('V2 motion: hover is a state transition with no pulse; reduced motion is me
  }
 });
 test('Doc remains reachable with invalid or missing brief without consuming the daily opening',async t=>{
- const {page,goto}=await setup(t,{brief:false});await goto();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);
- await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
+ const {page,goto}=await setup(t,{brief:false});await goto();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>!node.hidden),false);
+ await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();
  assert.equal(await page.locator('[data-brief-record]').count(),0);assert.match(await page.locator('#morningCoverage').innerText(),/unavailable/);
  assert.equal(await page.evaluate(()=>localStorage.getItem('doctorcre:morning:joe')),null);
 });
 
 test('keyboard record entry moves focus into detail and Back restores the invoking card',async t=>{
- const {page,goto}=await setup(t);await goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();const card=page.locator('[data-brief-record="0"]');await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+ const {page,goto}=await setup(t);await goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();const card=page.locator('[data-brief-record="0"]');await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
  assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');await page.keyboard.press('Enter');await card.waitFor();assert.equal(await card.evaluate(node=>document.activeElement===node),true);
 });
 test('refresh retains Details on stable note identity and uses Back when it leaves the visible five',async t=>{
- const state=await setup(t),{page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();const original=page.locator('#morningContent details').filter({hasText:'Original synthetic entry'});await original.locator('summary').click();await original.locator('summary').focus();
+ const state=await setup(t),{page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();const original=page.locator('#morningContent details').filter({hasText:'Original synthetic entry'});await original.locator('summary').click();await original.locator('summary').focus();
  state.thread=[{id:'prepended-note',text:'Demo prepended note.'},{id:'demo-note',text:'Demo short summary. Original synthetic entry with additional details.'}];await page.locator('#morningRefresh').evaluate(node=>node.click());await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('prepended'));
  assert.equal(await original.evaluate(node=>node.open),true);assert.equal(await original.locator('summary').evaluate(node=>document.activeElement===node),true);assert.equal(await page.locator('#morningContent details').first().evaluate(node=>node.open),false);
  state.thread=Array.from({length:5},(_,index)=>({id:`new-note-${index}`,text:`Demo replacement note ${index}.`}));await page.locator('#morningRefresh').evaluate(node=>node.click());await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('replacement'));
@@ -222,7 +222,7 @@ test('refresh retains Details on stable note identity and uses Back when it leav
 
 for (const key of ['d']) test(`Doc Control+${key} switches from the brief to the command bar with one modal`, async t => {
  const { page, goto } = await setup(t);
- await goto(); await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
+ await goto(); await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief:not([hidden])').waitFor();
  await page.keyboard.press(`Control+${key}`);
  await page.locator('#docDetail[open]').waitFor();
  assert.equal(await page.locator('dialog[open]').count(), 1);
@@ -230,12 +230,12 @@ for (const key of ['d']) test(`Doc Control+${key} switches from the brief to the
  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));
  assert.equal(await page.locator('#docCommandInput').evaluate(node => document.activeElement === node), true);
  await page.keyboard.press('Escape');
- await page.waitForFunction(() => document.activeElement?.id === 'docOpen');
+ await page.waitForFunction(() => document.activeElement?.id === 'morningTitle');
  assert.equal(await page.locator('dialog[open]').count(), 0);
- assert.equal(await page.locator('#docOpen').evaluate(node => document.activeElement === node), true);
+ assert.equal(await page.locator('#morningTitle').evaluate(node => document.activeElement === node), true);
  await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
- assert.equal(await page.locator('dialog[open]').count(), 1);
- assert.equal(await page.locator('#docMorningBrief').evaluate(node => node.open), true);
+ assert.equal(await page.locator('dialog[open]').count(), 0);
+ assert.equal(await page.locator('#docMorningBrief').evaluate(node => !node.hidden), true);
 });
 
 

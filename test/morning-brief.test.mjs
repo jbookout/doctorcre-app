@@ -134,14 +134,14 @@ test('record sheets preserve unknown due text and omit an absent date',async t=>
  }
 });
 test('the brief never opens itself; an unseen cue shows once per day until opened, then returns the next day',async t=>{
- const state=setup(t);const dialog=()=>state.root.querySelector('dialog'),cue=()=>state.root.getElementById('docOpen').hasAttribute('data-brief-unseen');
- await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);assert.match(state.root.getElementById('docMorning').textContent,/new today/);
- state.root.getElementById('docMorning').click();await state.ui.refresh();assert.equal(dialog().open,true);assert.equal(cue(),false);assert.equal(state.root.getElementById('docMorning').textContent,'Morning brief');
- state.root.getElementById('morningClose').click();await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),false);
+ const state=setup(t);const dialog=()=>state.root.querySelector('#docMorningBrief'),cue=()=>state.root.getElementById('docOpen').hasAttribute('data-brief-unseen');
+ await state.ui.refresh();assert.equal(!dialog().hidden,false);assert.equal(cue(),true);assert.match(state.root.getElementById('docMorning').textContent,/new today/);
+ state.root.getElementById('docMorning').click();await state.ui.refresh();assert.equal(!dialog().hidden,true);assert.equal(cue(),false);assert.equal(state.root.getElementById('docMorning').textContent,'Morning brief');
+ state.root.getElementById('morningClose').click();await state.ui.refresh();assert.equal(!dialog().hidden,false);assert.equal(cue(),false);
  state.current=new Date(2026,9,3,8,1);await state.ui.open();
  assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).lastShownAt,new Date(2026,9,3,8,1).toISOString());
  state.root.getElementById('morningClose').click();
- state.current=new Date(2026,9,4,8);await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);
+ state.current=new Date(2026,9,4,8);await state.ui.refresh();assert.equal(!dialog().hidden,false);assert.equal(cue(),true);
  const other=payload();other.sponsor='dell';other.sections.today=section([due('d','dell')]);state.data=other;await state.ui.refresh();await state.ui.open();assert.match(state.root.getElementById('morningTitle').textContent,/Dell/);
  assert.doesNotMatch(state.win.localStorage.getItem('doctorcre:morning:joe'),/Demo|lease/);
 });
@@ -160,12 +160,12 @@ test('exact record popup with original entry details and late-result guard',asyn
 });
 test('brief header has no inert Doc emblem and keeps its heading and dismiss control',async t=>{
  const state=setup(t);await state.ui.refresh();state.root.getElementById('docMorning').focus();await state.ui.open();
- const dialog=state.root.querySelector('dialog');
+ const dialog=state.root.querySelector('#docMorningBrief');
  assert.doesNotMatch(dialog.querySelector('header').textContent,/◍/);
  assert.equal(state.root.getElementById('morningTitle').textContent,'Morning brief · Joe');
- state.root.getElementById('morningClose').click();assert.equal(dialog.open,false);
+ state.root.getElementById('morningClose').click();assert.equal(!dialog.hidden,false);
  assert.equal(state.root.activeElement,state.root.getElementById('docMorning'));
- state.root.getElementById('docMorning').click();await state.ui.refresh();assert.equal(dialog.open,true);
+ state.root.getElementById('docMorning').click();await state.ui.refresh();assert.equal(!dialog.hidden,true);
 });
 test('brief stays readable without narration controls or speech calls, including a saved speech preference',async t=>{
  const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});state.ui.dispose();const calls=[];
@@ -176,7 +176,7 @@ test('brief stays readable without narration controls or speech calls, including
  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
  state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));assert.ok(state.root.querySelector('.morning-record'));
  state.root.getElementById('morningBack').click();await ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
- state.root.getElementById('morningClose').click();assert.equal(state.root.querySelector('dialog').open,false);assert.deepEqual(calls,[]);
+ state.root.getElementById('morningClose').click();assert.equal(!state.root.querySelector('#docMorningBrief').hidden,false);assert.deepEqual(calls,[]);
 });
 
 test('overnight transport starts at cutoff and preserves server cursors without replaying historical pages',async()=>{
@@ -203,7 +203,7 @@ test('background record refresh preserves expanded original and focused Details'
 test('opening while loading consumes the day only when live facts arrive; dismiss stays dismissed',async t=>{
  let release,started;const reading=new Promise(resolve=>started=resolve);const state=setup(t,{read:()=>new Promise(resolve=>{release=resolve;started();})});const opening=state.ui.open();await reading;
  assert.equal(state.win.localStorage.length,0);release(payload());await opening;state.root.getElementById('morningClose').click();
- state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,false);
+ state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(!state.root.querySelector('#docMorningBrief').hidden,false);
  assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).day,day);
 });
 
@@ -308,7 +308,7 @@ for(const status of [401,403]) {
   state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};await state.ui.refresh();
   assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.win.localStorage.getItem('doctorcre:morning:joe'),null);
   state.client.getChanges=async()=>({events:[],cursor:'end'});await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
-  state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.doesNotMatch(state.root.querySelector('dialog').textContent,/Demo/);
+  state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.doesNotMatch(state.root.querySelector('#docMorningBrief').textContent,/Demo/);
  });
 }
 test('ordinary changes network failure retains supported priorities with unavailable overnight coverage',async t=>{
@@ -474,7 +474,7 @@ test('F6 partial and missing required sources are visible using safe category na
  const coverage=data.coverage.required_sections.find(row=>row.key==='needs_joe');Object.assign(coverage,{state:'partial',counts:{items:1},incomplete_sources:[{key:'work_requests',state:'unavailable'}]});
  state.data=data;await state.ui.refresh();
  assert.match(state.root.getElementById('morningContent').textContent,/partial.*Work requests unavailable/s);
- assert.doesNotMatch(state.root.querySelector('dialog').textContent,/private-driver-demo/);
+ assert.doesNotMatch(state.root.querySelector('#docMorningBrief').textContent,/private-driver-demo/);
  delete data.sections.renewals;await state.ui.refresh();assert.match(state.root.getElementById('morningContent').textContent,/Renewals.*unavailable/s);
 });
 test('F5 business day and initial overnight cutoff use Chicago under both DST offsets and transitions',async t=>{

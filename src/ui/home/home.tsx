@@ -17,6 +17,7 @@ import {
   taskCommand,
 } from "./inbox";
 import { MailPriorities } from "./mail-priorities";
+import { MorningBrief } from "./morning-brief";
 import { ReviewCard } from "./review-card";
 import { recordRoutes } from "./routes";
 import { completionLabel, HomeSections, HomeWelcome } from "./sections";
@@ -543,6 +544,7 @@ function Inbox({ client }: { client: InboxClient }) {
       {home && (
         <>
           <HomeWelcome />
+          <MorningBrief />
           <MailPriorities
             items={items}
             locked={busy || !!pending || !!reviewing}

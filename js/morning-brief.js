@@ -5,7 +5,6 @@ import { toDay } from './calendar-model.js';
 import { briefInstruction, briefSectionsHtml } from './morning-brief-sections.js';
 import { briefPreferences } from './brief-preferences.js';
 import { briefOwnerLabel, mountBriefOwnerFilter } from './brief-owner-filter.js';
-import {onDialogClosed} from './dialog-lifecycle.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { escapeText } from './change-receipts.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
@@ -17,11 +16,39 @@ const dueLabel = value => {
   return day ? dueFormat.format(new Date(`${day}T00:00:00Z`)) : value;
 };
 
+const sharedReads = new WeakMap();
+export function readMorningBrief(document, read, { fresh = false, signal } = {}) {
+  let state = sharedReads.get(document);
+  if (!state) {
+    state = { pending: null, value: null, observed: 0, epoch: 0 };
+    sharedReads.set(document, state);
+    const retire = () => { state.epoch++; state.value = null; state.observed = 0; state.pending = null; };
+    document.defaultView.addEventListener('doctorcre-session-invalidated', retire);
+    // eslint-disable-next-line no-restricted-syntax -- Hidden-state listener retires cached private facts once per event; 0 HTTP reads.
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') retire(); });
+  }
+  if (state.pending) return state.pending;
+  if (!fresh && state.value && Date.now() - state.observed < 60_000) return Promise.resolve(state.value);
+  const epoch = state.epoch;
+  const pending = readWithDeadline(read, { signal }).then(value => {
+    if (epoch !== state.epoch) throw Error('Brief session retired');
+    const brief = normalizeBrief(value);
+    if (!brief) throw Error('Invalid brief');
+    state.value = brief; state.observed = Date.now();
+    return brief;
+  }).catch(error => { if (epoch === state.epoch) { state.value = null; state.observed = 0; } throw error; }).finally(() => { if (state.pending === pending) state.pending = null; });
+  state.pending = pending;
+  return pending;
+}
+
 export function mountMorningBrief({ document:root, window:win, getClient, intervalMs, now = () => new Date() }) {
-  const dialog = root.createElement('dialog'); dialog.id = 'docMorningBrief'; dialog.className = 'morning-brief'; dialog.setAttribute('aria-labelledby','morningTitle');
-  dialog.innerHTML = '<header><h2 id="morningTitle">Morning brief</h2><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button></div><div id="morningOwners"></div><div id="morningCoverage" role="status"></div><nav id="morningQueues" aria-label="Morning work queues"></nav><div id="morningContent"></div>';
-  root.body.append(dialog);
-  const $ = id => dialog.querySelector(`#${id}`) || root.getElementById(id), control = $('docMorning');
+  const panel = root.createElement('section'); panel.id = 'docMorningBrief'; panel.className = 'morning-brief'; panel.hidden = true; panel.setAttribute('aria-labelledby','morningTitle');
+  panel.innerHTML = '<header><h2 id="morningTitle">Morning brief</h2><button id="morningClose" type="button" aria-label="Hide morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button></div><div id="morningOwners"></div><div id="morningCoverage" role="status"></div><nav id="morningQueues" aria-label="Morning work queues"></nav><div id="morningContent"></div>';
+  root.body.append(panel);
+  const attach = () => { const host = root.querySelector('#homeBrief[data-inline-morning-brief]'); if (host) { host.append(panel); panel.hidden = false; panel.querySelector('#morningClose').hidden = true; } };
+  attach();
+  root.addEventListener('doctorcre:mount-home-brief', attach);
+  const $ = id => panel.querySelector(`#${id}`) || root.getElementById(id), control = $('docMorning');
   let facts = null, calendar, viewOptions, readEpoch = 0, fresh = false;
   let client, view = null, sponsor = null, preferences, since, windowDay, events = [], cursor = null, disposed = false, selected = null, detailEpoch = 0, opener;
   let storage; try { storage = win.localStorage; } catch {}
@@ -31,7 +58,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     if (updated.observedAt) $('morningUpdated').dateTime = updated.observedAt; else $('morningUpdated').removeAttribute('datetime');
     $('morningCoverage').textContent = view ? view.unavailable.join(' · ') : 'Brief unavailable';
     queues.menu(facts);
-    if (queues.active) dialog.dataset.queueOpen = ''; else delete dialog.dataset.queueOpen;
+    if (queues.active) panel.dataset.queueOpen = ''; else delete panel.dataset.queueOpen;
     $('morningOwners').hidden = queues.active;
     if (queues.active) {
       const label = queues.label, count = queues.countLine;
@@ -70,25 +97,30 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     control.textContent = unseen ? 'Morning brief · new today' : 'Morning brief';
   };
   const remember = () => { if (preferences && view) preferences.save({ day:localDay(now()), lastShownAt:now().toISOString(), since }); cue(); };
-  const close = () => { dialog.close(); };
+  const close = () => { queues.reset(); ++detailEpoch; selected = null; panel.hidden = true; (opener?.isConnected ? opener : $('docOpen'))?.focus(); };
   const open = async () => {
     opener = root.activeElement;
     const doc = $('docDetail'); if (doc?.open) doc.close();
     const pending = auto.revalidate();
-    if (!dialog.open) dialog.showModal();
+    panel.hidden = false;
+    panel.scrollIntoView?.({ block: 'start' });
+    $('morningTitle').tabIndex = -1; $('morningTitle').focus();
     const queuesReady = queues.prepare().catch(() => {});
     await pending;
     await queuesReady;
     if (!disposed) queues.menu(facts);
-    if (dialog.open && sponsor && view) remember();
+    if (!panel.hidden && sponsor && view) remember();
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
-  const back = () => { queues.reset(); const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };
+  let returnSections = [], returnKey, returnQueue, returnScroll = 0;
+  const savePosition = () => { if (selected || panel.hasAttribute('data-queue-open')) return; returnSections = [...$('morningContent').querySelectorAll('[data-brief-section][open]')].map(node => node.dataset.briefSection); returnKey = root.activeElement?.dataset.briefKey; returnQueue = root.activeElement?.dataset.briefQueue; returnScroll = win.scrollY; };
+  const back = () => { queues.reset(); const key = selected?.key; selected = null; ++detailEpoch; render(); for (const node of $('morningContent').querySelectorAll('[data-brief-section]')) node.open = returnSections.includes(node.dataset.briefSection); if (returnQueue) $('morningQueues').querySelector(`[data-brief-queue="${returnQueue}"]`)?.focus(); else focusCard(key || returnKey); win.scrollTo?.(0, returnScroll); };
   const publishCalendar = value => { calendar = value; root.dispatchEvent(new win.CustomEvent('doctorcre:brief-calendar', { detail: value })); };
-  const clear = () => { queues.reset(); ++detailEpoch; selected = null; view = null; facts = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
+  const clear = () => { queues.reset(); ++detailEpoch; selected = null; view = null; facts = null; returnSections = []; returnKey = undefined; returnQueue = undefined; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
   const suspend = () => { ++readEpoch; fresh = true; clear(); };
   const invalidate = () => { suspend(); publishCalendar(null); };
   const showRecord = async (row, { background = false } = {}) => {
+    if (!background) savePosition();
     selected = row; const epoch = ++detailEpoch, owner = sponsor;
     $('morningBack').hidden = false; $('morningTitle').textContent = row.title;
     if (!background) { $('morningBack').focus(); $('morningContent').innerHTML = '<span class="morning-pending" role="status">Updating…</span>'; }
@@ -118,13 +150,13 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const refresh = async ({signal} = {}) => {
     const epoch = readEpoch;
     const current = () => !disposed && !signal?.aborted && epoch === readEpoch;
-    if (dialog.open) queues.prepare().catch(() => {});
+    if (!panel.hidden) queues.prepare().catch(() => {});
     try {
       if (!current()) return;
       client ||= await getClient();
       if (!current()) return;
       const freshRead = fresh; fresh = false;
-      const payload = normalizeBrief(await readWithDeadline(() => client.morningBrief({signal, fresh:freshRead}), {signal}));
+      const payload = await readMorningBrief(root, () => client.morningBrief({ signal, fresh: freshRead }), { signal, fresh: true });
       if (!current()) return;
       if (!payload) throw new Error('Invalid brief');
       if (sponsor !== payload.sponsor || windowDay !== localDay(now())) {
@@ -158,7 +190,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       facts = payload; viewOptions = { now:now(),since,events,caughtUp };
       const next = morningBriefView(facts,{...viewOptions, owner:owners.current()});
       view = next; render();
-      if (dialog.open && preferences.value.day !== localDay(now())) remember(); else cue();
+      if (!panel.hidden && preferences.value.day !== localDay(now())) remember(); else cue();
       if (selected) {
         const source = payload.sections[selected.action ? 'today' : selected.kind === 'deal' ? 'deals' : 'loops'];
         const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === (selected.action?.id || selected.id) && (selected.kind !== 'action' || ['next_action','post_call_action','critical_date'].includes(row.item_kind)));
@@ -167,7 +199,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     } catch (error) { if (current()) { if ([401,403].includes(error.status)) invalidate(); else { clear(); publishCalendar({ state: 'unavailable' }); } } }
   };
   const queues = mountBriefQueues({menu:$('morningQueues'),content:$('morningContent'),getClient:()=>client,getSponsor:()=>sponsor,
-    onOpen:title=>{selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;},onBack:back,onInvalidate:invalidate,onChange:render});
+    onOpen:title=>{savePosition();selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;},onBack:back,onInvalidate:invalidate,onChange:render});
   const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:suspend,onWake:suspend,intervalMs });
   const refreshCalendar = () => auto.refresh();
   const currentCalendar = () => publishCalendar(calendar);
@@ -176,14 +208,12 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   win.addEventListener('doctorcre-session-invalidated', invalidate);
   control.onclick = open;
   $('morningClose').onclick = close;
-  // A modal that replaced the brief (Doc's command bar) already owns focus.
-  onDialogClosed(dialog, () => { queues.reset(); ++detailEpoch; selected = null; if (root.querySelector('dialog[open]')) return; (opener?.isConnected && !opener.closest('dialog:not([open])') ? opener : $('docOpen'))?.focus(); });
   $('morningBack').onclick = back;
   $('morningRefresh').onclick = () => queues.active ? queues.refresh() : auto.refresh();
-  $('morningContent').onclick = event => { if(queues.click(event))return; if (event.target.closest('[data-brief-show-all]')) { owners.setOwner('all'); $('morningOwners').querySelector('[data-brief-owner="all"]').focus(); return; } const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
+  $('morningContent').onclick = event => { const queueControl = event.target.closest('[data-brief-queue-back], [data-brief-queue-more]'); if (queueControl) { queues.click({ target: queueControl }); return; } if (queues.active) return; if (event.target.closest('[data-brief-show-all]')) { owners.setOwner('all'); $('morningOwners').querySelector('[data-brief-owner="all"]').focus(); return; } const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
   const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
   // eslint-disable-next-line no-restricted-syntax -- Hidden-state listener suspends private brief content once per event; 0 HTTP reads.
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
-  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.dispose(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
+  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; root.removeEventListener('doctorcre:mount-home-brief', attach); queues.dispose(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); panel.remove(); } };
 }

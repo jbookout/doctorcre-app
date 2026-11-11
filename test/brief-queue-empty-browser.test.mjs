@@ -43,7 +43,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     const message = page.getByText(emptyCopy, { exact: true });
     for (const partner of ['joe', 'dell']) {
       if (partner === 'dell') {
-        await page.getByRole('button', { name: 'Dismiss morning brief' }).click();
+        await page.getByRole('button', { name: 'Hide morning brief' }).click();
         await page.evaluate(async () => { window.partner = 'dell'; await window.brief.refresh(); await window.brief.open(); });
       }
       const queues = partner === 'joe' ? ['today', 'loops', 'needs_joe', 'assurance_cadence'] : ['today', 'loops', 'assurance_cadence'];
@@ -97,7 +97,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
           await refresh.focus();
         } else await message.waitFor();
         assert.equal(await refresh.evaluate(node => node === document.activeElement), true);
-        assert.equal(await page.locator('dialog').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+        assert.equal(await page.locator('#docMorningBrief').evaluate(node => node.scrollWidth <= node.clientWidth), true);
       }
       assert.equal(await page.locator('[data-brief-queue-more]').count(), 0);
       const back = page.getByRole('button', { name: 'Back to priorities', exact: true });

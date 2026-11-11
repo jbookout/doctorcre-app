@@ -25,7 +25,8 @@ test('brief exposes all four queues and reaches the 51st loop in server order wi
  const state=setup(t,async(queue,args)=>{calls.push([queue,args.cursor]);return args.cursor?page([row(51)],{next:null}):page(Array.from({length:50},(_,i)=>row(i+1)));});
  await state.ui.refresh();await state.ui.open();
  assert.deepEqual([...state.root.querySelectorAll('[data-brief-queue]')].map(node=>node.dataset.briefQueue),['today','loops','needs_joe','assurance_cadence']);
- state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
+ const coverage = state.root.querySelector('[data-brief-section="loops"]'); coverage.open = true;
+ const opener = state.root.querySelector('[data-brief-queue="loops"]'); opener.focus(); opener.click();await tick();
  assert.match(state.root.getElementById('morningTitle').textContent,/Open loops · 50 of 51/);
  assert.equal(state.root.querySelectorAll('[data-queue-item]').length,50);
  state.root.querySelector('[data-brief-queue-more]').click();await tick();
@@ -33,6 +34,9 @@ test('brief exposes all four queues and reaches the 51st loop in server order wi
  assert.equal(state.root.querySelectorAll('[data-queue-item]').length,51);
  assert.equal(state.root.querySelector('[data-brief-queue-more]'),null);
  assert.deepEqual(calls,[['loops',undefined],['loops','next']]);
+ state.root.getElementById('morningBack').click();
+ assert.equal(state.root.querySelector('[data-brief-section="loops"]').open,true);
+ assert.equal(state.root.activeElement.dataset.briefQueue,'loops');
 });
 test('failed and malformed follow-up retain rows and retry without claiming completion',async t=>{
  let fail=true;

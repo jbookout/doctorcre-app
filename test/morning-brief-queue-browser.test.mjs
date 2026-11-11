@@ -66,11 +66,11 @@ test('rendered brief queues show the 51st tied loop and retain readable narrow-s
  await page.getByRole('heading',{name:'Open loops · 51 of 51'}).waitFor();
  assert.equal(await page.locator('[data-queue-item]').count(),51);
  await mkdir('out/test-artifacts',{recursive:true});
- await page.locator('dialog').evaluate(node=>node.scrollTop=0);
+ await page.locator('#docMorningBrief').evaluate(node=>node.scrollTop=0);
  await page.screenshot({path:'out/test-artifacts/brief-queue-mobile-header.png'});
  await page.getByText('Synthetic loop 51',{exact:true}).click();
  assert.equal(await page.locator('[data-queue-item]').last().locator('details').getAttribute('open'),'');
- assert.equal(await page.evaluate(()=>document.querySelector('dialog').scrollWidth<=document.querySelector('dialog').clientWidth),true);
+ assert.equal(await page.evaluate(()=>document.querySelector('#docMorningBrief').scrollWidth<=document.querySelector('#docMorningBrief').clientWidth),true);
  await mkdir('out/test-artifacts',{recursive:true});
  await page.screenshot({path:'out/test-artifacts/brief-queue-mobile.png'});
  await page.evaluate(()=>{window.queueChanged=true;});
