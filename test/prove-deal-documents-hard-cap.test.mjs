@@ -26,8 +26,8 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
       if (mode === 'timeout') responses.set(path, { ...response, hold: 'timeout' });
       else if (mode === 'protected') responses.set(path, { status: 403 });
       else if (path === '/release' && mode === 'fallback') responses.set(path, { status: 404 });
-      else if (path.startsWith('/js/') && mode === 'broken' && path === '/js/ui-deal-documents.js') responses.set(path, { contentType: 'text/javascript', body: 'export function mountDealDocuments(){throw Error("Synthetic broken deployment")}' });
-      else if (path.startsWith('/js/') && mode === 'asset-protected' && path !== '/js/ui-deal-documents.js') responses.set(path, { status: 302, headers: { location: '/sign-in' } });
+      else if (path.startsWith('/js/') && mode === 'broken' && path === '/js/ui-deal-documents.generated.js') responses.set(path, { contentType: 'text/javascript', body: 'export function mountDealDocuments(){throw Error("Synthetic broken deployment")}' });
+      else if (path.startsWith('/js/') && mode === 'asset-protected' && path !== '/js/ui-deal-documents.generated.js') responses.set(path, { status: 302, headers: { location: '/sign-in' } });
     }
     return startFixture({ routes: responses });
   }
@@ -36,13 +36,13 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
   const origin = server.origin;
   for (const path of [
     '/js/../../sentinel.js',
-    '/js/../js/ui-deal-documents.js',
+    '/js/../js/ui-deal-documents.generated.js',
     '/js/%2e%2e/%2e%2e/sentinel.js',
     '/js/%2E%2E/sentinel.js',
     '/js/..%2f..%2fsentinel.js',
     '/js/..\\..\\sentinel.js',
     '/js/%5c..%5csentinel.js',
-    '/js/ui-deal-documents.js%00',
+    '/js/ui-deal-documents.generated.js%00',
   ]) {
     await t.test(`refuses raw asset path ${path}`, async () => {
       const response = await new Promise((resolve, reject) => {

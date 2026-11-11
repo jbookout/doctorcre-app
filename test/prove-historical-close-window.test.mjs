@@ -1,4 +1,6 @@
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -63,7 +65,7 @@ async function fixture(t, mode='equal') {
   const recorded = JSON.parse(await readFile(new URL('./fixtures/historical-close-window/recordings.json',import.meta.url)));
   if (mode === 'padded-label') recorded.full.profiles[0].evidence[0].deal_name = '  Dental lease 1  ';
   const snapshot = new Map([...(await appAssetSnapshot()), ...[...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}])]);
-  if(mode==='assertion') snapshot.set('/js/ui-ideal-client-profile.js',{body:assets.get('js/ui-ideal-client-profile.js').toString().replaceAll('Full-history wins','Wrong heading'),contentType:'text/javascript'});
+  if(mode==='assertion') snapshot.set('/js/ui-ideal-client-profile.generated.js',{body:assets.get('js/ui-ideal-client-profile.generated.js').toString().replaceAll('Full-history wins','Wrong heading'),contentType:'text/javascript'});
   const mutations = {
     'date-text': ['{entry.closed_on}</time>', '1{entry.closed_on}</time>'],
     'date-value': ['dateTime={entry.closed_on}', 'dateTime={`1${entry.closed_on}`}'],
@@ -74,10 +76,10 @@ async function fixture(t, mode='equal') {
     const [before, after] = mutations[mode];
     assert.ok(source.includes(before));
     const output = await build({ stdin: { contents: source.replace(before, after), loader: 'tsx', resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
-    snapshot.set('/js/ui-ideal-client-profile.js', { body: output.outputFiles[0].contents, contentType: 'text/javascript' });
+    snapshot.set('/js/ui-ideal-client-profile.generated.js', { body: output.outputFiles[0].contents, contentType: 'text/javascript' });
   }
   const routes = new Map([['/',{contentType:'text/html',body:`<!doctype html><title>Natural fixture</title><main></main><script type="module">
-    import { mountIdealClientProfile } from '/js/ui-ideal-client-profile.js';
+    import { mountIdealClientProfile } from '/js/ui-ideal-client-profile.generated.js';
     mountIdealClientProfile(document.querySelector('main'),{ async getIdealClientProfile(){
       const response=await fetch('/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'ideal-client-profile',arguments:{}}})});
       return JSON.parse((await response.json()).result.content[0].text);
@@ -150,15 +152,15 @@ for (const mode of ['late launch','stalled evaluation']) test(`real browser is d
 
 test('signed-in natural fixture passes normalized deal labels while borrowed browser survives',async t=>{
   const f=await fixture(t,'padded-label');
-  const socket=await startFixture();
-  const port=new URL(socket.origin).port; await socket.close();
-  const borrowed=await rawChromium.launch({args:[...CHROMIUM_SAFETY_ARGS,`--remote-debugging-port=${port}`]});
+
+  const borrowedFixture = await ownedCdpFixture(); t.after(() => borrowedFixture.close());
+  const borrowed=borrowedFixture.browser;
   t.after(()=>borrowed.close());
-  const context=await borrowed.newContext(); const keeper=await context.newPage();
-  const result=await prove({origin:f.origin,expectedCommit:f.expected,cdpUrl:`http://127.0.0.1:${port}`,timeoutMs:15000});
+  const context=await borrowed.newContext(); const keeper=context.pages()[0] || await context.newPage();
+  const result=await prove({origin:f.origin,expectedCommit:f.expected,cdpUrl:borrowedFixture.endpoint,timeoutMs:15000});
   assert.equal(result.status,'passed'); assert.equal(borrowed.isConnected(),true); assert.equal(keeper.isClosed(),false);
   const empty=await fixture(t,'empty');
-  await assert.rejects(prove({origin:empty.origin,expectedCommit:empty.expected,cdpUrl:`http://127.0.0.1:${port}`,timeoutMs:1200}),{exitCode:78});
+  await assert.rejects(prove({origin:empty.origin,expectedCommit:empty.expected,cdpUrl:borrowedFixture.endpoint,timeoutMs:1200}),{exitCode:78});
   assert.equal(borrowed.isConnected(),true); assert.equal(keeper.isClosed(),false);
 });
 
@@ -181,12 +183,12 @@ for (const mode of ['connect', 'newPage']) test(`rejected CDP ${mode} acquisitio
 
 test('late borrowed CDP page closes before disconnect, preserving existing tabs', async t => {
   const f = await fixture(t);
-  const socket = await startFixture();
-  const endpoint = socket.origin, port = new URL(endpoint).port;
-  await socket.close();
-  const borrowed = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+
+  const borrowedFixture = await ownedCdpFixture(); t.after(() => borrowedFixture.close());
+  const borrowed = borrowedFixture.browser;
+  const endpoint = borrowedFixture.endpoint;
   t.after(() => borrowed.close());
-  const keeper = await borrowed.newPage();
+  const keeper = borrowedFixture.page;
   await keeper.setContent('<title>Existing signed-in tab</title>');
   const before = await rawChromium.connectOverCDP(endpoint);
   const count = before.contexts()[0].pages().length;
@@ -217,10 +219,10 @@ test('late borrowed CDP page closes before disconnect, preserving existing tabs'
 
 for (const mode of ['charts-route', 'old-route']) test(`CLI verifies real charts wiring against ${mode}`, async t => {
   const f = await fixture(t, mode);
-  const socket = await startFixture();
-  const endpoint = socket.origin, port = new URL(endpoint).port;
-  await socket.close();
-  const browser = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
+  const endpoint = browserFixture.endpoint;
   t.after(() => browser.close());
   const setup = await rawChromium.connectOverCDP(endpoint);
   t.after(() => setup.close());
@@ -295,12 +297,12 @@ for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable
       return connection;
     };
   `);
-  const listener = await startFixture();
-  const port = new URL(listener.origin).port; await listener.close();
+
   const { chromium: owner } = await import('../scripts/proof-browser.mjs');
-  const browser = await owner.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   t.after(() => browser.close());
-  const cliArgs = ['--import', preload, 'scripts/prove-historical-close-window.mjs', '--origin', f.origin, '--expected-commit', f.expected, '--cdp-url', `http://127.0.0.1:${port}`];
+  const cliArgs = ['--import', preload, 'scripts/prove-historical-close-window.mjs', '--origin', f.origin, '--expected-commit', f.expected, '--cdp-url', browserFixture.endpoint];
   const execution = promisify(execFile)(process.execPath, cliArgs);
   if (['extra read', 'future read'].includes(mode)) {
     assert.equal(JSON.parse((await execution).stdout).status, 'passed');

@@ -10,3 +10,10 @@ export function launchProofBrowser<T extends { close(): Promise<void> }>(
   options?: LaunchOptions,
   lifetime?: { signal?: AbortSignal },
 ): Promise<T>;
+export function prepareProofFixtureAssets(
+  sourceRoot: string,
+): ReturnType<typeof import("./fixture-app-assets.mjs").appAssetSnapshot>;
+export function startProofFixtureAssets(
+  assets: Awaited<ReturnType<typeof import("./fixture-app-assets.mjs").appAssetSnapshot>>,
+  signal: AbortSignal,
+): ReturnType<typeof import("./fixture-http.mjs").startWorkerFixture>;

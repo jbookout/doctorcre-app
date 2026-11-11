@@ -8,7 +8,7 @@ import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { temporaryDirectory } from './temp-directory.mjs';
 
 export async function observe({ recordings, document = globalThis.document }) {
-  const { mountFactReview } = await import('/js/ui-facts.js');
+  const { mountFactReview } = await import('/js/ui-facts.generated.js');
   const { createLiveClient } = await import('/js/live-client.js');
   const { FACT_TERMS } = await import('/js/client.js');
   const assertions = [];
@@ -139,7 +139,7 @@ export async function observeOnPage(page, origin, recordings) {
 
 export function signedInEngine(endpoint, engine = chromium) {
   const url = new URL(endpoint);
-  assert.ok(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname) && !url.username && !url.password, 'loopback CDP endpoint required');
+  assert.ok(['http:', 'ws:'].includes(url.protocol) && ['localhost', '127.0.0.1'].includes(url.hostname) && !url.username && !url.password, 'loopback CDP endpoint required');
   return { launch: async options => {
     const connection = await engine.connectOverCDP(endpoint, { timeout: options.timeout }).catch(error => { throw Object.assign(error, { exitCode: 78 }); });
     const pages = [], acquisitions = [];

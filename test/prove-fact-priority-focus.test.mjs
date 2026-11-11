@@ -1,7 +1,8 @@
-import { cdpEndpoint } from "./cdp-fixture.ts";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 import { execFileSync } from 'node:child_process';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import test from 'node:test';
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import { get } from 'node:http';
 import { once } from 'node:events';
@@ -15,7 +16,7 @@ import { prove, requireContainingRelease, signedInEngine } from '../scripts/prov
 async function fixture(t, mode = 'healthy', revision = '1'.repeat(40)) {
   const assets = await proofAssetSnapshot();
   if (mode === 'protected') for (const key of assets.keys()) assets.set(key,{status:403});
-  if (mode === 'broken' || mode === 'stall') assets.set('/js/ui-facts.js',{contentType:'text/javascript',
+  if (mode === 'broken' || mode === 'stall') assets.set('/js/ui-facts.generated.js',{contentType:'text/javascript',
     body:mode === 'broken' ? 'export function mountFactReview(){throw Error("broken module")}' : 'await new Promise(()=>{});'});
   const release = await handleDoctorcreRequest(new Request('https://app.example/app-release'),{APP_ENV:'production',GIT_SHA:revision});
   const server = await startFixture({assets,routes:new Map([['/app-release',{body:await release.text(),contentType:'application/json'}]])});
@@ -128,10 +129,11 @@ test('unreachable CDP and page acquisition refusal are insufficient evidence', a
 test('late CDP page is drained before disconnect and preserves existing tabs', async t => {
   const { chromium } = await import('../scripts/proof-browser.mjs');
   const { chromium: driver } = await import('playwright');
-  const browser = await chromium.launch({ args: ['--remote-debugging-port=0', '--enable-automation'] });
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser = browserFixture.browser;
   t.after(() => browser.close());
-  const sentinel = await browser.newPage(); await sentinel.setContent('<title>Preserved tab</title>');
-  const endpoint = await cdpEndpoint(browser), before = browser.contexts()[0].pages().length;
+  const sentinel = browserFixture.page; await sentinel.setContent('<title>Preserved tab</title>');
+  const endpoint = browserFixture.endpoint, before = browser.contexts()[0].pages().length;
   let acquired = false;
   const engine = { connectOverCDP: async (...args) => {
     const connection = await driver.connectOverCDP(...args), context = connection.contexts()[0], newPage = context.newPage.bind(context);
@@ -150,7 +152,7 @@ test('late CDP page is drained before disconnect and preserves existing tabs', a
 
 test('near-miss matching count fails the exact CLI assertion', async t => {
   const assets = await proofAssetSnapshot();
-  const asset = assets.get('/js/ui-facts.js');
+  const asset = assets.get('/js/ui-facts.generated.js');
   const original = Buffer.from(asset.body).toString();
   assert.ok(original.includes(' matching of '));
   asset.body = original.replace(' matching of ', '1 matching of ');
@@ -161,7 +163,6 @@ test('near-miss matching count fails the exact CLI assertion', async t => {
   assert.equal(result.code, 1, JSON.stringify(result));
   assert.match(result.receipt.error, /exact-count/);
 });
-
 
 test('CLI release gate accepts equal and descendant and refuses older unrelated and unknown', async t => {
   const cwd = temporaryDirectory('priority-cli-release-', t);

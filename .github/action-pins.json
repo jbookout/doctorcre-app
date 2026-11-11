@@ -3,6 +3,15 @@
   "verified_at": "2026-10-11",
   "method": "canonical GitHub REST published release + tag commit, independent canonical git ls-remote and action.yml runtime",
   "actions": {
+    "actions/cache": {
+      "sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "canonical_tag_sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "tag": "v6.1.0",
+      "release_url": "https://github.com/actions/cache/releases/tag/v6.1.0",
+      "tag_url": "https://api.github.com/repos/actions/cache/git/refs/tags/v6.1.0",
+      "metadata_blob": "2606455d4cedc2a06e05c1bf7feb8cc41aaf28f9",
+      "runtime": "node24"
+    },
     "actions/checkout": {
       "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
       "tag": "v7.0.1",
@@ -11,6 +20,15 @@
       "canonical_tag_sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
       "tag_url": "https://api.github.com/repos/actions/checkout/git/refs/tags/v7.0.1",
       "metadata_blob": "5b0524f730db83f9513c18ab31a6c086c7239076"
+    },
+    "actions/download-artifact": {
+      "sha": "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+      "tag": "v8.0.1",
+      "release_url": "https://github.com/actions/download-artifact/releases/tag/v8.0.1",
+      "runtime": "node24",
+      "canonical_tag_sha": "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+      "tag_url": "https://api.github.com/repos/actions/download-artifact/git/refs/tags/v8.0.1",
+      "metadata_blob": "8b8c65029ccad20750a29fecb438eca5a607fc57"
     },
     "actions/setup-node": {
       "sha": "820762786026740c76f36085b0efc47a31fe5020",
@@ -39,15 +57,6 @@
       "tag_url": "https://api.github.com/repos/actions/upload-artifact/git/refs/tags/v7.0.1",
       "metadata_blob": "7cb4d1e81db55320b41217e1a78a1a46e3d2baef"
     },
-    "actions/download-artifact": {
-      "sha": "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
-      "tag": "v8.0.1",
-      "release_url": "https://github.com/actions/download-artifact/releases/tag/v8.0.1",
-      "runtime": "node24",
-      "canonical_tag_sha": "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
-      "tag_url": "https://api.github.com/repos/actions/download-artifact/git/refs/tags/v8.0.1",
-      "metadata_blob": "8b8c65029ccad20750a29fecb438eca5a607fc57"
-    },
     "mikepenz/action-junit-report": {
       "sha": "4a26df3e2ae132254ba12a53f65a388d0961e786",
       "canonical_tag_sha": "4a26df3e2ae132254ba12a53f65a388d0961e786",
@@ -56,15 +65,6 @@
       "metadata_blob": "285103284016eb9cf223c22c150624f26c211886",
       "release_url": "https://github.com/mikepenz/action-junit-report/releases/tag/v6.7.0",
       "tag_url": "https://api.github.com/repos/mikepenz/action-junit-report/git/refs/tags/v6.7.0"
-    },
-    "actions/cache": {
-      "sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
-      "canonical_tag_sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
-      "tag": "v6.1.0",
-      "release_url": "https://github.com/actions/cache/releases/tag/v6.1.0",
-      "tag_url": "https://api.github.com/repos/actions/cache/git/refs/tags/v6.1.0",
-      "metadata_blob": "2606455d4cedc2a06e05c1bf7feb8cc41aaf28f9",
-      "runtime": "node24"
     }
   }
 }

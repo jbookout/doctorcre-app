@@ -143,7 +143,7 @@ jobs:
   live:
     # Live journeys: the built app against the real CARR Worker at the pinned
     # producer commit, on a disposable migrated PostgreSQL (tests/live).
-    # It runs producer code, so it saves no cache. CI runs only for
+    # It caches only package archives verified by the producer. CI runs only for
     # pull requests, main pushes and merge groups. ubuntu-24.04 matches the
     # producer CI's zsh and PostgreSQL setup; 26.04 serves amd64v3 builds that
     # ops/ci-zsh.sh cannot verify against the plain amd64 index.
@@ -176,6 +176,14 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version-file: carr-producer/.python-version
+      - name: Identify the runner image for the zsh archive
+        id: zsh-image
+        run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Restore zsh package archives
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/zsh-debs/*.deb
+          key: zsh-ubuntu24-${{ runner.arch }}-${{ steps.zsh-image.outputs.version }}-${{ hashFiles('carr-producer/ops/ci-zsh.sh', 'carr-producer/ops/ci_zsh.py') }}
       - name: Install the CARR runtime the way its own CI does
         # zsh: the post-call worker applies a call's changes through run.sh,
         # whose shebang is /bin/zsh; ubuntu-latest has none.

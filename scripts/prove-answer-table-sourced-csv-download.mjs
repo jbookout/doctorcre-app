@@ -11,7 +11,7 @@ import { readFile } from 'node:fs/promises';
 const recordings = JSON.parse(await readFile(new URL('../test/fixtures/answer-table-sourced-csv-download/recordings.json', import.meta.url)));
 
 export async function assertSourcedCsv(recordings) {
-  const api = await import('/js/ui-answers.js');
+  const api = await import('/js/ui-answers.generated.js');
   const assertions = [];
   const check = (name, ok) => { assertions.push({name,passed:Boolean(ok)}); if (!ok) throw new Error(name); };
   const parseCsv = text => {
@@ -225,7 +225,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
         } catch (error) { throw unavailable(error.code === 1 ? 'Release does not contain required commit' : 'Release ancestry evidence unavailable'); }
       }
       const assets = new Map();
-      const pending = [`${origin}/js/ui-answers.js`];
+      const pending = [`${origin}/js/ui-answers.generated.js`];
       await init;
       while (pending.length) {
         const url = pending.shift();
@@ -253,7 +253,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
       });
       const page = await context.newPage();
       await page.goto(`${origin}/__answer-proof`);
-      await page.evaluate(() => import('/js/ui-answers.js').then(() => {}));
+      await page.evaluate(() => import('/js/ui-answers.generated.js').then(() => {}));
       let exportRequests = 0;
       const countExportRequest = () => exportRequests++;
       page.on('request', countExportRequest);
@@ -293,7 +293,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (values.fixture && !['127.0.0.1','localhost','[::1]'].includes(url.hostname)) throw new Error('Fixtures require loopback origin');
     if (values['cdp-url']) {
       const cdp = new URL(values['cdp-url']);
-      if (cdp.protocol !== 'http:' || !['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) || cdp.username || cdp.password) throw Error('CDP requires a loopback HTTP endpoint');
+      if (!['http:', 'ws:'].includes(cdp.protocol) || !['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) || cdp.username || cdp.password) throw Error('CDP requires a loopback HTTP or browser WebSocket endpoint');
     }
     const result = await prove({origin:url.origin,timeoutMs,fixture:values.fixture,commit:values.commit,cdpUrl:values['cdp-url']});
     console.log(JSON.stringify(result));

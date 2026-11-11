@@ -90,7 +90,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       await guard.load(remaining());
       payload = JSON.parse(await readFile(new URL('../test/fixtures/historical-close-window/recordings.json',import.meta.url))).full;
       await page.evaluate(async ({ payload }) => {
-        const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
+        const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.generated.js');
         const host = document.createElement('main'); document.body.replaceChildren(host);
         window.closeProofReads = 0;
         mountIdealClientProfile(host,{ getIdealClientProfile() { window.closeProofReads++; return Promise.resolve(payload); } });
@@ -99,7 +99,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     } else {
       if (!cdpUrl) throw insufficient('Signed-in CDP session required');
       const cdp = new URL(cdpUrl);
-      assert.ok(cdp.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) && !cdp.username && !cdp.password);
+      assert.ok(['http:', 'ws:'].includes(cdp.protocol) && ['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) && !cdp.username && !cdp.password);
       const borrowed = { launch: async options => {
         let connection;
         try { connection = await engine.connectOverCDP(cdpUrl,{timeout:options.timeout}); }

@@ -103,7 +103,7 @@ test('disposal retires delayed snapshots and remount starts with all contact his
   const page = await browser.newPage();
   await page.goto(server.url + '/vendors');
   await page.evaluate(async snapshot => {
-    const { mountQuietVendors } = await import('/js/ui-quiet-vendors.js');
+    const { mountQuietVendors } = await import('/js/ui-quiet-vendors.generated.js');
     const host = document.createElement('div'); document.body.append(host);
     let finish;
     const pending = new Promise(resolve => { finish = resolve; });

@@ -1,4 +1,7 @@
-import test from 'node:test';
+import { unreachableCdpEndpoint } from "./unreachable-cdp-fixture.ts";
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import {execFile,execFileSync} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -37,7 +40,7 @@ async function fixture(t,mode='equal'){
   const source={older,descendant,unrelated,unknown:'f'.repeat(40)}[mode]||expectedCommit;
   const snapshot=new Map(assets);
   if(mode==='failure'||mode==='near-miss'){
-    const row=snapshot.get('/js/ui-reasons.js');snapshot.set('/js/ui-reasons.js',{...row,body:row.body.toString().replaceAll('matching loaded',mode==='failure'?'incorrect loaded':'1 matching loaded')});
+    const row=snapshot.get('/js/ui-reasons.generated.js');snapshot.set('/js/ui-reasons.generated.js',{...row,body:row.body.toString().replaceAll('matching loaded',mode==='failure'?'incorrect loaded':'1 matching loaded')});
   }
   const server=await startWorkerFixture({assets:snapshot,env:{APP_ENV:'production',GIT_SHA:source,CARR:{fetch:async request=>{
     if(new URL(request.url).pathname==='/mcp'){
@@ -50,9 +53,10 @@ async function fixture(t,mode='equal'){
   return {origin:server.origin,expectedCommit,ancestryCwd:history};
 }
 async function borrowed(t){
-  const reservation=await startFixture();const port=new URL(reservation.origin).port;await reservation.close();
-  const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
-  return {browser,cdpUrl:`http://127.0.0.1:${port}`};
+
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser=browserFixture.browser;t.after(()=>browser.close());
+  return {browser,cdpUrl:browserFixture.endpoint};
 }
 for(const mode of ['equal','failure','near-miss','empty'])test(`natural proof CLI ${mode}`,async t=>{
   const options=await fixture(t,mode);const {browser,cdpUrl}=await borrowed(t);
@@ -68,13 +72,13 @@ for(const mode of ['descendant','older','unrelated','unknown'])test(`release anc
 });
 test('missing session and unreachable CDP are insufficient',async t=>{
   const options=await fixture(t);await assert.rejects(prove(options),error=>error.exitCode===78);
-  const reservation=await startFixture();const cdpUrl=reservation.origin;await reservation.close();
+  const cdpUrl = await unreachableCdpEndpoint();
   await assert.rejects(exec(process.execPath,['scripts/prove-reasons-evidence-window.mjs','--origin',options.origin,'--expected-commit',options.expectedCommit,'--cdp-url',cdpUrl]),error=>error.code===78);
 });
 for(const mode of ['late connection','late page','stalled evaluation','page rejection'])test(`deadline and cleanup ${mode}`,async t=>{
   const options=await fixture(t);const {browser,cdpUrl}=await borrowed(t);
   const {chromium:cdp}=await import('playwright');const connection=await cdp.connectOverCDP(cdpUrl);
-  const context=connection.contexts()[0];const existing=await context.newPage();await existing.goto('about:blank#existing');
+  const context=connection.contexts()[0];const existing=context.pages()[0] || await context.newPage();await existing.goto('about:blank#existing');
   const newPage=context.newPage.bind(context);let acquisition;
   if(mode==='late page')context.newPage=()=>acquisition=newPage().then(async page=>{await new Promise(resolve=>setTimeout(resolve,700));return page;});
   if(mode==='page rejection')context.newPage=async()=>{throw Error('retired');};

@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { init, parse } from 'es-module-lexer';
 
 export async function exerciseTerritoryEvidence() {
-  const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.js');
+  const { mountTerritoryEvidence } = await import('/js/ui-territory-evidence.generated.js');
   const results = [];
   const check = (name, ok) => {
     if (!ok) throw new Error(name);
@@ -143,7 +143,7 @@ export async function prove({ origin, timeoutMs }) {
     };
     release = await readAppRelease(base, async url => ({ type: 'application/json', body: await fetchBytes(url.pathname) }));
     await init;
-    const queue = ['/js/ui-territory-evidence.js'];
+    const queue = ['/js/ui-territory-evidence.generated.js'];
     for (let i = 0; i < queue.length; i++) {
       if (queue.length > 19) throw unavailable('Module asset cap exceeded');
       const path = queue[i], bytes = await fetchBytes(path); assets.set(path, bytes);

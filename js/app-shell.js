@@ -1,4 +1,4 @@
-import { isTextEntry } from './ui-keyboard-input.js';
+import { isTextEntry } from './ui-keyboard-input.generated.js';
 import { createMcpRequests } from './mcp-requests.mjs';
 import { privateSession } from './private-session.js';
 import { mountAppLayout } from "./app-layout.js";
@@ -14,7 +14,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
   if (!base && pathname !== '/share') {
-    const history = () => import('./ui-switcher-history.js');
+    const history = () => import('./ui-switcher-history.generated.js');
     // eslint-disable-next-line no-restricted-syntax -- One frame after initial page readiness records local recents; it performs no network reads or polling.
     const track = () => root.defaultView.requestAnimationFrame(() => {
       void Promise.all([history(), import('./doc-context.js')]).then(([{ rememberAddress, rememberDestination }, { pageDocContext }]) => {
@@ -46,7 +46,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
       const opener = root.activeElement instanceof HTMLElement && root.activeElement !== root.body ? root.activeElement : toggle;
       try {
         const [{ openQuickSwitcher, readQuickSwitcherSources }, { navigationItems, routeEntries }, { createClient }] = await Promise.all([
-          import('./ui-quick-switcher.js'), import('./routes.js'), import('./client.js'),
+          import('./ui-quick-switcher.generated.js'), import('./routes.js'), import('./client.js'),
         ]);
         if (retired) return;
         const boot = resolveDealroomBoot(location);
@@ -163,7 +163,7 @@ function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
     if (loading) return;
     loading = true;
     try {
-      const { mountZoomableWorkspace } = await import("./ui-zoom.js");
+      const { mountZoomableWorkspace } = await import("./ui-zoom.generated.js");
       if (disposed || !identity || phone.matches || !sessionIsValid()) return;
       layout = root.getElementById("appLayout");
       if (!layout) return;
@@ -321,7 +321,7 @@ if (typeof document !== "undefined") {
   mountAppShell();
   const actionHost = document.getElementById('actionLink');
   if (actionHost && location.pathname.startsWith('/a/')) {
-    const { mountActionLink } = await import("./ui-action.js");
+    const { mountActionLink } = await import("./ui-action.generated.js");
     if (!privateSession()?.revoked) {
       const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests(), principal: async () => (await privateSession()?.verify({ fresh: true }))?.actor.slug || null });
       window.addEventListener('doctorcre-session-invalidated', () => view.dispose(), { once: true });

@@ -144,7 +144,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
       catch (error) { transportFailure = error; await route.abort(); }
     });
     await page.goto(`${origin}/__historical_filter_proof`);
-    const assertions = await filterAssertions(page,`${origin}/js/ui-ideal-client-profile.js`);
+    const assertions = await filterAssertions(page,`${origin}/js/ui-ideal-client-profile.generated.js`);
     const after = await readAppRelease(base, read); assert.equal(after.source_commit,before.source_commit,'stable release');
     if(!fixture) throw insufficient('Deployed fixture assertions passed; signed-in natural observation is still required');
     return {status:'fixture_pass',release:after,assertions,requests};

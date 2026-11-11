@@ -13,7 +13,7 @@ import { prove, requireContainingRelease, signedInEngine } from '../scripts/prov
 async function fixture(t, mode = 'healthy') {
   const assets = await proofAssetSnapshot();
   if (mode === 'protected') for (const key of assets.keys()) assets.set(key,{status:403});
-  if (mode === 'broken' || mode === 'stall') assets.set('/js/ui-facts.js',{contentType:'text/javascript',
+  if (mode === 'broken' || mode === 'stall') assets.set('/js/ui-facts.generated.js',{contentType:'text/javascript',
     body:mode === 'broken' ? 'export function mountFactReview(){throw Error("broken module")}' : 'await new Promise(()=>{});'});
   const release = await handleDoctorcreRequest(new Request('https://app.example/app-release'),{APP_ENV:'production',GIT_SHA:'1'.repeat(40)});
   const server = await startFixture({assets,routes:new Map([['/app-release',{body:await release.text(),contentType:'application/json'}]])});

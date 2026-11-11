@@ -40,7 +40,7 @@ test('dated refresh, malformed refusal, stale completions and selected terminal 
       await page.goto(server.origin);
       await page.evaluate(async records => {
         document.body.innerHTML = '<main id="comparison"></main>';
-        const { mountMarketTerms } = await import('/js/ui-market.js');
+        const { mountMarketTerms } = await import('/js/ui-market.generated.js');
         window.records = records; window.pending = [];
         window.mount = () => { window.panel = mountMarketTerms(document.querySelector('#comparison'), { entityRef: 'synthetic-a', client: { readMarketTerms: args => new Promise((resolve, reject) => window.pending.push({ resolve, reject, args })) } }); };
         window.mount(); window.panel.refresh(); window.pending[0].resolve(records.empty.response);
@@ -104,7 +104,7 @@ test('auth retirement directly clears ready selected, all and loading states and
       for (const phase of ['loading', 'all', 'selected']) {
         await page.evaluate(async ({ phase, records }) => {
           document.body.innerHTML = '<main id="comparison"></main>';
-          const { mountMarketTerms } = await import('/js/ui-market.js');
+          const { mountMarketTerms } = await import('/js/ui-market.generated.js');
           const { createSessionBoundary } = await import('/js/private-session.js');
           window.panel = mountMarketTerms(document.querySelector('#comparison'), { entityRef: 'synthetic-a', client: { readMarketTerms: () => new Promise(resolve => { window.finish = resolve; }) } });
           window.boundary = createSessionBoundary({ fetchImpl: async () => new Response('', { status: 401 }), invalidate: () => window.panel.dispose() });
@@ -132,7 +132,7 @@ test('natural observer counts the existing client read and restores fact-key sub
       await page.goto(server.origin);
       await page.evaluate(async () => {
         document.body.innerHTML = '<main id="workspace-market-terms"></main>';
-        const { mountMarketTerms } = await import('/js/ui-market.js');
+        const { mountMarketTerms } = await import('/js/ui-market.generated.js');
         const { createMcpRequests } = await import('/js/mcp-requests.mjs');
         const request = createMcpRequests({ fetchImpl: window.fetch.bind(window) });
         window.naturalPanel = mountMarketTerms(document.querySelector('main'), { entityRef: 'synthetic-a', client: { readMarketTerms: async args => (await request('read-market-terms', args)).payload } });

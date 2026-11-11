@@ -1,5 +1,6 @@
-import { cdpEndpoint } from "./cdp-fixture.ts";
-import test from 'node:test';
+import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
+export const browserCases = [];
+function test(name, run) { browserCases.push([name, run]); }
 import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
@@ -18,7 +19,7 @@ const assets=await appAssetSnapshot();
 async function server(t,{commit=expected,wrong=false,state='ready',auth=false,unavailableAfter=false,mutate='',collapsed=false }={}) {
   const json=(value,status=200)=>({body:JSON.stringify(value),contentType:'application/json',status});
   const snapshot=new Map(assets);
-  snapshot.set('/leases',{contentType:'text/html',body:`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.js';const client=createClientAnniversariesClient();${collapsed?"new MutationObserver((_,observer)=>{const button=document.querySelector('button[aria-expanded=true]');if(button){observer.disconnect();button.click();}}).observe(document.getElementById('host'),{childList:true,subtree:true,attributes:true});":''}mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}${mutate}return value;}});</script>`});
+  snapshot.set('/leases',{contentType:'text/html',body:`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.generated.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.generated.js';const client=createClientAnniversariesClient();${collapsed?"new MutationObserver((_,observer)=>{const button=document.querySelector('button[aria-expanded=true]');if(button){observer.disconnect();button.click();}}).observe(document.getElementById('host'),{childList:true,subtree:true,attributes:true});":''}mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}${mutate}return value;}});</script>`});
   const response=json(fixtures[state].output,state==='unavailable'?503:200);
   const fixture=await startFixture({assets:snapshot,routes:new Map([
     ['/app-release',json({service:'doctorcre-app',environment:'production',source_commit:commit})],
@@ -71,11 +72,12 @@ for(const mode of ['late launch','stalled evaluation'])test(`total deadline clea
 });
 test('CDP proof closes its acquired page and preserves the shared browser and existing page',async t=>{
   const {chromium}=await import('../scripts/proof-browser.mjs');
-  const browser=await chromium.launch({args:['--remote-debugging-port=0','--enable-automation']});
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser=browserFixture.browser;
   t.after(()=>browser.close());
-  const sentinel=await browser.newPage();
+  const sentinel=browserFixture.page;
   await sentinel.setContent('<title>Owned synthetic shared page</title>');
-  const endpoint=await cdpEndpoint(browser);
+  const endpoint=browserFixture.endpoint;
   const origin=await server(t);
   const before=browser.contexts()[0].pages().length;
   assert.equal((await prove({origin,expectedCommit:expected,cdpUrl:endpoint})).status,'passed');
@@ -99,11 +101,12 @@ for (const [field,mutate] of [
 test('CDP deadline waits for a late page before disconnecting and leaves no borrowed tabs',async t=>{
   const {chromium}=await import('../scripts/proof-browser.mjs');
   const {chromium:driver}=await import('playwright');
-  const browser=await chromium.launch({args:['--remote-debugging-port=0','--enable-automation']});
+  const browserFixture = await ownedCdpFixture(); t.after(() => browserFixture.close());
+  const browser=browserFixture.browser;
   t.after(()=>browser.close());
-  const sentinel=await browser.newPage();
+  const sentinel=browserFixture.page;
   await sentinel.setContent('<title>Preserved shared page</title>');
-  const endpoint=await cdpEndpoint(browser);
+  const endpoint=browserFixture.endpoint;
   const cdpUrl=endpoint;
   const connect=driver.connectOverCDP.bind(driver);
   const baseline=browser.contexts()[0].pages().length;

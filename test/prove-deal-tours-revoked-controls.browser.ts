@@ -57,7 +57,7 @@ test("proof CLI fails closed for unavailable identity, missing export and failed
           },
         ],
         [
-          "/js/ui-deal-tours.js",
+          "/js/ui-deal-tours.generated.js",
           {
             contentType: "text/javascript",
             body:
@@ -80,7 +80,8 @@ test("proof CLI fails closed for unavailable identity, missing export and failed
       mode === "timeout" ? "3000" : "30000",
     ]);
     assert.equal(result.code, mode === "release" || mode === "timeout" ? 78 : 1);
-    if (mode === "timeout") assert.ok(server.requests.some((request) => request.path === "/js/ui-deal-tours.js"));
+    if (mode === "timeout")
+      assert.ok(server.requests.some((request) => request.path === "/js/ui-deal-tours.generated.js"));
     assert.match(result.output, expected);
   }
 });
@@ -106,7 +107,7 @@ test("proof command imports served artifact, refuses retired re-entry and permit
   });
   await writeFile(`${screenshotDir}/receipt.json`, JSON.stringify(receipt, null, 2));
   assert.equal(receipt.assertions.length, 4);
-  assert.ok(receipt.loadedModuleUrls.includes(`${server.origin}/js/ui-deal-tours.js`));
+  assert.ok(receipt.loadedModuleUrls.includes(`${server.origin}/js/ui-deal-tours.generated.js`));
   const declaration = JSON.parse(
     await readFile(new URL("../proofs/requirements/deal-tours-revoked-controls.json", import.meta.url), "utf8"),
   );
