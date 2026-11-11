@@ -33,11 +33,12 @@ export function parseEvidence(value: unknown, origin: string): Evidence {
       (url.origin !== origin && url.origin !== "https://reports.doctorcre.com") ||
       url.pathname !== "/share" ||
       url.search ||
-      !/^#[A-Za-z0-9_-]{43}$/.test(url.hash) ||
+      !/^#(?:token=)?[A-Za-z0-9_-]{43}$/.test(url.hash) ||
       url.username ||
       url.password
     )
       throw insufficient("Same-origin fragment client links required");
+    url.hash = url.hash.replace(/^#token=/, "#");
     return url.href;
   });
   const [active, revoked, viewOnly] = links;
@@ -149,6 +150,11 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               );
               assert.deepEqual(rows, expected.rows, "exact independently supplied displayed values");
             }
+            assert.equal(
+              await page.getByRole("button", { name: "Download PDF", exact: true }).count(),
+              kind === "active" ? 1 : 0,
+              "download control matches the producer capability",
+            );
             const cookies = await context.cookies(clientOrigin);
             const response = await proofFetch(new URL("/api/share/download", clientOrigin), {
               signal: lifetime.signal,
@@ -176,14 +182,6 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               await page.getByText("PDF downloaded.", { exact: true }).waitFor();
             } else {
               assert.ok([401, 403, 404].includes(download.status), "server refuses download without permission");
-              if (kind === "viewOnly") {
-                await page.getByRole("button", { name: "Download PDF", exact: true }).click();
-                await page
-                  .getByText("This link cannot download a PDF. Ask your broker for access or a reviewed packet.", {
-                    exact: true,
-                  })
-                  .waitFor();
-              }
             }
             assert.equal(violation, false, "bounded read-only client journey");
             assert.equal(

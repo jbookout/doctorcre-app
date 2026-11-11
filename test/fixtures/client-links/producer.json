@@ -1,0 +1,86 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "source_commit": "385f2efd6b5d55ad442150f63acecd4454ab7870",
+  "inputs": {
+    "packet": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic clinic",
+          "address": "6 Medical Drive"
+        }
+      ]
+    },
+    "nearMiss": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic clinic",
+          "address": "16 Medical Drive"
+        }
+      ]
+    },
+    "active": {
+      "projection_ref": "projection:public:synthetic_projection_01",
+      "permission_scopes": [
+        "view_packet",
+        "download"
+      ],
+      "items": []
+    },
+    "viewOnly": {
+      "projection_ref": "projection:public:synthetic_projection_01",
+      "permission_scopes": [
+        "view_packet"
+      ],
+      "items": []
+    }
+  },
+  "responses": {
+    "packet": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic clinic",
+          "address": "6 Medical Drive"
+        }
+      ]
+    },
+    "nearMiss": {
+      "stops": [
+        {
+          "property_ref": "property:public:synthetic_property_01",
+          "route_sequence": 1,
+          "route_label": "A",
+          "name": "Synthetic clinic",
+          "address": "16 Medical Drive"
+        }
+      ]
+    },
+    "active": {
+      "projection_ref": "projection:public:synthetic_projection_01",
+      "permission_scopes": [],
+      "items": []
+    },
+    "viewOnly": {
+      "projection_ref": "projection:public:synthetic_projection_01",
+      "permission_scopes": [],
+      "items": []
+    },
+    "exchange": {
+      "ok": true
+    },
+    "mapUnavailable": {
+      "error": "not_found"
+    },
+    "exchangeRefused": {
+      "error": "forbidden"
+    }
+  }
+}

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test, { after } from "node:test";
 import { JSDOM } from "jsdom";
+import { buildSync } from "esbuild";
 import { openDom } from "./jsdom-harness.mjs";
 
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -26,7 +27,11 @@ const tourIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-822
 const projectionIds = ["33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"];
 const tourFormat = readFileSync(new URL("../tours/tour-format.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const propertyPanel = readFileSync(new URL("../tours/property-panel.js", import.meta.url), "utf8").replace(/^export /gm, "");
-const tourScript = `${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
+const grantHelpers = buildSync({
+  entryPoints: [new URL("../src/ui/tour-client-grants.ts", import.meta.url).pathname],
+  bundle: true, write: false, format: "iife", globalName: "clientGrantHelpers",
+}).outputFiles[0].text;
+const tourScript = `${grantHelpers}\nconst { prepareClientGrant, grantReceipt, renderClientGrants } = clientGrantHelpers;\n${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
@@ -141,7 +146,7 @@ test("automatic refresh updates selected Tour details and preserves unsaved note
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Updated response/);
 });
 
-async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"], fastTimeout = false } = {}) {
+async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"], fastTimeout = false, canDownload = false } = {}) {
   const dom = openDom(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
   dom.window.history.replaceState({doctorcreShare:'projection:public:synthetic_projection',doctorcreShareContext:'synthetic-exchange'}, '', '/share');
   dom.window.localStorage.setItem('doctorcre-public-share-context-v1','synthetic-exchange');
@@ -158,7 +163,7 @@ async function openShare({ items = [], refuseOnce = false, properties = [{ prope
         const response = await feedbackRead(options);
         if (response) return response;
       }
-      data = { projection_ref: "projection:public:synthetic_projection", permission_scopes: permissionScopes, ...(items === null ? {} : { items }) };
+      data = { projection_ref: "projection:public:synthetic_projection", permission_scopes: permissionScopes, can_download: canDownload, ...(items === null ? {} : { items }) };
     }
     else if (path === "/api/share/shortlist" || path === "/api/share/comment") {
       writes.push({ path, ...JSON.parse(options.body) });
@@ -361,4 +366,21 @@ for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stal
   assert.match(app.doc.querySelector("#status").textContent, /unavailable/);
   assert.equal(signals[0]?.aborted, true);
   assert.equal(app.dom.window.history.state, null);
+});
+
+test("download control stays hidden without permission and retires on unavailable", async () => {
+  for (const canDownload of [false, true]) {
+    const app = await openShare({ canDownload });
+    const download = [...app.doc.querySelectorAll("button")].find(button => button.textContent === "Download PDF");
+    assert.equal(download.hidden, !canDownload);
+    if (canDownload) {
+      app.dom.window.dispatchEvent(new app.dom.window.StorageEvent("storage", {
+        key: "doctorcre-public-share-context-v1", newValue: "another-exchange",
+      }));
+      assert.equal(download.hidden, true);
+      assert.equal(download.disabled, true);
+      assert.match(app.doc.querySelector("#status").textContent, /unavailable/);
+    }
+    app.dom.window.close();
+  }
 });
