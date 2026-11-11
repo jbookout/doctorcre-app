@@ -271,3 +271,9 @@ dialog::backdrop { background: var(--scrim); }
   .territory-evidence tr { display: grid; grid-template-columns: 1fr 1fr; padding-block: .5rem; }
   .territory-evidence td:last-child { grid-column: 1 / -1; }
 }
+
+.lead-timing { min-width: 0; overflow-wrap: anywhere; }
+.lead-timing p { margin: .3rem 0; font-size: .85rem; }
+.lead-timing details { margin-top: .6rem; }
+.lead-timing dd { min-width: 0; margin-inline-start: 0; }
+.lead-timing li + li { margin-top: 1rem; }

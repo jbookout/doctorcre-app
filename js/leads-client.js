@@ -91,23 +91,24 @@ const optionalText = value => value == null || typeof value === "string";
 function projection(condition) {
   if (!condition) throw Object.assign(new Error("Leads update unavailable"), { code: "invalid_projection" });
 }
-function validateLead(lead) {
+function validateLead(lead, parseTiming) {
   projection(object(lead) && text(lead.id) && Number.isSafeInteger(lead.base_version) && lead.base_version > 0 && text(lead.stage) && typeof lead.suppressed === "boolean");
   for (const key of ["registry_ref", "party_id", "doctor_name", "practice_name", "entity_name", "name", "owner", "city", "state", "market", "specialty", "vertical", "plan_type"]) projection(optionalText(lead[key]));
   for (const key of ["is_client", "linked_client", "is_past_client", "is_deal", "do_not_contact"]) projection(lead[key] == null || typeof lead[key] === "boolean");
   projection(lead.score == null || (["string", "number"].includes(typeof lead.score) && Number.isFinite(Number(lead.score))));
   projection(Array.isArray(lead.possible_clients) && lead.possible_clients.every(match => object(match) && text(match.client_id) && text(match.name)));
   projection(lead.last_stage_move == null || object(lead.last_stage_move));
+  if (lead.opportunity_timing !== undefined && parseTiming) parseTiming(lead.opportunity_timing);
   return lead;
 }
-export function validateLeadWorkspace(payload) {
+export function validateLeadWorkspace(payload, parseTiming) {
   projection(object(payload) && payload.schema_version === "lead-workspace.v1" && leadTimestamp(payload.generated_at) !== null && Array.isArray(payload.leads));
-  payload.leads.forEach(validateLead);
+  payload.leads.forEach(lead => validateLead(lead, parseTiming));
   projection(new Set(payload.leads.map(lead => lead.id)).size === payload.leads.length);
   return payload;
 }
-export function validateLeadDetail(detail, id) {
-  validateLead(detail); projection(detail.id === id);
+export function validateLeadDetail(detail, id, parseTiming) {
+  validateLead(detail, parseTiming); projection(detail.id === id);
   for (const key of ["phone", "email", "notes", "plans", "est_lease_event"]) projection(optionalText(detail[key]));
   projection(Array.isArray(detail.correspondence) && detail.correspondence.every(entry => object(entry) && text(entry.id) && text(entry.kind) && leadTimestamp(entry.occurred_at) !== null && optionalText(entry.summary) && optionalText(entry.detail)));
   projection(Array.isArray(detail.stage_history) && detail.stage_history.every(entry => object(entry) && text(entry.event_id) && leadTimestamp(entry.occurred_at) !== null && optionalText(entry.prior_stage) && optionalText(entry.stage) && optionalText(entry.reason)));

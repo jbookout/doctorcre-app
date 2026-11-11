@@ -1,3 +1,4 @@
+import { parseOpportunityTiming, timingMarkup } from './ui-lead-opportunity-timing.js';
 import { mountLeadResearch } from './ui-lead-research.js';
 import { mountQuietLeads } from './ui-quiet-leads.js';
 import { mountTerritoryEvidence } from './ui-territory-evidence.js';
@@ -10,12 +11,14 @@ import { toDay } from './calendar-model.js';
 import { engagementWriterFor, engagementStorage } from './prospect-engagement.mjs';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
-import { createLeadBoardClient, validateLeadWorkspace, validateLeadDetail } from "./leads-client.js";
+import { createLeadBoardClient, validateLeadWorkspace as validateWorkspace, validateLeadDetail as validateDetail } from "./leads-client.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead, leadTitle, marketKey, specialtyKey,
   visibleLeads, marketCounts, stageReview, automaticMove, undoReview, leadTimestamp } from "./leads-model.js";
 import { mountTerritoryMap } from "./leads-territory-map.js";
 
+const validateLeadWorkspace = value => validateWorkspace(value, parseOpportunityTiming);
+const validateLeadDetail = (value, id) => validateDetail(value, id, parseOpportunityTiming);
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const shortDate = (value, calendarDate = false, month = "numeric") => Number.isFinite(Date.parse(value)) ? new Date(calendarDate && toDay(value) ? `${toDay(value)}T12:00:00Z` : value).toLocaleDateString("en-US", { timeZone: BUSINESS_TIME_ZONE, month, day: "numeric" }) : "Date pending";
 const stamp = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—";
@@ -54,7 +57,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     return workCard({ className: 'lead-card', attributes: `data-lead-id="${esc(lead.id)}" data-selected="${lead.id === state.selectedId}" draggable="true"`,
       title: `<span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><button class="lead-open" data-open="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}</button>`,
       meta: `<span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small>`,
-      body: `      ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at, !!move.evidence_date)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
+      body: `${timingMarkup(lead.opportunity_timing)}      ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at, !!move.evidence_date)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
       ${possible.map(match => `<div class="client-hint">possible client: ${esc(match.name)} <button data-link="${esc(lead.id)}" data-client-id="${esc(match.client_id)}" aria-label="Link ${esc(leadTitle(lead))} to ${esc(match.name)}">Link</button></div>`).join("")}
 `, actions: `<span class="score"><small>Score</small>${score(lead)}</span>${normalizedStage(lead) === 'new' && !lead.owner ? `<button data-claim="${esc(lead.id)}">Claim</button>` : ''}` });
   }
@@ -333,6 +336,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       <div class="detail-overview"><section class="detail-panel"><h3>Contact</h3><dl><dt>Phone</dt><dd>${contact("Phone", detail.phone)}</dd><dt>Email</dt><dd>${contact("Email", detail.email)}</dd><dt>Market</dt><dd>${esc(marketKey(detail))}</dd><dt>Vertical</dt><dd>${esc(detail.specialty || detail.vertical || "—")}</dd></dl></section>
       <section class="detail-panel"><h3>Plans</h3><p>${esc(summary(detail.plans || detail.notes) || "—")}</p>${detail.notes ? `<details data-entry-key="plans"><summary>Details</summary><div class="original-entry">${esc(detail.notes)}</div></details>` : ""}<dl class="plan-window"><dt>Lease window</dt><dd>${esc(detail.est_lease_event || "—")}</dd></dl></section>
       </div>
+      ${timingMarkup(detail.opportunity_timing, true)}
       <div id="leadGuidance"></div>
       <div id="leadResearch"></div>
       ${detail.prospect_client_id && detail.prospect_engagement_status === "inactive" ? `<form id="activateProspect"><p>Mark active to return this prospect to the deal board.</p><label>Reason<input name="reason" maxlength="1000" required></label><button type="submit">Mark active</button></form>` : ""}
