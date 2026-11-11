@@ -111,6 +111,7 @@ test("working week refreshes, replaces selected sources and refuses retired late
     s.panel.render(s.calendar, s.source);
   });
   await page.getByRole("dialog").waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.activeElement?.matches('#week [aria-pressed="true"]'));
   assert.equal(await days.first().evaluate((node) => node === document.activeElement), true);
   await page.evaluate(() => {
     const s = Reflect.get(window, "weekTest");
