@@ -1,3 +1,4 @@
+import { parseReachability, reachabilityText } from './ui-lead-reachability.generated.js';
 import { mountLeadResearch } from './ui-lead-research.generated.js';
 import { mountQuietLeads } from './ui-quiet-leads.generated.js';
 import { mountTerritoryEvidence } from './ui-territory-evidence.generated.js';
@@ -38,7 +39,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function clearGuidance() { guidance?.dispose(); guidance = null; clearResearch(); }
   const engagementChecks = new Set();
   const expandedStages = new Set();
-  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, quietEpoch: 0, openedRequestedLead: false, showEmptyStages: false, filters: { search: "", owner: "", stage: "", market: "", specialty: "" },
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, quietEpoch: 0, openedRequestedLead: false, showEmptyStages: false, filters: { reachability: "", search: "", owner: "", stage: "", market: "", specialty: "" },
     historyRequest: null, historyError: null, selectedId: null, detail: null, detailId: null, resumeDetail: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
@@ -54,7 +55,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     return workCard({ className: 'lead-card', attributes: `data-lead-id="${esc(lead.id)}" data-selected="${lead.id === state.selectedId}" draggable="true"`,
       title: `<span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><button class="lead-open" data-open="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}</button>`,
       meta: `<span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small>`,
-      body: `      ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at, !!move.evidence_date)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
+      body: `<p class="lead-reachability" data-reachability="${esc(lead.reachability?.classification || "research")}">${esc(reachabilityText(lead.reachability))}</p>      ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at, !!move.evidence_date)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
       ${possible.map(match => `<div class="client-hint">possible client: ${esc(match.name)} <button data-link="${esc(lead.id)}" data-client-id="${esc(match.client_id)}" aria-label="Link ${esc(leadTitle(lead))} to ${esc(match.name)}">Link</button></div>`).join("")}
 `, actions: `<span class="score"><small>Score</small>${score(lead)}</span>${normalizedStage(lead) === 'new' && !lead.owner ? `<button data-claim="${esc(lead.id)}">Claim</button>` : ''}` });
   }
@@ -85,6 +86,15 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (state.board && !markets.includes(state.filters.market)) state.filters.market = "";
     const shown = visibleLeads(leads, state.filters);
     if (!shown.some(lead => lead.id === state.selectedId)) state.selectedId = null;
+    if (state.detailId && leads.some(lead => lead.id === state.detailId) && !shown.some(lead => lead.id === state.detailId)) {
+      clearGuidance(); ++state.detailEpoch; state.detailId = null; state.detail = null; $("leadDetail").close();
+    }
+    if ($("reachabilityFilter")) {
+      const cohort = visibleLeads(leads, {...state.filters, reachability: ""});
+      const reachable = cohort.filter(lead => lead.reachability?.classification === "reachable").length;
+      $("reachabilityFilter").value = state.filters.reachability;
+      $("reachabilitySummary").textContent = `${reachable} Reachable · ${cohort.length - reachable} Research`;
+    }
     setDocFilters(state.filters);
     if (state.board) publishDocRead("getWorkspace", { ...state.board, leads: shown });
     const active = visibleLeads(leads);
@@ -109,7 +119,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     } else if (state.board && !shown.length && Object.values(state.filters).some(Boolean)) {
       $("leadBoard").innerHTML = '<div class="filtered-empty"><p>No leads match these filters.</p><button id="resetFilters">Reset filters</button></div>';
       $("resetFilters").addEventListener("click", () => {
-        state.filters = { search: "", owner: "", stage: "", market: "", specialty: "" };
+        state.filters = { reachability: "", search: "", owner: "", stage: "", market: "", specialty: "" };
         $("leadSearch").value = "";
         render();
         $("leadSearch").focus({ preventScroll: true });
@@ -173,8 +183,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     expandedStages.clear();
     pageDocContext?.clear();
     state.historyRequest = null; state.historyError = null;
-    state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.resumeDetail = null; state.pending = null;
-    state.filters = { search: "", owner: "", stage: "", market: "", specialty: "" }; state.trigger = null; state.drag = null;
+    state.selectedId = null; state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.resumeDetail = null; state.pending = null;
+    state.filters = { reachability: "", search: "", owner: "", stage: "", market: "", specialty: "" }; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
     $("stageError").textContent = ""; $("moveAnnouncement").textContent = ""; $("saveStage").disabled = true;
     ++state.detailEpoch; ++state.reviewEpoch; $("leadDetail").close(); $("stageDialog").close();
@@ -257,6 +267,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       const next = await client.getWorkspace();
       if (epoch !== state.epoch) return;
       validateLeadWorkspace(next);
+      next.leads.forEach(lead => parseReachability(lead.reachability));
       state.connectionFeedback = null;
       state.readFailed = false; state.board = next;
       for (const lead of next.leads) engagement.confirm({ client_id: lead.prospect_client_id,
@@ -302,7 +313,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       ++state.detailEpoch; state.trigger = null;
       clearGuidance(); $("leadDetail").close(); $("detailTitle").textContent = ""; $("detailBody").replaceChildren();
       render();
-      state.connectionFeedback = "Connection interrupted · reconnecting…";
+      state.connectionFeedback = error.code === "invalid_projection" ? `Source refused · invalid reachability response.${state.board ? " Previous snapshot is stale." : ""}` : state.board ? "Connection interrupted · Source stale · reconnecting…" : "Connection interrupted · reconnecting…";
       paintCommandFeedback();
       return false;
     } finally {
@@ -579,6 +590,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       paintCommandFeedback();
     } finally { state.writing = false; paintCommandFeedback(); }
   }
+  $("reachabilityFilter")?.addEventListener("change", event => { state.filters.reachability = event.target.value; render(); });
   function selectMarket(key) { state.filters.market = state.filters.market === key ? "" : key; $("mapLeadMembers").open = true; render(); }
   for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["marketFilter", "market"], ["specialtyFilter", "specialty"]]) {
     // eslint-disable-next-line no-restricted-syntax -- Registers input/change handlers for only 4 filter controls; 0 lifecycle reads.
@@ -725,7 +737,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     };
     clearGuidance();
     stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;
-    state.identityReady = false; state.board = null; state.detail = null; state.detailId = null;
+    state.identityReady = false; state.selectedId = null; state.board = null; state.detail = null; state.detailId = null;
     state.proposal = null; state.reviewTarget = null; state.trigger = null; state.drag = null;
     $("leadDetail").close(); $("stageDialog").close();
     for (const id of ["detailTitle", "detailBody", "stageTitle", "stageContext", "stageQuestions", "stageError", "moveAnnouncement"]) $(id).replaceChildren();
