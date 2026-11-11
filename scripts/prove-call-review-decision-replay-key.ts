@@ -103,18 +103,18 @@ export async function exercise({
       await click("Approve or fix this item");
       await click(accept ? "Approve item" : "Skip item");
       check(Number(writes.length) === 1, "No automatic write retry");
-      assertions.push(resolver + ":no-automatic-write-retry");
+      assertions.push(`${resolver}:no-automatic-write-retry`);
       check(button("Approve item")?.disabled && button("Skip item")?.disabled, "HTTP uncertainty blocks new decisions");
-      assertions.push(resolver + ":http-uncertainty-blocks-new-decisions");
+      assertions.push(`${resolver}:http-uncertainty-blocks-new-decisions`);
       await click("Check outcome");
       check(
         writes.length === 2 && JSON.stringify(writes[0]) === JSON.stringify(writes[1]),
         "Exact original decision replay",
       );
-      assertions.push(resolver + ":exact-original-decision-replay");
+      assertions.push(`${resolver}:exact-original-decision-replay`);
       const resolution = node.querySelector("[data-review-candidate] h3 + .call-review-meta")?.textContent;
       check(resolution === "No longer pending", `Authoritative readback resolves item: ${JSON.stringify(resolution)}`);
-      assertions.push(resolver + ":authoritative-resolution");
+      assertions.push(`${resolver}:authoritative-resolution`);
     } finally {
       view.dispose();
     }
@@ -187,7 +187,7 @@ export async function prove({
     await init;
     async function load(path: string) {
       if (assets.has(path)) return;
-      if (!/^\/js\/[a-zA-Z0-9_.-]+\.(?:js|mjs)$/.test(path)) throw new Error("Asset outside admitted graph: " + path);
+      if (!/^\/js\/[a-zA-Z0-9_.-]+\.(?:js|mjs)$/.test(path)) throw new Error(`Asset outside admitted graph: ${path}`);
       const entries = manifest.files.filter((row) => row.path === path.slice(1));
       if (entries.length !== 1) throw new Error("Asset missing or duplicated in manifest");
       const bytes = await fetchBytes(path),
@@ -226,7 +226,7 @@ export async function prove({
       return bytes ? route.fulfill({ contentType: "text/javascript", body: bytes }) : route.abort();
     });
     const page = await context.newPage();
-    await page.goto(origin + "/__call-review-proof__");
+    await page.goto(`${origin}/__call-review-proof__`);
     const candidateId = "10000000-0000-4000-8000-000000000001";
     const fixtures = {
       candidateId,
@@ -258,12 +258,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     });
     if (!values.origin) throw new Error("--origin required");
     process.stdout.write(
-      JSON.stringify(
+      `${JSON.stringify(
         await prove({ origin: values.origin, commit: values.commit, timeoutMs: Number(values["timeout-ms"]) }),
-      ) + "\n",
+      )}\n`,
     );
   } catch (error) {
-    process.stderr.write(String(error) + "\n");
+    process.stderr.write(`${String(error)}\n`);
     process.exitCode =
       error instanceof Error && "exitCode" in error && typeof error.exitCode === "number" ? error.exitCode : 1;
   }

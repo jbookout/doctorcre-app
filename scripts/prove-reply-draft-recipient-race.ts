@@ -89,7 +89,7 @@ async function prove({ origin, timeout, commit }: { origin: string; timeout: num
         await route.abort();
       }
     });
-    await page.goto(origin + "/__reply-draft-proof");
+    await page.goto(`${origin}/__reply-draft-proof`);
     const result = await page.evaluate(async () => {
       const check = (condition: boolean, message: string) => {
         if (!condition) throw Error(message);
