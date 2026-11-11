@@ -135,9 +135,13 @@ for (const mode of ["chunked stderr", "early readiness", "malformed endpoint", "
             : `process.stderr.write('DevTools listening on ${mode === "malformed endpoint" ? "https://example.com/bad" : "ws://127.0.0.1:1234/devtools/browser/test"}\\n');setInterval(()=>{},1000)`;
     await assert.rejects(
       ownedCdpFixture({
-        timeoutMs: mode === "timeout" ? 250 : undefined,
+        ...(mode === "timeout" ? { timeoutMs: 250 } : {}),
         launcher: async (options) => {
-          const child = launch({ executablePath: process.execPath, args: ["-e", script], signal: options.signal });
+          const child = launch({
+            executablePath: process.execPath,
+            args: ["-e", script],
+            ...(options.signal ? { signal: options.signal } : {}),
+          });
           pid = child.nodeProcess.pid;
           if (mode === "early readiness") await child.waitForLineOutput(/^DevTools listening on (.*)$/, 30000);
           return child;
