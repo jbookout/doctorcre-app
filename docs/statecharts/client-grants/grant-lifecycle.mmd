@@ -1,0 +1,27 @@
+stateDiagram-v2
+  state GrantLifecycle {
+    state Link {
+      [*] --> NotCreated
+      NotCreated --> Available: Joe creates a link
+      Available --> Available: Scanner previews the link
+      Available --> Available: Client opens the tour [when Available]
+      Available --> Expired: Expiry passes
+      Available --> Revoked: Joe revokes the link
+      Available --> Replaced: Joe rotates the link
+    }
+    --
+    state ClientAccess {
+      [*] --> Closed
+      Closed --> Closed: Scanner previews the link
+      Closed --> Open: Client opens the tour [when Available]
+      %% when Available
+      Open --> Open: Client opens the tour [when Available]
+      %% when Available
+      Open --> Closed: Expiry passes
+      Open --> Closed: Joe revokes the link
+      Open --> Closed: Joe rotates the link
+    }
+  }
+  %% never RevokedAccess: Revoked & Open -- A revoked link never retains access.
+  %% never ExpiredAccess: Expired & Open -- An expired link never retains access.
+  %% never ReplacedAccess: Replaced & Open -- Rotating closes the old link and its sessions.

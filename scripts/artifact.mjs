@@ -1,3 +1,4 @@
+import { assetBudget } from "./asset-budget.ts";
 import { parseSync } from "@babel/core";
 import { APP_REPOSITORY, isAppRepository } from '../js/repository-identity.mjs';
 import { init, parse } from "es-module-lexer";
@@ -196,6 +197,7 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
     ...contracts,
     files: payload,
   };
+  assetBudget(payload.length);
   const manifestContent = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
   const entries = [{ path: "artifact-manifest.json", content: manifestContent }];
   for (const path of paths) entries.push({ path, content: files.get(path) });
@@ -295,6 +297,7 @@ export async function runCli(root, args = process.argv.slice(2)) {
   const command = args[0] || "build";
   if (command === "build") {
     const result = await buildArtifact({ root, outDir, commit: process.env.DOCTORCRE_SOURCE_COMMIT || sourceCommit(root) });
+    console.log(JSON.stringify({ staticAssets: assetBudget(result.manifest.files.length) }));
     console.log(`built doctorcre-app.tar: ${result.manifest.files.length} files, sha256:${result.archiveSha256}`);
     return;
   }
