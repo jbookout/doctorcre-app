@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { mountDealUpdateReviews } from '../js/ui-deal-reviews.js';
+import { mountDealUpdateReviews } from '../js/ui-deal-reviews.generated.js';
 const row = () => ({ assessment_id: 'review', deal_id: 'deal', deal_name: 'Synthetic deal', confirm_verb: 'review-deal-update', assessment: { review_required: true, action: { id: 'action', description: 'Send terms' }, update: 'Terms sent' } });
 const auto = () => ({ assessment_id: 'closed', deal_id: 'deal', deal_name: 'Synthetic closed', action_title: 'Terms', quote: 'Sent', resolved_at: '2026-10-01', undo_possible: true });
 const result = (proposals = [], automatic_resolutions = []) => ({ schema_version: 'deal-update-reviews.v1', proposals, automatic_resolutions });

@@ -28,7 +28,7 @@ const emptyInbox = { ok: true, schema_version: 'home-inbox.v5', truncated: false
 async function open(page, payload, mode = 'resolved') {
   payload = { inbox: emptyInbox, ...payload };
   await page.evaluate(async ({ payload, mode }) => {
-    const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+    const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
     window.readCount = 0;
     openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }, { label: 'Deals', href: '/deals' }], read: () => {
       window.readCount++;
@@ -116,7 +116,7 @@ test('read rejection retries into full results and selection follows current res
     await page.goto(server.url);
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
     await page.evaluate(async () => {
-      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
       let count = 0;
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Valid Page', href: '/calendar' }], read: () => ++count === 1 ? Promise.reject(Error('Unavailable')) : new Promise(resolve => { window.finishRead = resolve; }) });
     });

@@ -1,6 +1,6 @@
 import { createPageBudget } from './read-budget.mjs';
 import { mountFeatureGate, FEATURE_DISABLED, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
-import { mountAnswerBlocks, disposeAnswerBlocks } from './ui-answers.js';
+import { mountAnswerBlocks, disposeAnswerBlocks } from './ui-answers.generated.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // Conversation reads and record controls stay here; the lazy React composer owns queued asks.
@@ -46,7 +46,7 @@ function renderAskComposer() {
   disposeAsk?.(); disposeAsk = null; host.replaceChildren(); askConversation = id;
   if (!id || !client) return;
   const slot = document.createElement('div'); host.append(slot);
-  import('./ui-host.js').then(async ({ mountAskComposer }) => {
+  import('./ui-host.generated.js').then(async ({ mountAskComposer }) => {
     if (ticket !== askMount) return;
     const dispose = await mountAskComposer(slot, client, id);
     if (ticket !== askMount) dispose();

@@ -114,7 +114,7 @@ export function createActivityAttributionRead(options = {}) {
     return result.payload;
   };
 }
-export function mountActivityAttribution(root, { read = createActivityAttributionRead(), load = () => import('./ui-activity-attribution.js'), onDenied = () => {} } = {}) {
+export function mountActivityAttribution(root, { read = createActivityAttributionRead(), load = () => import('./ui-activity-attribution.generated.js'), onDenied = () => {} } = {}) {
   const current = createCurrentRead();
   let selected = null, view = null, host = null, busy = false, disposed = false;
   function clear(returnFocus = true) {

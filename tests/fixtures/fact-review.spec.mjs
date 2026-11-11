@@ -203,10 +203,10 @@ test('distinct decimal term values remain distinct when displayed', async ({ pag
 
 test('terms load the React island only when opened and show an import failure', async ({ page }) => {
   const requests = [];
-  page.on('request', request => { if (request.url().includes('/js/ui-facts.js')) requests.push(request.url()); });
+  page.on('request', request => { if (request.url().includes('/js/ui-facts.generated.js')) requests.push(request.url()); });
   await page.goto(`${server.url}/deals`);
   expect(requests).toHaveLength(0);
-  await page.route('**/js/ui-facts.js', route => route.abort());
+  await page.route('**/js/ui-facts.generated.js', route => route.abort());
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
     await terms.scrollIntoViewIfNeeded();

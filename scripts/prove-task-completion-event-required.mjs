@@ -77,7 +77,7 @@ export async function prove({ origin, timeoutMs }) {
       if (!row || typeof row.path !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(row.path) || row.path.startsWith('/') || row.path.split('/').some(part => !part || part === '.' || part === '..') || files.has(row.path) || !/^[a-f0-9]{64}$/.test(row.sha256 || '') || !Number.isSafeInteger(row.bytes) || row.bytes < 0) throw Error('Malformed asset manifest row');
       files.set(row.path, row);
     }
-    if (!files.has('js/ui-task-done.js')) throw Error('Manifest has no task module');
+    if (!files.has('js/ui-task-done.generated.js')) throw Error('Manifest has no task module');
     const { chromium } = await import('playwright');
     browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     controller.signal.addEventListener('abort', () => { void browser.close(); }, { once: true });
@@ -91,7 +91,7 @@ export async function prove({ origin, timeoutMs }) {
         if (url.origin !== origin || request.method() !== 'GET' || url.search) throw Error('Business network refused');
         if (url.pathname === '/__task-proof') return await route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Synthetic task proof</title>' });
         const path = url.pathname.slice(1), row = files.get(path);
-        if (!/^js\/(?:ui-task-done|ui-shared-[A-Z0-9]+\.generated)\.js$/.test(path) || !row) throw Error('Unmanifested module refused');
+        if (!/^js\/(?:ui-task-done|ui-shared-[A-Z0-9]+)\.generated\.js$/.test(path) || !row) throw Error('Unmanifested module refused');
         if (!cached.has(path)) {
           const data = await get('/' + path);
           if (data.length !== row.bytes || hash(data) !== row.sha256) throw Error('Manifest asset hash mismatch');
@@ -105,7 +105,7 @@ export async function prove({ origin, timeoutMs }) {
     page.setDefaultTimeout(remaining());
     await page.goto(`${origin}/__task-proof`, { timeout: remaining() });
     let assertions;
-    try { assertions = await observeTaskReceipts(page, `${origin}/js/ui-task-done.js`); } catch (error) { throw routeError || error; }
+    try { assertions = await observeTaskReceipts(page, `${origin}/js/ui-task-done.generated.js`); } catch (error) { throw routeError || error; }
     if (routeError) throw routeError;
     if (JSON.stringify(await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.pathname) }))) !== JSON.stringify(release)) throw Error('Release changed during proof');
     return { status: 'passed', release, manifest_sha256: hash(manifestBytes), assets, assertions, requests, business_writes: 0 };

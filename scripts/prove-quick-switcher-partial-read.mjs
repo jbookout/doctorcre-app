@@ -34,7 +34,7 @@ if (values.help) {
       page.on('response', response => { if (new URL(response.url()).pathname.startsWith('/js/')) receipt.module_urls.push(response.url()); });
       await page.goto(`${origin.origin}/__quick-switcher-proof`);
       const open = async () => page.evaluate(async () => {
-        const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+        const { openQuickSwitcher } = await import('/js/ui-quick-switcher.generated.js');
         if (typeof openQuickSwitcher !== 'function') throw Error('Missing openQuickSwitcher export');
         openQuickSwitcher({ opener: document.querySelector('#opener'), pages: [{ label: 'Calendar', href: '/calendar' }], read: async () => ({ board: { deals: [{ id: 'd1', name: 'Valid Deal' }] }, network: { nodes: null } }) });
       });

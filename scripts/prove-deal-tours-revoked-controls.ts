@@ -86,7 +86,7 @@ export async function prove({
         await page.emulateMedia({ colorScheme: theme });
         assertions.push(
           await page.evaluate(async () => {
-            const { mountDealTours } = await import("/js/ui-deal-tours.js");
+            const { mountDealTours } = await import("/js/ui-deal-tours.generated.js");
             if (typeof mountDealTours !== "function") throw Error("Missing mountDealTours export");
             const root = document.querySelector("#view");
             if (!root) throw Error("Proof mount missing");

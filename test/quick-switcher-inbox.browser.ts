@@ -50,7 +50,7 @@ test("canonical tasks deduplicate, isolate source failures and fence retired rea
   t.after(() => page.close());
   await page.goto(`${server.origin}/search?mode=fixture`);
   const inbox = await page.evaluate(async () => {
-    const { switcherInboxReader } = await import(String("/js/ui-quick-switcher.js"));
+    const { switcherInboxReader } = await import(String("/js/ui-quick-switcher.generated.js"));
     const snapshot = await switcherInboxReader(async () => {
       throw Error("Fixture must not send");
     }, true)();
@@ -94,7 +94,9 @@ test("canonical tasks deduplicate, isolate source failures and fence retired rea
   for (const failed of ["board", "network", "inbox", "none"]) {
     await page.evaluate(
       async ({ board, network, inbox, failed }) => {
-        const { openQuickSwitcher, readQuickSwitcherSources } = await import(String("/js/ui-quick-switcher.js"));
+        const { openQuickSwitcher, readQuickSwitcherSources } = await import(
+          String("/js/ui-quick-switcher.generated.js")
+        );
         const sources = { board, network, inbox };
         openQuickSwitcher({
           opener: document.querySelector(".quick-switcher-toggle"),
@@ -124,7 +126,7 @@ test("canonical tasks deduplicate, isolate source failures and fence retired rea
     await page.getByRole("combobox").press("Escape");
   }
   await page.evaluate(async (inbox) => {
-    const { openQuickSwitcher } = await import(String("/js/ui-quick-switcher.js"));
+    const { openQuickSwitcher } = await import(String("/js/ui-quick-switcher.generated.js"));
     openQuickSwitcher({
       opener: document.querySelector(".quick-switcher-toggle"),
       pages: [],
@@ -138,7 +140,7 @@ test("canonical tasks deduplicate, isolate source failures and fence retired rea
   await page.waitForURL(`**/inbox/card/${encodeURIComponent(inbox.items[1].item_id)}`);
   await page.goto(`${server.origin}/search?mode=fixture`);
   await page.evaluate(async () => {
-    const { openQuickSwitcher } = await import(String("/js/ui-quick-switcher.js"));
+    const { openQuickSwitcher } = await import(String("/js/ui-quick-switcher.generated.js"));
     openQuickSwitcher({
       opener: document.querySelector(".quick-switcher-toggle"),
       pages: [],
@@ -166,7 +168,7 @@ test("ready sources remain visible while inbox is pending, joins or fails, and l
   for (const outcome of ["join", "fail", "close", "retire"]) {
     await page.evaluate(async () => {
       const { openQuickSwitcher, readQuickSwitcherSources, switcherInboxReader } = await import(
-        String("/js/ui-quick-switcher.js")
+        String("/js/ui-quick-switcher.generated.js")
       );
       const inbox = await switcherInboxReader(async () => {
         throw Error("Fixture must not send");

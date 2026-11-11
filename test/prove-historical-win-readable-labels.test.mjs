@@ -24,8 +24,8 @@ test('proof CLI passes fixtures, detects contradiction and reports insufficient 
   async function snapshot(mode = 'pass') {
     const responses = new Map(assets);
     responses.set('/app-release', { body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: 'a'.repeat(40) }), contentType: 'application/json' });
-    if (mode === 'protected') responses.set('/js/ui-ideal-client-profile.js', { status: 403 });
-    if (mode === 'broken') responses.set('/js/ui-ideal-client-profile.js', { body: 'export function mountIdealClientProfile(){throw Error("assertion fixture contradiction")}', contentType: 'text/javascript' });
+    if (mode === 'protected') responses.set('/js/ui-ideal-client-profile.generated.js', { status: 403 });
+    if (mode === 'broken') responses.set('/js/ui-ideal-client-profile.generated.js', { body: 'export function mountIdealClientProfile(){throw Error("assertion fixture contradiction")}', contentType: 'text/javascript' });
     const fixture = await startFixture({ routes: responses }); t.after(() => fixture.close()); return fixture;
   }
   let fixture = await snapshot(), origin = fixture.origin;

@@ -227,7 +227,7 @@ test("V03 retiring the review clears private notes and prevents reopening their 
     dispose: () => handle.evaluate((model) => model.dispose()),
   });
   const handle = await page.evaluateHandle(async (recording) => {
-    const { mountIntroductionRequest } = await import(String("/js/ui-relationship-kind-filter.js"));
+    const { mountIntroductionRequest } = await import(String("/js/ui-relationship-kind-filter.generated.js"));
     const { validNetwork } = await import(String("/js/relationship-network-model.js"));
     recording.snapshot.observed_at = new Date().toISOString();
     recording.snapshot.valid_until = new Date(Date.now() + 120000).toISOString();

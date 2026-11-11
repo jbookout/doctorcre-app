@@ -10,7 +10,7 @@ export { CALL_MODE_URL, CALL_MODE_HEADER };
 /** get-call-context refuses more than this many deal ids in one request. */
 export const CALL_CONTEXT_BATCH = 50;
 const CALL_MODES = Object.freeze(['weekly_deal_call', 'other_call']);
-const CALL_REVIEW_MODULE = './ui-call.js';
+const CALL_REVIEW_MODULE = './ui-call.generated.js';
 
 /**
  * The index the companion's validate_context accepts, from get-call-context's

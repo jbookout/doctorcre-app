@@ -7,7 +7,7 @@ test('Home renders original valid citations and refuses unsafe provenance before
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const context = await browser.newContext({ baseURL: server.origin });
-  await context.route('**/inbox?*', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script>' }));
+  await context.route('**/inbox?*', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.generated.js"></script>' }));
   const page = await context.newPage();
   const assertions = await exerciseHome(page);
   assert.ok(assertions.every(result => result.passed));

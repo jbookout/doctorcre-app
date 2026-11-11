@@ -1,5 +1,5 @@
 import {onDialogClosed} from './dialog-lifecycle.js';
-import { mountRadarWatches } from './ui-watches.js';
+import { mountRadarWatches } from './ui-watches.generated.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { projectLeaseRadar, pastClientTouches, radarToday, leaseRadarAddress, parseLeaseRadarAddress } from './lease-radar-model.js';
 const E = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

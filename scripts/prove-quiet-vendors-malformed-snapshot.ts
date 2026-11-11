@@ -8,7 +8,7 @@ import { requireContainingRelease } from "./containing-release.ts";
 
 export async function assertQuietVendorBehavior(page: Page) {
   return page.evaluate(async () => {
-    const { mountQuietVendors } = await import("/js/ui-quiet-vendors.js");
+    const { mountQuietVendors } = await import("/js/ui-quiet-vendors.generated.js");
     const assertions: string[] = [];
     function check(ok: unknown, name: string) {
       if (!ok) throw new Error(name);
@@ -261,7 +261,7 @@ async function prove({
     if (release.source_commit !== expectedCommit)
       await requireContainingRelease(expectedCommit, release.source_commit, { signal: controller.signal });
     await init;
-    const pending = ["/js/ui-quiet-vendors.js"];
+    const pending = ["/js/ui-quiet-vendors.generated.js"];
     while (pending.length) {
       const path = pending.shift();
       if (!path) break;

@@ -1,7 +1,7 @@
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { createLeadBoardClient } from './leads-client.js';
-import { mountIdealClientProfile } from './ui-ideal-client-profile.js';
+import { mountIdealClientProfile } from './ui-ideal-client-profile.generated.js';
 import { mountCharts } from "./charts.js";
 
 async function boot() {
