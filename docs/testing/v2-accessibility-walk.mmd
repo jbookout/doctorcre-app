@@ -1,0 +1,35 @@
+stateDiagram-v2
+  [*] --> Ready
+  Ready --> Home: open Home
+  Ready --> Incomplete: required surface unavailable
+  Home --> Board: open Deals
+  Board --> Deal: open first Deal
+  Deal --> Tours: open Tours
+  Tours --> Standalone: open standalone editor
+  Tours --> Embedded: open Deal editor
+  Embedded --> Incomplete: frame unavailable
+  Standalone --> Sheet: open cheat sheet
+  Embedded --> Sheet: open cheat sheet
+  Sheet --> Vendors: open Vendors
+  Vendors --> Suggested: expand people
+  Suggested --> Suggested: load another page
+  Suggested --> Incomplete: twenty pages remain incomplete
+  Suggested --> Research: finish Suggested and open Research
+  Research --> Relationships: open Relationships
+  Relationships --> Leads: open Leads
+  Leads --> Complete: finish observations
+  state "Ready to inspect" as Ready
+  state "Home visible" as Home
+  state "Deals board visible" as Board
+  state "Deal visible" as Deal
+  state "Tours library visible" as Tours
+  state "Standalone Tour visible" as Standalone
+  state "Embedded Tour visible" as Embedded
+  state "Tour and cheat sheet visible" as Sheet
+  state "Vendors visible" as Vendors
+  state "Suggested people visible" as Suggested
+  state "Research people visible" as Research
+  state "Relationships visible" as Relationships
+  state "Leads visible" as Leads
+  state "Nine observations returned" as Complete
+  state "Inspection refused" as Incomplete

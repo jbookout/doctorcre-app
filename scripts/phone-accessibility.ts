@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { parseExpression } from "@babel/parser";
 import type { AxeResults } from "axe-core";
 import type { Frame, Page } from "playwright";
 
@@ -16,7 +17,7 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
   const axeSource = await readFile(new URL("../node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
   type TapCandidate = {
     element: Element;
-    sources: ("accessibility" | "listener" | "native")[];
+    sources: ("accessibility" | "listener" | "native" | "delegated")[];
     reachable: boolean;
     box: { width: number; height: number };
   };
@@ -347,7 +348,6 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
           });
           if (!object.objectId) throw Error("Listener target has no main-world DOM object");
           const { listeners } = await cdp.send("DOMDebugger.getEventListeners", { objectId: object.objectId });
-          if (listeners.some((listener) => events.has(listener.type))) await collect(objectId, "listener");
           const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
             objectId,
             functionDeclaration: `function() {
@@ -358,6 +358,93 @@ export async function inspectPhoneAccessibility(page: Page, frame: Frame = page.
           });
           if (exceptionDetails) throw Error("Could not identify native phone tap element");
           if (result.value) await collect(objectId, "native");
+          const activationListeners = listeners.filter((listener) => events.has(listener.type));
+          if (activationListeners.length) await collect(objectId, "listener");
+          if (activationListeners.length && !result.value) {
+            const selectors = new Set<string>();
+            for (const listener of activationListeners) {
+              const listenerSelectors = new Set<string>();
+              const source = listener.handler?.description;
+              if (!source) throw Error("Phone delegation needs inspectable listener source");
+              const field = (value: unknown, key: string): unknown =>
+                value && typeof value === "object" ? Reflect.get(value, key) : undefined;
+              const aliases = new Set<string>();
+              let readsTarget = false;
+              const visit = (value: unknown, parent?: unknown, grandparent?: unknown) => {
+                if (!value || typeof value !== "object") return;
+                if (Array.isArray(value)) {
+                  for (const child of value) visit(child, parent, grandparent);
+                  return;
+                }
+                const type = field(value, "type");
+                if (type === "Identifier" && aliases.has(String(field(value, "name")))) {
+                  const parentProperty = field(parent, "property");
+                  const method = field(parentProperty, "name") || field(parentProperty, "value");
+                  const declaration = field(parent, "type") === "VariableDeclarator" && field(parent, "id") === value;
+                  const propertyName = field(parent, "property") === value && !field(parent, "computed");
+                  const narrowed =
+                    field(parent, "type") === "BinaryExpression" && field(parent, "operator") === "instanceof";
+                  if (!declaration && !propertyName && !narrowed && method !== "closest" && method !== "matches")
+                    throw Error("Phone delegation has unknown aliased target dispatch semantics");
+                }
+                const property = field(value, "property");
+                const propertyName = field(property, "name") || field(property, "value");
+                if (
+                  (type === "MemberExpression" || type === "OptionalMemberExpression") &&
+                  ["target", "srcElement", "composedPath"].includes(String(propertyName))
+                ) {
+                  readsTarget = true;
+                  const parentProperty = field(parent, "property");
+                  const method = field(parentProperty, "name") || field(parentProperty, "value");
+                  const narrowed =
+                    field(parent, "type") === "BinaryExpression" && field(parent, "operator") === "instanceof";
+                  const alias =
+                    field(parent, "type") === "VariableDeclarator" ? field(field(parent, "id"), "name") : undefined;
+                  const datasetKey = method === "dataset" ? field(field(grandparent, "property"), "name") : undefined;
+                  if (typeof datasetKey === "string")
+                    listenerSelectors.add(
+                      `[data-${datasetKey.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}]`,
+                    );
+                  else if (typeof alias === "string") aliases.add(alias);
+                  else if (!narrowed && method !== "closest" && method !== "matches")
+                    throw Error(
+                      `Phone delegation has unknown target dispatch semantics: ${node.nodeName} ${node.attributes}`,
+                    );
+                }
+                if (type === "CallExpression" || type === "OptionalCallExpression") {
+                  const property = field(field(value, "callee"), "property");
+                  const method = field(property, "name") || field(property, "value");
+                  if (method === "closest" || method === "matches") {
+                    const args = field(value, "arguments");
+                    const selector = Array.isArray(args) ? args[0] : undefined;
+                    const literal = field(selector, "value");
+                    if (field(selector, "type") !== "StringLiteral" || typeof literal !== "string")
+                      throw Error("Phone delegation needs a literal target selector");
+                    listenerSelectors.add(literal);
+                  }
+                }
+                for (const child of Object.values(value)) visit(child, value, parent);
+              };
+              visit(parseExpression(source));
+              if (readsTarget && !listenerSelectors.size)
+                throw Error("Phone delegation has unknown target dispatch semantics");
+              for (const selector of listenerSelectors) selectors.add(selector);
+            }
+            if (selectors.size) {
+              const { exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
+                objectId: targetCollection,
+                functionDeclaration: `function(owner, selectors) {
+                  for (const selector of selectors) for (const element of owner.querySelectorAll(selector)) {
+                    const candidate = this.get(element);
+                    if (candidate) { if (!candidate.sources.includes("delegated")) candidate.sources.push("delegated"); }
+                    else this.set(element, { element, sources: ["delegated"], reachable: false, box: { width: 0, height: 0 } });
+                  }
+                }`,
+                arguments: [{ objectId }, { value: [...selectors] }],
+              });
+              if (exceptionDetails) throw Error("Phone delegation target discovery failed");
+            }
+          }
         }),
       );
     }

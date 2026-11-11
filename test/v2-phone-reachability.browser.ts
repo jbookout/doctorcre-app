@@ -212,3 +212,54 @@ test("Mixed delegated and native targets retain the real 20 px action", async (t
     assert.deepEqual(audit.covered, []);
   }
 });
+
+for (const dispatch of ["dynamic selector", "target id"])
+  test(`Unknown delegated dispatch refuses clean evidence: ${dispatch}`, async (t) => {
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    await page.setContent(
+      '<ul id="owner"><li id="small" style="width:20px;height:20px">Small</li><li><button style="width:60px;height:60px">Large</button></li></ul>',
+    );
+    await page.evaluate((dispatch) => {
+      const selector = "#small";
+      document.getElementById("owner")?.addEventListener(
+        "click",
+        dispatch === "dynamic selector"
+          ? (event) => {
+              if (event.target instanceof Element && event.target.closest(selector))
+                Reflect.set(window, "tapped", true);
+            }
+          : (event) => {
+              if (event.target instanceof Element && event.target.id === "small") Reflect.set(window, "tapped", true);
+            },
+      );
+    }, dispatch);
+    await assert.rejects(inspectPhoneAccessibility(page), /literal target selector|unknown target dispatch semantics/);
+  });
+
+for (const dispatch of ["aliased closest", "dataset"])
+  test(`Delegated target ownership: ${dispatch}`, async (t) => {
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    await page.setContent(
+      '<ul id="owner"><li id="small" data-action="small" style="width:20px;height:20px">Small</li><li><button style="width:60px;height:60px">Large</button></li></ul>',
+    );
+    await page.evaluate((dispatch) => {
+      document.getElementById("owner")?.addEventListener(
+        "click",
+        dispatch === "aliased closest"
+          ? (event) => {
+              const target = event.target;
+              if (target instanceof Element && target.closest("[data-action]")) Reflect.set(window, "tapped", true);
+            }
+          : (event) => {
+              if (event.target instanceof HTMLElement && event.target.dataset.action)
+                Reflect.set(window, "tapped", true);
+            },
+      );
+    }, dispatch);
+    const audit = await inspectPhoneAccessibility(page);
+    assert.equal(audit.small.find((target) => target.id === "small")?.width, 20);
+  });
