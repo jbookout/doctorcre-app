@@ -1,3 +1,5 @@
+import { checkProductionWorkflow } from '../scripts/check-production-workflow.ts';
+import { readdirSync, readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from "node:assert/strict";
@@ -73,7 +75,7 @@ test('merge groups run every required CI job on the group SHA and emit exactly t
   assert.deepEqual(Object.keys(deploy.on ?? deploy.true), ['workflow_run']);
   for (const event of ['merge_group', 'pull_request', 'push']) {
     const context = { repository: 'synthetic/app', event: { workflow_run: {
-      event, head_branch: event === 'merge_group' ? 'gh-readonly-queue/main/pr-1-base' : 'main',
+      status: 'completed', conclusion: 'success', event, head_branch: event === 'merge_group' ? 'gh-readonly-queue/main/pr-1-base' : 'main',
       head_repository: { full_name: 'synthetic/app' },
     } } };
     assert.equal(eventCondition(deploy.jobs.production.if, context), event === 'push');
@@ -619,4 +621,11 @@ test('reply proof browser journeys run after browser installation and remain typ
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
   assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
+});
+
+
+test('every production writer obeys successful exact-SHA completion admission', () => {
+  const directory = new URL('../.github/workflows/', import.meta.url);
+  checkProductionWorkflow(Object.fromEntries(readdirSync(directory).filter(name => /\.ya?ml$/.test(name))
+    .map(name => [name, readFileSync(new URL(name, directory), 'utf8')])));
 });

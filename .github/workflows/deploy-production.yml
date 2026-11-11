@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,6 +13,8 @@ permissions:
 jobs:
   production:
     if: >-
+      github.event.workflow_run.status == 'completed' &&
+      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository
@@ -21,13 +24,14 @@ jobs:
     concurrency:
       group: doctorcre-app-production
       cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Select current main with successful CI
+      - name: Validate successful CI completion
         id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,27 +52,45 @@ jobs:
       - if: steps.candidate.outputs.ready == 'true'
         run: npm run artifact:verify
       - if: steps.candidate.outputs.ready == 'true'
-        name: Require current main source
+        name: Revalidate candidate before publication
+        id: publication
         env:
-          SOURCE_COMMIT: ${{ steps.candidate.outputs.source_commit }}
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
-          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
-          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
-      - if: steps.candidate.outputs.ready == 'true'
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/production-candidate.py
+      - if: steps.publication.outputs.ready == 'true'
         name: Deploy production
+        id: publish
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo '::error::production environment requires CLOUDFLARE_API_TOKEN'; exit 1; }
           node scripts/release-production.mjs
-      - if: steps.candidate.outputs.ready == 'true'
+      - if: steps.publication.outputs.ready == 'true'
         name: Verify production release identity
-        run: node scripts/verify-app-release.mjs https://app.doctorcre.com/app-release "$SOURCE_COMMIT" production
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { readAppRelease, proofFetch } from './scripts/app-release-reader.mjs';
+          import { verifyAppRelease } from './scripts/verify-app-release.mjs';
+          await verifyAppRelease('https://app.doctorcre.com/app-release', process.env.SOURCE_COMMIT, 'production', { fetchRelease: proofFetch });
+          const release = await readAppRelease('https://app.doctorcre.com');
+          assert.equal(release.service, 'doctorcre-app');
+          assert.equal(release.environment, 'production');
+          assert.equal(release.source_commit, process.env.SOURCE_COMMIT);
+          assert.equal(release.provider_version_id, process.env.PROVIDER_VERSION_ID);
+          const candidate = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/production-candidate.json`, 'utf8'));
+          await writeFile(`${process.env.RUNNER_TEMP}/production-release.json`, JSON.stringify({
+            ...candidate, disposition: process.env.DISPOSITION, release,
+            deploy_run_id: process.env.GITHUB_RUN_ID, deploy_run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+            verified_at: new Date().toISOString(),
+          }));
+          NODE
         env:
+          DISPOSITION: ${{ steps.publish.outputs.disposition }}
+          PROVIDER_VERSION_ID: ${{ steps.publish.outputs.provider_version_id }}
           SOURCE_COMMIT: ${{ steps.candidate.outputs.source_commit }}
-      - if: steps.candidate.outputs.ready == 'true'
+      - if: steps.publication.outputs.ready == 'true'
         name: Verify signed-out page gates
         env:
           DOCTORCRE_SMOKE_URL: https://app.doctorcre.com
@@ -99,7 +121,7 @@ jobs:
           assert.equal(status.status, 200);
           assert.match(status.headers.get('content-type') || '', /text\/html/);
           NODE
-      - if: steps.candidate.outputs.ready == 'true'
+      - if: steps.publication.outputs.ready == 'true'
         name: Run production browser smoke
         run: node node_modules/e2e/dist/cli/bin.js run --config e2e.production.config.ts --target chromium --output .e2e/production-smoke
         env:
@@ -113,3 +135,11 @@ jobs:
           path: .e2e/production-smoke
           if-no-files-found: warn
           retention-days: 7
+      - if: always()
+        name: Retain deployment receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/production-*.json
+          if-no-files-found: error
+          retention-days: 14
