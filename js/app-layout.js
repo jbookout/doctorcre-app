@@ -12,7 +12,6 @@ import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
 import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
-import { readHomeAgenda } from './home-dashboard-model.js';
 import { localToday, shortDay, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
@@ -258,7 +257,7 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
         return client.todayTriage();
       }, { signal }),
       readWithDeadline(() => client.calendarMeetingPrep({ signal: preparationSignal }), { signal: preparationSignal }),
-      weekHost ? readHomeAgenda(client, { signal }) : Promise.resolve(null),
+      weekHost ? import('./home-dashboard-model.js').then(({ readHomeAgenda }) => readHomeAgenda(client, { signal })) : Promise.resolve(null),
     ]);
     if (signal?.aborted || win.navigator.onLine === false) return;
     const panels = await calendarPanels;
