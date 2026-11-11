@@ -15,7 +15,8 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
   let row = { ...fixture.finalize.deliverable },
     saved = false,
     lost = false,
-    conflict = false;
+    conflict = false,
+    loseVisibility = false;
 
   const writes: { path: string; body: Record<string, unknown> }[] = [];
   const assets = await appAssetSnapshot();
@@ -74,6 +75,10 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
             assert.equal(body.expected_version, row.version);
             if (conflict) return json({}, 409);
             row = { ...row, visibility: body.visibility, version: row.version + 1 };
+            if (loseVisibility) {
+              loseVisibility = false;
+              return json({}, 503);
+            }
             return json({ ok: true, schema_version: "deal-deliverables.v1", deliverable: row });
           }
           assert.equal(body.target_collection, "deliverables");
@@ -138,9 +143,20 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         await panel.getByRole("button", { name: "Refresh deliverables" }).click();
         await panel.getByRole("button", { name: "Make Photo.jpg private" }).waitFor();
         conflict = false;
+        loseVisibility = true;
         await panel.getByRole("button", { name: "Make Photo.jpg private" }).click();
+        await panel.getByText("Designation unconfirmed.", { exact: false }).waitFor();
+        await panel.getByRole("button", { name: "Refresh deliverables" }).click();
         await panel.getByRole("button", { name: "Mark Photo.jpg shared" }).waitFor();
 
+        await panel.getByRole("button", { name: "Mark Photo.jpg shared" }).click();
+        await panel.getByRole("button", { name: "Make Photo.jpg private" }).click();
+        await panel.getByRole("button", { name: "Mark Photo.jpg shared" }).waitFor();
+        await panel.getByLabel("Choose a deliverable", { exact: true }).setInputFiles(file);
+        await panel.getByRole("button", { name: "Upload to this deal" }).waitFor();
+        await panel.getByRole("button", { name: "Discard pending file" }).click();
+        await panel.getByText("File discarded.", { exact: false }).waitFor();
+        assert.equal(writes.filter((w) => w.body.target_collection).length, 1);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         await page.screenshot({ path: `/tmp/WR586.S3.J8-shots/${width}-${theme}.png`, fullPage: true });
         await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));

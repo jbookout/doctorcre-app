@@ -79,7 +79,9 @@ export async function proveDeliverables({
           const chooser = await chooserPromise;
           await chooser.setFiles([]);
           const value: unknown = await page.evaluate(async (deal) => {
-            const response = await fetch(`/api/v1/deal-deliverables/${deal}`, {
+            const sessionPath = "/js/private-session.js";
+            const { sessionFetch } = await import(sessionPath);
+            const response = await sessionFetch(`/api/v1/deal-deliverables/${deal}`, {
               credentials: "same-origin",
               cache: "no-store",
             });

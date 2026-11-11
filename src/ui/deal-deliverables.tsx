@@ -218,7 +218,11 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
         {upload?.kind === "filed" && (
           <p>Confirmed. {upload.attachment.filename} is saved in this deal’s Deliverables.</p>
         )}
-        {(upload?.kind === "retired" || upload?.kind === "refused") && <p>Failed or retired. {upload.message}</p>}
+        {(upload?.kind === "retired" || upload?.kind === "refused") && (
+          <p>
+            {upload.kind === "refused" ? "Failed" : "Retired"}. {upload.message}
+          </p>
+        )}
         {upload && ["ready", "uncertain"].includes(upload.kind) && (
           <button type="button" className="btn" onClick={() => void model.current?.discard()}>
             Discard pending file
