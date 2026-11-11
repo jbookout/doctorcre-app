@@ -32,12 +32,12 @@ Retry == /\ results \in {"Partial", "Ready"}
          /\ results' = "Loading" /\ pending' = Sources
          /\ available' = {} /\ shown' = {} /\ UNCHANGED session
 
-\* src/ui/quick-switcher.tsx:205-211 unmounts the effect on close.
+\* src/ui/quick-switcher.tsx:200-202 unmounts the effect on close.
 Close == /\ results # "Closed" /\ results' = "Closed"
          /\ pending' = {} /\ available' = {} /\ shown' = {}
          /\ UNCHANGED session
 
-\* src/ui/quick-switcher.tsx:216-219 closes on actor invalidation.
+\* src/ui/quick-switcher.tsx:206-210 closes on actor invalidation.
 SessionEnds == /\ session = "SignedIn" /\ session' = "Retired"
                /\ results' = "Closed" /\ pending' = {}
                /\ available' = {} /\ shown' = {}
