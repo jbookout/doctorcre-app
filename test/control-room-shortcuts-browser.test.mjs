@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 const methods = { 'unfinished-work': 'unfinishedWork', 'incident-board': 'incidentBoard',

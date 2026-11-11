@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 import { componentDocument, chromium } from './browser-harness.mjs';
 import { readFile } from 'node:fs/promises';
 import { observeRefreshRetention } from './deal-documents-refresh-observer.mjs';

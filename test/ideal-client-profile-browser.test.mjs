@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { ownedServer as startFixtureServer } from "./fixture-probe.ts";
 const board = JSON.parse(await readFile(new URL('./fixtures/charts-synthetic.json', import.meta.url)));
 board.deals.push({ ...board.deals[0], id: 'synthetic-open', name: 'Synthetic open case', phase: 'research', outcome: null },
   { ...board.deals[0], id: 'synthetic-lost', name: 'Synthetic lost case', phase: 'closed', outcome: 'lost' });

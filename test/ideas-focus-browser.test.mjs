@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {chromium, fixtureServer, pausedClock, waitForAsync} from './browser-harness.mjs';
+import { chromium, pausedClock, waitForAsync } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 async function open(t, tab = 'ideas') {
   const server = await fixtureServer();

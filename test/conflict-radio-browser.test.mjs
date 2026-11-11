@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer, animationsSettled } from './browser-harness.mjs';
+import { chromium, animationsSettled } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 
 for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
   test(`conflict choices keep native radios beside their captions at ${width}px ${theme}`, async t => {

@@ -30,7 +30,8 @@ globalThis.document = guideDom.window.document;
 after(() => { guideDom.window.close(); globalThis.window = priorWindow; globalThis.document = priorDocument; });
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
-import { chromium, fixtureServer } from "./browser-harness.mjs";
+import { chromium } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { fileURLToPath } from "node:url";
 import {
   createCallMode, shapeCallContextDeals, readCallContextIndex, CALL_CONTEXT_BATCH,

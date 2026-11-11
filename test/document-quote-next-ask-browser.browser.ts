@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { build } from "esbuild";
-import { chromium, fixtureServer } from "./browser-harness.mjs";
+import { chromium } from "./browser-harness.mjs";
+import { ownedFixtureServer as fixtureServer } from "./fixture-probe.ts";
 
 for (const width of [390, 1024, 1440])
   for (const theme of ["light", "dark"] as const)

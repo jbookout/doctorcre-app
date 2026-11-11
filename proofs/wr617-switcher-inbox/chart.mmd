@@ -1,0 +1,41 @@
+---
+config:
+  markdownAutoWrap: false
+  state:
+    useMaxWidth: false
+---
+stateDiagram-v2
+  %% labels in full
+  classDef works fill:#f4f6f7,stroke:#566573,color:#1b2631
+  classDef wrong fill:#fdedec,stroke:#c0392b,color:#7b241c
+  classDef fixed fill:#e9f7ef,stroke:#1e8449,color:#145a32
+  classDef worksPath fill:#f4f6f7,stroke:#1f3a93,stroke-width:4px,color:#1b2631
+  classDef wrongPath fill:#fdedec,stroke:#1f3a93,stroke-width:4px,color:#7b241c
+  classDef fixedPath fill:#e9f7ef,stroke:#1f3a93,stroke-width:4px,color:#145a32
+  state "Legend" as legend {
+    state "Works" as legendWorks
+  }
+  class legendWorks works
+  state "All reads settled,<br/>accessible results shown" as s0
+  state "Available results shown,<br/>other reads pending" as s1
+  state "Loading accessible items" as s2
+  state "Session ended, switcher<br/>closed" as s3
+  state "Switcher closed" as s4
+  [*] --> s4
+  s4 --> s2 : open switcher
+  s4 --> s3 : session ends
+  s2 --> s4 : close switcher
+  s2 --> s3 : session ends
+  s2 --> s1 : a source succeeds or fails
+  s1 --> s2 : retry unavailable sources
+  s1 --> s4 : close switcher
+  s1 --> s3 : session ends
+  s1 --> s0 : a source succeeds or fails
+  s0 --> s2 : retry unavailable sources
+  s0 --> s4 : close switcher
+  s0 --> s3 : session ends
+  class s0 works
+  class s1 works
+  class s2 works
+  class s3 works
+  class s4 works

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer, pausedClock, settles } from './browser-harness.mjs';
+import { chromium, pausedClock, settles } from './browser-harness.mjs';
+import { ownedFixtureServer as fixtureServer } from './fixture-probe.ts';
 import { createDocActivityFixture } from '../js/doc-activity-fixture.js';
 
 async function open(t, { width = 1280, theme = 'light', undoSucceeds = false } = {}) {
