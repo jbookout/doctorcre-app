@@ -147,6 +147,7 @@ test("deal chooser and desktop drop reconcile one private file and versioned des
         conflict = true;
         await panel.getByRole("button", { name: "Make Photo.jpg private" }).click();
         await panel.getByText("Designation unconfirmed.", { exact: false }).waitFor();
+        assert.equal(await panel.getByLabel("Choose a deliverable", { exact: true }).isDisabled(), true);
         await panel.getByRole("button", { name: "Refresh deliverables" }).click();
         await panel.getByRole("button", { name: "Make Photo.jpg private" }).waitFor();
         conflict = false;

@@ -17,6 +17,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
   const sessionToken = useRef<string | null>(null);
   const recoveryStorage = useRef<Storage | null>(null);
   const active = upload && ["receiving", "choosing", "ready", "filing", "uncertain"].includes(upload.kind);
+  const busy = !!active || designation.kind !== "idle";
   async function request(path: string, body?: object) {
     const signal = AbortSignal.any([life.current.signal, AbortSignal.timeout(15000)]);
     const session = await fetch("/auth/session", {
@@ -135,7 +136,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
     return () => window.removeEventListener("beforeunload", warn);
   }, [active, designation.kind, pending]);
   function choose(files: File[]) {
-    if (active || life.current.signal.aborted) return;
+    if (busy || life.current.signal.aborted) return;
     try {
       if (files.length !== 1 || !files[0]) throw Error("Choose one file at a time.");
       validateSharedFile(files[0]);
@@ -146,7 +147,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
     }
   }
   async function visibility(row: Rows[number]) {
-    if (designation.kind !== "idle") return;
+    if (busy) return;
     setDesignation({ kind: "saving", id: row.id });
     try {
       await request(`/api/v1/deal-deliverables/${dealId}/${row.id}/visibility`, {
@@ -172,7 +173,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
       <button
         type="button"
         className="deliverable-drop"
-        disabled={!!active || life.current.signal.aborted || !recoveryStorage.current}
+        disabled={busy || life.current.signal.aborted || !recoveryStorage.current}
         onClick={() => chooser.current?.click()}
         tabIndex={0}
         onKeyDown={(event) => {
@@ -195,7 +196,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
         type="file"
         aria-label="Choose a deliverable"
         accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
-        disabled={!!active || life.current.signal.aborted || !recoveryStorage.current}
+        disabled={busy || life.current.signal.aborted || !recoveryStorage.current}
         onChange={(event) => {
           choose(Array.from(event.target.files ?? []));
           event.target.value = "";
@@ -264,12 +265,7 @@ export function DealDeliverables({ dealId, pending }: { dealId: string; pending(
                 <a className="btn" href={`/api/v1/deal-deliverables/${dealId}/${row.id}/download`}>
                   Download {row.filename}
                 </a>{" "}
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={designation.kind !== "idle"}
-                  onClick={() => void visibility(row)}
-                >
+                <button type="button" className="btn" disabled={busy} onClick={() => void visibility(row)}>
                   {designation.kind === "saving" && designation.id === row.id
                     ? "Saving…"
                     : row.visibility === "private"
