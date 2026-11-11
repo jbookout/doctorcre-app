@@ -41,7 +41,7 @@ test("client proof gates equal descendant older unrelated and unknown releases b
           error.message,
           [commit, descendant].includes(observed)
             ? "Client link evidence required"
-            : "Containing release evidence unavailable",
+            : `${observed === older ? "older" : observed === unrelated ? "unrelated" : "unknown"} release evidence unavailable`,
         );
         return true;
       });

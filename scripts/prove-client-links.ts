@@ -9,7 +9,7 @@ import { parsePublicTourPacket, UnsupportedPublicTourPacketError } from "../src/
 import { launchProofBrowser, proofFetch, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
 import { requireContainingRelease } from "./containing-release.ts";
-import { requireCurrentTourPdf } from "./public-tour-pdf-proof.ts";
+import { requireTourEvidence, TourEvidenceError } from "./tour-proof-evidence.ts";
 
 type Row = { propertyRef: string; label: string; name: string; detail: string };
 type Evidence = { active: string; revoked: string; viewOnly: string; rows: Row[]; pdfSha256: string };
@@ -160,17 +160,47 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
                 status === "Report and map loaded."
               );
             });
+            const cookies = await context.cookies(clientOrigin);
+            const response = await proofFetch(new URL("/api/share/download", clientOrigin), {
+              signal: lifetime.signal,
+              headers: { cookie: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ") },
+              cache: "no-store",
+            });
+            const chunks: Uint8Array[] = [];
+            let length = 0;
+            if (response.body)
+              for await (const chunk of response.body) {
+                length += chunk.length;
+                if (length > 20 * 1024 * 1024) throw insufficient("PDF exceeds evidence budget");
+                chunks.push(chunk);
+              }
+            const download = {
+              status: response.status,
+              type: response.headers.get("content-type"),
+              digest: createHash("sha256").update(Buffer.concat(chunks)).digest("hex"),
+            };
+            let envelope: unknown;
+            if (kind !== "revoked") {
+              const packet = await packetResponse;
+              if (!packet) throw insufficient("Packet response required");
+              if ("error" in packet) throw packet.error;
+              try {
+                envelope = await packet.response.json();
+              } catch {
+                throw insufficient("Unreadable packet evidence");
+              }
+              await requireTourEvidence("containing", [
+                { kind: "json", value: object(envelope) ? envelope.data : undefined },
+                ...(kind === "active" ? [{ kind: "pdf" as const, value: Buffer.concat(chunks) }] : []),
+              ]);
+            }
             assert.equal(await page.evaluate(() => location.hash), "", "bearer scrubbed");
             if (kind === "revoked") {
               assert.equal(await page.locator("#status").textContent(), "This shared report is unavailable.");
               assert.equal(await page.locator(".report-item").count(), 0);
             } else {
               const packet = await packetResponse;
-              assert.ok(packet, "packet response required");
-              if ("error" in packet) throw packet.error;
-              const { response } = packet;
-              assert.ok(response.ok(), "packet response available");
-              const envelope: unknown = await response.json();
+              assert.ok(packet && "response" in packet && packet.response.ok(), "packet response available");
               assert.ok(object(envelope), "packet envelope required");
               assert.equal(
                 await page.locator("#report-summary").textContent(),
@@ -191,29 +221,9 @@ export async function prove({ origin, commit, evidence, timeoutMs = 30000, cwd, 
               kind === "active" ? 1 : 0,
               "download control matches the producer capability",
             );
-            const cookies = await context.cookies(clientOrigin);
-            const response = await proofFetch(new URL("/api/share/download", clientOrigin), {
-              signal: lifetime.signal,
-              headers: { cookie: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ") },
-              cache: "no-store",
-            });
-            const chunks: Uint8Array[] = [];
-            let length = 0;
-            if (response.body)
-              for await (const chunk of response.body) {
-                length += chunk.length;
-                if (length > 20 * 1024 * 1024) throw insufficient("PDF exceeds evidence budget");
-                chunks.push(chunk);
-              }
-            const download = {
-              status: response.status,
-              type: response.headers.get("content-type"),
-              digest: createHash("sha256").update(Buffer.concat(chunks)).digest("hex"),
-            };
             if (kind === "active") {
               assert.equal(download.status, 200);
               assert.equal(download.type, "application/pdf");
-              await requireCurrentTourPdf(Buffer.concat(chunks));
               assert.equal(download.digest, expected.pdfSha256);
               await page.getByRole("button", { name: "Download PDF", exact: true }).click();
               await page.getByText("PDF downloaded.", { exact: true }).waitFor();
@@ -299,7 +309,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       JSON.stringify({
         status: exitCode === 78 ? "insufficient_evidence" : "failed",
         error:
-          error instanceof UnsupportedPublicTourPacketError
+          error instanceof UnsupportedPublicTourPacketError || error instanceof TourEvidenceError
             ? error.message
             : exitCode === 1
               ? "Client link assertion failed"

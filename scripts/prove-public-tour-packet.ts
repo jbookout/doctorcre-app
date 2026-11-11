@@ -6,8 +6,10 @@ import { packetMapPoints, parsePublicTourPacket } from "../src/ui/public-tour-pa
 import { packetProofPdf } from "../test/packet-pdf.fixture.ts";
 import { presentedPacket } from "../test/packet-presentation.fixture.ts";
 import { proofFetch } from "./app-release-reader.mjs";
+import { requireContainingRelease } from "./containing-release.ts";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
 import { assertPublishedPacketPdf } from "./public-tour-pdf-proof.ts";
+import { requireTourEvidence } from "./tour-proof-evidence.ts";
 
 const unavailable = (message: string) => Object.assign(Error(message), { exitCode: 78 });
 export async function proveTourPacket({
@@ -46,6 +48,7 @@ export async function proveTourPacket({
   return runProof({
     origin,
     expectedCommit,
+    contains: requireContainingRelease,
     ...(cdpUrl ? { cdpUrl } : {}),
     observe: async (page) => {
       if (!shareUrlFile) throw unavailable("Approved share URL file required");
@@ -73,9 +76,12 @@ export async function proveTourPacket({
       await page.waitForFunction(() => /loaded|unavailable/.test(document.querySelector("#status")?.textContent || ""));
       if ((await page.locator("#status").textContent()) !== "Report and map loaded.")
         throw unavailable("Approved packet with map required");
-      const values = { report: await reportResponse.json(), map: await mapResponse.json() };
-      const packet = parsePublicTourPacket(values.report.data);
-      const points = packetMapPoints(packet, values.map.data);
+      let values: { report: { data: unknown }; map: { data: unknown } };
+      try {
+        values = { report: await reportResponse.json(), map: await mapResponse.json() };
+      } catch {
+        throw unavailable("Unreadable packet evidence");
+      }
       const pdfUrl = new URL((await readFile(pdfUrlFile, "utf8")).trim());
       if (
         pdfUrl.origin !== new URL(origin).origin ||
@@ -92,9 +98,16 @@ export async function proveTourPacket({
         headers: { cookie: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ") },
       });
       if ([401, 403, 404].includes(response.status)) throw unavailable("Reviewed server PDF unavailable");
+      const bytes = Buffer.from(await response.arrayBuffer());
+      await requireTourEvidence("containing", [
+        { kind: "json", value: values.report?.data },
+        { kind: "pdf", value: bytes },
+      ]);
+      const packet = parsePublicTourPacket(values.report?.data);
+      const points = packetMapPoints(packet, values.map.data);
       assert.equal(response.ok, true);
       assert.ok(response.headers.get("content-type")?.startsWith("application/pdf"));
-      await assertPublishedPacketPdf(Buffer.from(await response.arrayBuffer()), packet);
+      await assertPublishedPacketPdf(bytes, packet);
       for (const width of [1440, 390])
         for (const theme of ["light", "dark"] as const) {
           await page.setViewportSize({ width, height: 1000 });
@@ -154,7 +167,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       ...(values["cdp-url"] ? { cdpUrl: values["cdp-url"] } : {}),
       ...(values["fixture-case"] ? { fixtureCase: values["fixture-case"] } : {}),
     });
-    process.stdout.write(`${JSON.stringify({ status: result.status, exitCode: result.exitCode })}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ status: result.status, exitCode: result.exitCode, ...(result.error ? { error: result.exitCode === 78 ? result.error : "Packet assertion failed" } : {}) })}\n`,
+    );
     process.exitCode = result.exitCode;
   } catch {
     process.stdout.write('{"status":"insufficient_evidence","exitCode":78}\n');

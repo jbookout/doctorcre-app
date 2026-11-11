@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PDFDocument } from "pdf-lib";
-import { assertPublishedPacketText, requireCurrentTourPdf } from "../scripts/public-tour-pdf-proof.ts";
+import { assertPublishedPacketText } from "../scripts/public-tour-pdf-proof.ts";
+import { requireTourEvidence } from "../scripts/tour-proof-evidence.ts";
 import { parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
 import { presentedPacket } from "./packet-presentation.fixture.ts";
 
@@ -57,9 +58,12 @@ for (const kind of ["template", "renderer"] as const)
     document.setSubject(`Tour template ${kind === "template" ? "1.1.0" : "2.0.0"}`);
     document.setProducer(`CARR deterministic PDF renderer ${kind === "renderer" ? "1.1.0" : "2.0.0"}`);
     document.addPage();
-    await assert.rejects(requireCurrentTourPdf(Buffer.from(await document.save())), {
-      name: "UnsupportedPublicTourPacketError",
-      exitCode: 78,
-      message: `This report uses an older PDF ${kind} (1.1.0). Please reopen the shared link after the report service is updated.`,
-    });
+    await assert.rejects(
+      requireTourEvidence("containing", [{ kind: "pdf", value: Buffer.from(await document.save()) }]),
+      {
+        name: "Error",
+        exitCode: 78,
+        message: `This report uses an older PDF ${kind} (1.1.0). Please reopen the shared link after the report service is updated.`,
+      },
+    );
   });
