@@ -135,7 +135,7 @@ export async function mountWorkingWeek(host: HTMLElement) {
                   <button
                     type="button"
                     key={day.day}
-                    aria-label={`${label(day.day).slice(0, 3)} ${Number(day.day.slice(-2))} ${label(day.day)}`}
+                    aria-label={`${label(day.day).slice(0, 3)}${Number(day.day.slice(-2))} ${label(day.day)}`}
                     aria-pressed={day.day === viewedDay}
                     onClick={() => {
                       viewedDay = day.day;

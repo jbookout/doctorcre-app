@@ -91,6 +91,7 @@ test("working day strip stays compact with full dates only in accessible names",
             assert.ok(height <= (width === 390 ? 60 : 72), `${width} ${theme}: compact day height, got ${height}px`);
             const text = await day.textContent();
             assert.ok(text);
+            assert.equal(await page.getByRole("button", { name: new RegExp(`^${text} `) }).count(), 1);
             assert.match(text, /^[A-Z][a-z]{2}\s*\d{1,2}$/, "Only weekday and number remain in button text");
           }
         } finally {
