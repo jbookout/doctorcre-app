@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   journeys:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       E2E_TELEMETRY_DISABLED: "1"
@@ -36,7 +36,9 @@ jobs:
           node-version: 26.12.1
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/setup-browsers
+        with:
+          browsers: chromium
       - run: npm run build
       - run: npx playwright test --project=fixtures
       - run: npx e2e run

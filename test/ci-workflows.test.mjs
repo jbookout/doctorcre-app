@@ -236,30 +236,36 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.match(ci, /browser-results.py out\/browser-results\/junit.xml/);
   assert.match(ci, /needs: \[checks, shards, performance, live\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
-  const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
+  const browser = steps.findIndex(step => /^uses: .*\/.github\/actions\/setup-browsers$/m.test(step));
   assert.ok(privacy >= 0 && privacy < browser);
 });
 
-test('browser dependencies use official Ubuntu mirrors after privacy checks', async t => {
-  const steps = checks.split(/^      - /m).slice(1);
-  const mirror = steps.findIndex(step => /^name: Prefer Ubuntu archives for browser dependencies$/m.test(step));
-  const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
-  const browser = steps.findIndex(step => /^run: npx playwright install --with-deps chromium webkit$/m.test(step));
-  assert.ok(privacy >= 0 && privacy < mirror && mirror < browser,
-    'configure apt mirrors after privacy checks and before installing browser dependencies');
-  const shell = steps[mirror].match(/        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, '');
-  const directory = await temporaryDirectory('doctorcre-apt-mirrors-');
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const path = join(directory, 'apt-mirrors.txt');
-  await writeFile(path, 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n');
-  const fixtureShell = shell.replaceAll('/etc/apt/apt-mirrors.txt', path).replace(/\bsudo /g, '');
-  assert.doesNotMatch(fixtureShell, /\/etc\//);
-  const expected = 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n';
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', fixtureShell], { encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(await readFile(path, 'utf8'), expected);
+test('browser setup bounds missing dependencies and shares exact browser caches in every workflow', async () => {
+  const action = workflowDocument(await readFile(join(root, '.github/actions/setup-browsers/action.yml'), 'utf8'));
+  const cache = action.runs.steps.find(step => step.uses?.startsWith('actions/cache@'));
+  assert.equal(cache.with.path, '~/.cache/ms-playwright');
+  assert.equal(cache.with.key, 'playwright-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-${{ steps.version.outputs.version }}-${{ inputs.browsers }}');
+  assert.equal(cache.with['restore-keys'], undefined);
+  assert.match(action.runs.steps[0].run, /require\("playwright-core\/package.json"\).version/);
+  let sites = 0;
+  for (const file of readdirSync(join(root, '.github/workflows')).filter(file => /\.ya?ml$/.test(file))) {
+    const document = workflowDocument(readFileSync(join(root, '.github/workflows', file), 'utf8'));
+    for (const [name, job] of Object.entries(document.jobs)) {
+      for (const step of job.steps ?? []) {
+        assert.doesNotMatch(step.run ?? '', /playwright\s+install/, `${file} ${name} must use shared browser setup`);
+        if (!step.uses?.endsWith('/.github/actions/setup-browsers')) continue;
+        sites++;
+        assert.equal(job['runs-on'], 'ubuntu-24.04', `${file} ${name}`);
+        const directory = step.with?.['working-directory'] ?? '.';
+        assert.equal(step.uses, directory === '.' ? './.github/actions/setup-browsers' : `./${directory}/.github/actions/setup-browsers`);
+        assert.ok(job.steps.slice(0, job.steps.indexOf(step)).some(step => step.run === 'npm ci'));
+        assert.ok(['chromium', 'chromium webkit'].includes(step.with.browsers));
+      }
+    }
   }
+  assert.equal(sites, 8);
+  const result = spawnSync('python3', ['scripts/browser-setup-selftest.py'], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
 test("release build is read-only and publisher receives only this run's digest-bound artifact", () => {
@@ -615,7 +621,7 @@ test('reply proof browser journeys run after browser installation and remain typ
   assert.ok(config.files.includes('test/prove-reply-action-link.browser.ts'));
   assert.ok(!config.files.includes('test/prove-reply-action-link.test.ts'));
   const steps = workflowDocument(checks).jobs.checks.steps;
-  const install = steps.findIndex(step => step.run === 'npx playwright install --with-deps chromium webkit');
+  const install = steps.findIndex(step => step.uses?.endsWith('/.github/actions/setup-browsers'));
   const journeys = steps.findIndex(step => step.run === 'node --test test/*.browser.ts');
   assert.ok(install >= 0 && install < journeys);
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));

@@ -22,7 +22,7 @@ jobs:
     secrets: inherit
 
   shards:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -46,10 +46,10 @@ jobs:
       - run: npm run privacy:check
         env:
           DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
-      - name: Prefer Ubuntu archives for browser dependencies
-        run: |
-          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-      - run: npx playwright install --with-deps chromium webkit
+      - uses: ./doctorcre-app/.github/actions/setup-browsers
+        with:
+          working-directory: doctorcre-app
+          browsers: chromium webkit
       - run: npm run pretest
       - name: Run synthetic files once with native Node shards
         run: |
@@ -91,7 +91,7 @@ jobs:
           retention-days: 14
 
   performance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -111,10 +111,10 @@ jobs:
       - run: npm run privacy:check
         env:
           DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
-      - name: Prefer Ubuntu archives for browser dependencies
-        run: |
-          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-      - run: npx playwright install --with-deps chromium webkit
+      - uses: ./doctorcre-app/.github/actions/setup-browsers
+        with:
+          working-directory: doctorcre-app
+          browsers: chromium webkit
       - run: npm run build
       - run: npm run performance:check
         # Report-only switch. Set false after WR622.S1.J348 slice 3 restores Home headroom.
@@ -196,10 +196,10 @@ jobs:
         run: node scripts/live-producer.mjs
         env:
           CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
-      - name: Prefer Ubuntu archives for browser dependencies
-        run: |
-          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-      - run: npx playwright install --with-deps chromium
+      - uses: ./doctorcre-app/.github/actions/setup-browsers
+        with:
+          working-directory: doctorcre-app
+          browsers: chromium
       - run: npm run build
       - name: Run the live journeys
         run: npx playwright test --project=live

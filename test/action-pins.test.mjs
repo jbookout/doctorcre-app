@@ -84,7 +84,7 @@ test('CI checks pins before dependency and browser setup while retaining the ful
   assert.ok(checks.includes('run: npm run ci:fast'));
   assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('- uses: actions/setup-node'));
   assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npm ci'));
-  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npx playwright install'));
+  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('uses: ./doctorcre-app/.github/actions/setup-browsers'));
   const shards = ci.split(/^  shards:\n/m)[1].split(/^  \w+:/m)[0];
   assert.match(shards, /shard: \[1, 2, 3, 4\]/);
   assert.match(shards, /node --test --test-shard=\$\{\{ matrix.shard \}\}\/4 --test-concurrency=2 --test-timeout=180000/);
@@ -177,4 +177,15 @@ test('local action symlinks cannot escape the repository and missing metadata fa
   await mkdir(join(root, 'empty'));
   await writeFile(join(root, '.github/workflows/ci.yml'), workflow('      - uses: ./empty'));
   await assert.rejects(checkActionPins(root), /ENOENT/);
+});
+
+test('local composites resolve under the declared app checkout and still verify nested pins', async t => {
+  const root = await fixture(t);
+  await mkdir(join(root, '.github/actions/local'), { recursive: true });
+  const action = join(root, '.github/actions/local/action.yml');
+  await writeFile(action, `name: Local\nruns:\n  using: composite\n  steps:\n    - uses: actions/checkout@${sha}\n`);
+  await writeFile(join(root, '.github/workflows/ci.yml'), workflow(`      - uses: actions/checkout@${sha}\n        with:\n          path: doctorcre-app\n      - uses: ./doctorcre-app/.github/actions/local`));
+  await checkActionPins(root);
+  await writeFile(action, 'name: Local\nruns:\n  using: composite\n  steps:\n    - uses: actions/checkout@main\n');
+  await assert.rejects(checkActionPins(root), /immutable/);
 });
