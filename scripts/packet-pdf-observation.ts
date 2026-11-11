@@ -3,7 +3,15 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
-export type PacketStop = { property: string; label: string; name: string; address: string; facts: string[] };
+export type PacketStop = {
+  property: string;
+  label: string;
+  name: string;
+  address: string;
+  facts: string[];
+  brand: string;
+  asOf: string;
+};
 export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
   const loading = getDocument({
     data: new Uint8Array(bytes),
@@ -38,6 +46,32 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
         return band(y - 14, y, 210);
       });
       const ref = band(75, 77);
+      const brand = band(740, 742, 0, 210);
+      const asOf = band(203, 205);
+      const allowed = [
+        brand,
+        band(745, 747),
+        band(650, 700),
+        band(590, 640),
+        ...labels.flatMap((label, i) => [label, facts[i]]),
+        "FACTS-ONLY CLIENT NOTE",
+        asOf,
+        ref,
+        band(62, 64, 0, 490),
+        `${n} / ${doc.numPages}`,
+      ];
+      const actual = items
+        .map((item) => item.str)
+        .filter(Boolean)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const expected = allowed.join(" ").replace(/\s+/g, " ").trim();
+      assert.ok(actual === expected, "PDF contains text outside the approved packet fields");
+      assert.ok(
+        !/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:\+1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/.test(actual),
+        "PDF contains contact information",
+      );
       assert.ok(/^Packet ref: property:public:[A-Za-z0-9_-]{16,128}$/.test(ref), "Public packet reference required");
       stops.push({
         property: ref.slice("Packet ref: ".length),
@@ -45,6 +79,8 @@ export async function observePdf(bytes: Uint8Array): Promise<PacketStop[]> {
         name: band(650, 700),
         address: band(590, 640),
         facts,
+        brand,
+        asOf,
       });
     }
     return stops;

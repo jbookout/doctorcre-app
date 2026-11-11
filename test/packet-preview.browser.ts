@@ -152,6 +152,8 @@ test("the public packet renders the same synthetic stop facts at both widths", a
             name: node.querySelector("h3")?.textContent || "",
             address: node.querySelector("h3 + p")?.textContent || "",
             facts: Array.from(node.querySelectorAll("dd"), (fact) => fact.textContent || ""),
+            brand: node.querySelector(".packet-brand")?.textContent || "",
+            asOf: node.querySelector(".packet-as-of")?.textContent || "",
           })),
         );
         comparePacketStops(pdfStops, pdfStops, share);

@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { packetFixturePdf } from "../scripts/packet-fixture.ts";
 import { comparePacketStops, observePdf } from "../scripts/packet-pdf-observation.ts";
-import { packetFacts } from "../src/ui/packet-facts.ts";
+import { packetAsOf, packetFacts } from "../src/ui/packet-facts.ts";
 import packet from "./fixtures/packet-parity/packet.json" with { type: "json" };
 
 const expected = packet.properties.map((p) => ({
@@ -12,11 +12,13 @@ const expected = packet.properties.map((p) => ({
   name: p.name,
   address: `${p.address} - ${p.suite}`,
   facts: packetFacts(p).map(([, value]) => value),
+  brand: "CARR",
+  asOf: packetAsOf(packet.as_of),
 }));
 test("recorded CARR PDF text agrees exactly with the current client fact formatter", async () => {
   const pdf = await observePdf(await packetFixturePdf());
   comparePacketStops(pdf, pdf, expected);
-  for (const key of ["property", "label", "name", "address"] as const) {
+  for (const key of ["property", "label", "name", "address", "brand", "asOf"] as const) {
     const changed = structuredClone(expected);
     assert.ok(changed[0]);
     changed[0][key] += "x";
@@ -63,3 +65,46 @@ for (const deadline of ["0", "30001", "NaN"])
     );
     assert.equal(result.status, 78, result.stdout + result.stderr);
   });
+
+for (const field of [
+  "brand",
+  "asOf",
+  "property",
+  "label",
+  "name",
+  "address",
+  "fact-0",
+  "fact-1",
+  "fact-2",
+  "fact-3",
+  "fact-4",
+  "unavailable",
+]) {
+  test(`packet CLI rejects ${field} evidence`, () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "scripts/prove-packet-facts.ts",
+        "--expected-commit",
+        "1".repeat(40),
+        "--fixture-case",
+        field === "unavailable" ? field : `near-miss-${field}`,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, field === "unavailable" ? 78 : 1, result.stdout + result.stderr);
+    assert.doesNotMatch(result.stdout, /Alpha Health Center|Beta Medical Plaza|1600 SF/);
+  });
+}
+
+test("PDF observations reject contacts and internal notes outside displayed fact bands", async () => {
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  for (const text of ["private@example.invalid", "850-555-0199", "INTERNAL NOTE canary"]) {
+    const doc = await PDFDocument.load(await packetFixturePdf());
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const page = doc.getPages()[0];
+    assert.ok(page);
+    page.drawText(text, { x: 42, y: 140, size: 9, font });
+    await assert.rejects(observePdf(await doc.save()), /outside the approved packet fields/);
+  }
+});

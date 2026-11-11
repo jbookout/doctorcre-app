@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { packetFacts } from "../src/ui/packet-facts.ts";
+import { packetAsOf, packetFacts } from "../src/ui/packet-facts.ts";
 import { packetFixturePdf } from "./packet-fixture.ts";
 import { comparePacketStops, observePdf } from "./packet-pdf-observation.ts";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
@@ -18,7 +18,30 @@ export async function provePacket(options: {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
     return { status: "insufficient_evidence", exitCode: 78, error: "Deadline must be 1 to 30000 milliseconds" };
   if (options.fixtureCase) {
-    assert.ok(["pass", "near-miss"].includes(options.fixtureCase));
+    if (options.fixtureCase === "unavailable")
+      return {
+        status: "insufficient_evidence",
+        exitCode: 78,
+        error: "Approved packet and bound client share evidence required",
+      };
+    const mutation = options.fixtureCase.replace(/^near-miss-/, "");
+    assert.ok(
+      [
+        "pass",
+        "near-miss",
+        "brand",
+        "asOf",
+        "property",
+        "label",
+        "name",
+        "address",
+        "fact-0",
+        "fact-1",
+        "fact-2",
+        "fact-3",
+        "fact-4",
+      ].includes(mutation),
+    );
     const pdf = await observePdf(await packetFixturePdf());
     const fixture: unknown = JSON.parse(
       await readFile(new URL("../test/fixtures/packet-parity/packet.json", import.meta.url), "utf8"),
@@ -48,9 +71,23 @@ export async function provePacket(options: {
         name,
         address: `${address} - ${suite}`,
         facts: packetFacts(p).map(([, value]) => value),
+        brand: "CARR",
+        asOf: packetAsOf("as_of" in fixture ? fixture.as_of : null),
       };
     });
-    if (options.fixtureCase === "near-miss" && share[0]) share[0].facts[1] = "11600 SF";
+    if (share[0]) {
+      if (options.fixtureCase === "near-miss") share[0].facts[1] = "11600 SF";
+      else if (mutation.startsWith("fact-")) share[0].facts[Number(mutation.slice(5))] += "x";
+      else if (
+        mutation === "brand" ||
+        mutation === "asOf" ||
+        mutation === "property" ||
+        mutation === "label" ||
+        mutation === "name" ||
+        mutation === "address"
+      )
+        share[0][mutation] += "x";
+    }
     return runProof({
       ...options,
       readRelease: async () => ({ source_commit: options.expectedCommit }),
@@ -148,12 +185,13 @@ export async function provePacket(options: {
           name: node.querySelector("h3")?.textContent || "",
           address: node.querySelector("h3 + p")?.textContent || "",
           facts: Array.from(node.querySelectorAll("dd"), (fact) => fact.textContent || ""),
+          brand: node.querySelector(".packet-brand")?.textContent || "",
+          asOf: node.querySelector(".packet-as-of")?.textContent || "",
         })),
       );
       comparePacketStops(previewStops, await observePdf(downloaded), share);
       return {
-        scope:
-          "PDF bytes and current property facts only; map, times, notes, contacts and full branding are outside this partial proof",
+        scope: "PDF bytes and current property facts only; map, times and notes are outside this partial proof",
         stops: share.length,
       };
     },

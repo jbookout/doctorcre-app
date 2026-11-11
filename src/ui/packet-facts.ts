@@ -61,3 +61,43 @@ export function appendPacketFacts(root: HTMLElement, value: unknown): void {
   }
   root.append(list);
 }
+
+export function packetAsOf(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const match = /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match?.[1]) return "";
+  const date = new Date(value);
+  const wallDate = new Date(`${match[1]}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime()) || wallDate.toISOString().slice(0, 10) !== match[1]) return "";
+  const months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  return `As of ${months[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()} at ${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")} UTC`;
+}
+
+export function appendPacketMetadata(root: HTMLElement, asOf: unknown): void {
+  const document = root.ownerDocument;
+  const brand = document.createElement("p");
+  brand.className = "packet-brand";
+  brand.textContent = "CARR";
+  root.append(brand);
+  const display = packetAsOf(asOf);
+  if (display && typeof asOf === "string") {
+    const time = document.createElement("time");
+    time.className = "packet-as-of";
+    time.dateTime = new Date(asOf).toISOString();
+    time.textContent = display;
+    root.append(time);
+  }
+}

@@ -1,4 +1,4 @@
-import { appendPacketFacts, packetText } from "../js/ui-packet-facts.js";
+import { appendPacketFacts, appendPacketMetadata, packetText } from "../js/ui-packet-facts.js";
 import { mountNavigation } from "../js/navigation.js";
 
 mountNavigation(document, location.pathname, { report: true });
@@ -225,6 +225,7 @@ mountNavigation(document, location.pathname, { report: true });
       detail.textContent = propertyAddress(item, "Address unavailable");
       row.append(route, heading, detail);
       appendPacketFacts(row, item);
+      appendPacketMetadata(row, report.as_of);
       renderFeedbackControls(row, item);
       list.append(row);
     }
