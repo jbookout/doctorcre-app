@@ -19,7 +19,7 @@ Two designs were considered. Mounting the legacy HTML renderer directly would pr
 
 ## Statechart and tests
 
-`week.mmd` is the lifecycle abstraction. It leaves out transport internals, dates, row counts and the producer's own state machine. Browser tests execute the real module and canonical fixture client responses through the production parsers. `home-week.test.mjs` covers Chicago midnight, DST, all-day dates, coincident identity and instant ordering.
+`week.mmd` is the lifecycle abstraction. It leaves out transport internals, dates, row counts and the producer's own state machine. Browser tests execute the real module and synthetic producer-contract-checked responses through `createLiveClient` and the production UI parsers. `home-week.test.mjs` covers Chicago midnight, DST, all-day dates, coincident identity and instant ordering.
 
 | Transition | Browser test |
 | --- | --- |
@@ -31,9 +31,14 @@ Two designs were considered. Mounting the legacy HTML renderer directly would pr
 | refresh unchanged sources | working week refreshes, replaces selected sources and refuses retired late reads |
 | feed incomplete | Both Home browser tests |
 | feed recovers | working week refreshes, replaces selected sources and refuses retired late reads |
-| session ends from day or detail, available or partial | Both Home browser tests |
+| Day + Available to Ended + Retired | working week retires ready day and refuses a late refresh |
+| Detail + Partial to Ended + Retired | working week retires partial detail and refuses a late refresh |
+| Day + Partial to Ended + Retired | Home working week preserves day, exact details, coverage and retirement |
+| Detail + Available to Ended + Retired | working week refreshes, replaces selected sources and refuses retired late reads |
 
 Run the model from a scratch copy of `week.mmd` with `JAVA=/opt/homebrew/opt/openjdk@21/bin/java TLA2TOOLS=/tmp/J307-model/tla2tools.jar node /Users/booko/.claude/plugins/marketplaces/cursor-plugins/pstack/skills/statechart/scripts/statechart.mjs from-chart /tmp/WR591.S7.J1-model/week.mmd --png`. TLC checks both retirement invariants. Browser tests remain the evidence for actual DOM behavior.
+
+The fixture contract pins CARR `24eba8116a467fa13a0a152aaf2ad0ecd8bb6f0f` and the registered producer source locations in `test/fixtures/home-working-week-contract.json`. It describes the populated agenda and partial, no-match calendar cohort exercised here. AJV rejects missing producer fields before serving any bytes. The Worker fixture serves those responses to the live MCP adapter. Unrelated Home feeds retain their existing fixture adapters. The contract test rejects the former label/date-only row and incomplete calendar items.
 
 ## Production proof
 

@@ -180,9 +180,12 @@ for (const scenario of ["partial detail", "ready day"] as const) {
     const page = await browser.newPage();
     t.after(() => page.close());
     await page.clock.setFixedTime(new Date("2026-11-11T15:00:00Z"));
-    await page.route("**/week-test", (route) => route.fulfill({
-      contentType: "text/html", body: '<div id="left"></div><div id="right"></div><main id="week"></main>',
-    }));
+    await page.route("**/week-test", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: '<div id="left"></div><div id="right"></div><main id="week"></main>',
+      }),
+    );
     await page.goto(`${server.origin}/week-test`);
     await page.evaluate(async (scenario) => {
       const { mountCalendarPanels } = await import("/js/" + "ui-calendar-panels.js");
@@ -192,7 +195,11 @@ for (const scenario of ["partial detail", "ready day"] as const) {
       const source = await readHomeAgenda(client);
       const calendar = await client.calendarMeetingPrep();
       if (scenario === "ready day") calendar.state = "ready";
-      const panel = await mountCalendarPanels(document.querySelector("#left"), document.querySelector("#right"), document.querySelector("#week"));
+      const panel = await mountCalendarPanels(
+        document.querySelector("#left"),
+        document.querySelector("#right"),
+        document.querySelector("#week"),
+      );
       Reflect.set(window, "weekTest", { panel, source, calendar });
       panel.render(calendar, source);
     }, scenario);
@@ -232,8 +239,14 @@ test("working-week fixture admits producer date fields through the live adapter"
   const dates = result.deals.flatMap((deal: { critical_dates: object[] }) => deal.critical_dates);
   assert.ok(dates.length);
   for (const row of dates) {
-    for (const key of ["id", "kind", "due_on", "note", "status"]) assert.ok(Object.hasOwn(row, key), `producer critical date requires ${key}`);
+    for (const key of ["id", "kind", "due_on", "note", "status"])
+      assert.ok(Object.hasOwn(row, key), `producer critical date requires ${key}`);
     assert.equal(Object.hasOwn(row, "date"), false);
   }
-  assert.ok((await page.evaluate(() => performance.getEntriesByType("resource").map((r) => r.name))).some((url) => url.includes("home-working-week-responses.json")), "live adapter reads admitted MCP response bytes");
+  assert.ok(
+    (await page.evaluate(() => performance.getEntriesByType("resource").map((r) => r.name))).some((url) =>
+      url.includes("home-working-week-responses.json"),
+    ),
+    "live adapter reads admitted MCP response bytes",
+  );
 });
