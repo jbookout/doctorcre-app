@@ -28,7 +28,7 @@ function deferred() { let resolve; const promise = new Promise(done => { resolve
 function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
 }
-async function openBroker(feedbackRead, { stops = [], detailRead = null } = {}) {
+async function openBroker(feedbackRead, { stops = [], detailRead = null, candidates = null } = {}) {
   const dom = openDom(tourHtml, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
   dom.window.TextEncoder = TextEncoder;
   const counts = [0, 0], reads = [];
@@ -41,6 +41,8 @@ async function openBroker(feedbackRead, { stops = [], detailRead = null } = {}) 
       const i = tourIds.indexOf(url.searchParams.get("tour_id"));
       data = { id: tourIds[i], name: `Demo Tour ${i ? "B" : "A"}`, projection_id: projectionIds[i], stops };
       if (detailRead) data = detailRead(data);
+    } else if (url.pathname === "/api/tours/projection/candidates") {
+      data = candidates;
     } else if (url.pathname === "/api/tours/selection-cart") {
       return { ok: false, json: async () => ({ error: "not_found" }) };
     } else if (url.pathname === "/api/tours/feedback") {
@@ -378,4 +380,14 @@ test("the shared packet displays the PDF property facts, not a summary fallback"
   const row = app.doc.querySelector(".report-item");
   assert.deepEqual([...row.querySelectorAll("dd")].map(node => node.textContent), ["Medical office", "1600 SF", "USD 24.00 / NNN", "Available", "4.5/1,000 SF"]);
   assert.equal(row.querySelector("h3 + p").textContent, "100 Alpha Drive - Suite 120");
+});
+
+test("the draft packet shows PDF-formatted fact values instead of a field-name summary", async () => {
+  const draft = "55555555-5555-4555-8555-555555555555";
+  const app = await openBroker(() => feedbackResponse("A"), {
+    detailRead: data => ({ ...data, projection_draft_id: draft }),
+    candidates: { candidate_digest: `sha256:${"a".repeat(64)}`, preview: [{ route_label: "A", route_sequence: 1, facts: { "display.name": "Alpha Health Center", "display.address": "100 Alpha Drive", suite: "Suite 120", property_type: "Medical office", size: { value: 1600, unit: "SF" }, asking_economics: { value: "24.00", currency: "USD", period: "NNN" }, availability: "Available", parking: "4.5/1,000 SF" } }] },
+  });
+  app.doc.querySelector(".tour-button").click(); await settle(); await settle();
+  assert.equal(app.doc.querySelector("#projection-preview").textContent, "A · Alpha Health Center\n100 Alpha Drive - Suite 120\nProperty type: Medical office\nSize: 1600 SF\nAsking economics: USD 24.00 / NNN\nAvailability: Available\nParking: 4.5/1,000 SF");
 });

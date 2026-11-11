@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { cheatSheetText, factLabel, factSummary, formatTourDate, tourMetaLine, tourDisplayName, itinerarySheetText } from "../tours/tour-format.js";
+import { cheatSheetText, formatTourDate, tourMetaLine, tourDisplayName, itinerarySheetText } from "../tours/tour-format.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const appJs = await read("tours/app.js");
@@ -69,29 +69,10 @@ test("the internal itinerary keeps held and excluded stops separate from active 
   assert.equal(itinerarySheetText(tour), "");
 });
 
-test("client-projection keys read as plain property-fact labels", () => {
-  assert.equal(factLabel("asking_economics"), "Asking rent and terms");
-  assert.equal(factLabel("source_attribution"), "Source");
-  assert.equal(factLabel("display.name"), "Property name");
-  assert.equal(factLabel("display.address"), "Address");
-  assert.equal(factLabel("available_sf"), "Available sf");
-  assert.equal(factLabel("display.year_built"), "Year built");
-  for (const key of ["asking_economics", "source_attribution", "display.suite_count", "parking_ratio"]) {
-    assert.doesNotMatch(factLabel(key), /[_.]/, key);
-  }
-});
-
-test("the fact summary lists labels, not keys, and skips the name and address already shown", () => {
-  const summary = factSummary({ "display.name": "x", "display.address": "y", source_attribution: "z", asking_economics: "w" });
-  assert.equal(summary, "Includes: Asking rent and terms, Source");
-  assert.equal(factSummary({ "display.name": "x" }), "");
-});
-
 test("tours/app.js paints through the formatter", () => {
   assert.match(appJs, /from "\.\/tour-format\.js"/);
   assert.match(appJs, /tourMetaLine\(tour\)/);
   assert.match(appJs, /cheatSheetText\(tour\.cheat_sheet\?\.content\)/);
-  assert.match(appJs, /factSummary\(facts\)/);
   assert.doesNotMatch(appJs, /tour\.updated_at\]\.filter/);
   assert.doesNotMatch(appJs, /JSON\.stringify\(tour\.cheat_sheet\?\.content \|\| \{\}/);
   assert.doesNotMatch(appJs, /Object\.keys\(facts\)\.sort\(\)\.join/);

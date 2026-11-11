@@ -66,34 +66,3 @@ export function itinerarySheetText(tour) {
   ].join("\n\n");
 }
 
-const FACT_LABELS = Object.freeze({
-  "display.name": "Property name",
-  "display.address": "Address",
-  asking_economics: "Asking rent and terms",
-  source_attribution: "Source",
-  available_space: "Available space",
-  building_size: "Building size",
-  property_type: "Property type",
-  parking_ratio: "Parking ratio",
-  land_area: "Land area",
-  map_position: "Map location",
-  photo_refs: "Photos",
-});
-
-export function factLabel(key) {
-  const name = String(key || "");
-  if (FACT_LABELS[name]) return FACT_LABELS[name];
-  const bare = name.replace(/^(display|facts?|property)\./, "");
-  if (FACT_LABELS[bare]) return FACT_LABELS[bare];
-  const words = bare.replace(/[._]+/g, " ").trim().toLowerCase();
-  return words ? words[0].toUpperCase() + words.slice(1) : "Property fact";
-}
-
-/** The facts a projection row carries beyond the name and address already shown. */
-export function factSummary(facts) {
-  const labels = Object.keys(facts && typeof facts === "object" ? facts : {})
-    .filter((key) => key !== "display.name" && key !== "display.address")
-    .map(factLabel)
-    .sort((a, b) => a.localeCompare(b));
-  return labels.length ? `Includes: ${[...new Set(labels)].join(", ")}` : "";
-}
