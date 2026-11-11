@@ -1,9 +1,9 @@
-import packet from "./fixtures/packet-parity/packet.json" with { type: "json" };
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { build } from "esbuild";
 import { chromium } from "./browser-harness.mjs";
+import packet from "./fixtures/packet-parity/packet.json" with { type: "json" };
 
 const html = await readFile(new URL("../tours/packet-preview.html", import.meta.url), "utf8");
 const css = await readFile(new URL("../tours/packet-preview.css", import.meta.url), "utf8");
