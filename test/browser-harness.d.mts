@@ -1,5 +1,5 @@
-import type { Browser, Page } from "playwright";
-export declare const chromium: { launch(): Promise<Pick<Browser, "newPage" | "close">> };
+import type { Browser, LaunchOptions, Page } from "playwright";
+export declare const chromium: { launch(options?: LaunchOptions): Promise<Pick<Browser, "newPage" | "close">> };
 export function componentDocument(
   page: Page,
   origin: string,

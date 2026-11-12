@@ -12,6 +12,12 @@ const contract = (await import("../js/routes.js")).routeContract;
 const primary = navigationItems.filter(item => !item.group).map(item => item.label);
 const secondary = navigationItems.filter(item => item.group).map(item => item.label);
 const phoneMore = ['Vendors', 'Control Room'];
+const registry = JSON.parse(await readFile(new URL('fixtures/walk-verb-registry.json', import.meta.url), 'utf8')).response;
+const readVerbs = new Set(registry.verbs.filter(verb => verb.write === false).map(verb => verb.name));
+const isWriteCall = call => call.method === 'POST' && !(call.url === '/mcp' && readVerbs.has(call.verb));
+function assertNoWrites(calls) {
+  assert.equal(calls.some(isWriteCall), false, 'opening controls has no write effect');
+}
 
 async function open(t, { width = 1440, height = 960, actor = 'joe', live = false, minimal = false, simulatedClock = false,
   reducedMotion = 'no-preference', firstSignIn = false, signoutMode = 'success', holdDocSuggestions = false, callUnavailable = false } = {}) {
@@ -83,14 +89,41 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
   await page.locator('#selfAvatar').click(); await page.getByText('Profile', {exact:true}).click();
   assert.ok((await page.locator('.app-shell-profile').boundingBox()).width > 900);
   await page.getByLabel('Close profile').click(); await page.locator('#selfAvatar').click(); await page.keyboard.press('Escape'); assert.equal(await page.locator('#accountMenu').isVisible(), false);
-  assert.equal(calls.some(call => call.method === 'POST' && !['calendar-meeting-prep','deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
+  assertNoWrites(calls);
   await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click();
   await page.getByRole('heading', { name: 'Session ended' }).waitFor();
   assert.equal(new URL(page.url()).pathname, '/public-shell/session-ended.html');
   assert.equal(await page.getByRole('link', { name: 'Sign in again' }).getAttribute('href'), '/auth/login');
   assert.equal(await page.locator('#viewerWorkspace, #selfAvatar').count(), 0);
   assert.ok(calls.filter(call => call.url === '/auth/session').length >= 1);
-  assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['calendar-meeting-prep','deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
+  assert.equal(calls.filter(call => call.url === '/auth/signout' && isWriteCall(call)).length, 1); assert.deepEqual(errors, []);
+});
+
+for (const actor of ['joe', 'dell']) test(`signed-in ${actor} opening controls rejects write verbs`, async t => {
+  const { page, calls } = await open(t, { actor, live: true, minimal: true });
+  assertNoWrites(calls);
+  for (const verb of ['set-home-waiting', 'read-client-portal']) {
+    await page.locator('#selfAvatar').evaluate((node, verb) => {
+      node.addEventListener('click', () => fetch('/mcp', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'synthetic-write-probe', method: 'tools/call', params: { name: verb, arguments: {} } }),
+      }), { once: true });
+    }, verb);
+    const sent = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp' && response.request().postDataJSON()?.params?.name === verb);
+    await page.locator('#selfAvatar').click();
+    await sent;
+    assert.ok(calls.some(call => call.verb === verb && isWriteCall(call)), `${verb} is a write`);
+    assert.throws(() => assertNoWrites(calls), { code: 'ERR_ASSERTION', message: /opening controls has no write effect/ });
+    calls.splice(0, calls.length);
+  }
+});
+
+test('shell read classification refuses unknown verbs and non-MCP POSTs', () => {
+  for (const call of [
+    { url: '/mcp', method: 'POST', verb: 'read-invented' },
+    { url: '/mcp', method: 'POST' },
+    { url: '/api/write', method: 'POST', verb: 'read-home-agenda' },
+  ]) assert.throws(() => assertNoWrites([call]), { code: 'ERR_ASSERTION' });
 });
 
 test('sign-out disposes Doc before a pending refresh can write into replaced DOM', async t => {
@@ -146,7 +179,7 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     await connectRecorder(page);
     await page.getByLabel('Call mode', {exact:true}).click(); await page.waitForFunction(() => document.querySelector('#callModeDialog')?.open);
     assert.equal(await page.locator('#callModeConsent').isChecked(), false);
-    assert.equal(calls.some(call => call.method === 'POST' && !['calendar-meeting-prep','deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
+    assert.equal(calls.some(isWriteCall), false, 'opening Call mode never starts recording');
     const box = await page.locator('#callModeDialog').boundingBox(); assert.ok(box.width >= Math.min(900, width - 40));
     await page.locator('#callModeDialog #docPresence').waitFor();
     await page.locator('#callModeClose').scrollIntoViewIfNeeded();

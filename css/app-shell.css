@@ -544,3 +544,14 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .app-layout-page-tools { padding: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--hairline); }
 .app-layout-page-tools > summary { cursor: pointer; min-height: var(--touch); align-content: center; }
 .workspace-open .app-layout-page-tools { display: none; }
+
+.working-week { padding: 20px; margin-bottom: 20px; border: 1px solid var(--hairline); border-radius: 12px; overflow-wrap: anywhere; }
+.working-week > a { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+.working-week-days { border: 0; margin: 0; padding: 0; min-inline-size: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.working-week button { color: inherit; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 8px; cursor: pointer; min-height: 44px; }
+.working-week-days button { display: grid; gap: 4px; padding: 8px 0; }
+.working-week-days [aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: -2px; font-weight: 700; }
+.working-week-items { display: grid; gap: 8px; margin-bottom: 16px; }
+.working-week-items button { display: grid; gap: 4px; text-align: left; padding: 12px; }
+.working-week-detail { max-width: min(520px, calc(100vw - 32px)); color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px; padding: 24px; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .working-week { padding: 12px; } .working-week-days { font-size: 12px; } }

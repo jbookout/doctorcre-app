@@ -104,24 +104,44 @@ for (const width of [390, 1440])
     });
 
 for (const width of [390, 1440])
-  for (const theme of ["light", "dark"] as const) {
-    test(`mouse and touch drag preserve exact order and Undo at ${width}px ${theme}`, async (t) => {
+  for (const [theme, latency] of [
+    ["light", 0],
+    ["dark", 0],
+    ["light", 250],
+  ] as const) {
+    test(`mouse and touch drag preserve exact order and Undo at ${width}px ${theme}${latency ? " with slow network" : ""}`, async (t) => {
       const server = await startTourDragFixture(await tourDragRoutes());
       t.after(() => server.close());
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: true, colorScheme: theme });
+        const touch = await page.context().newCDPSession(page);
+        if (latency) {
+          await touch.send("Network.enable");
+          await touch.send("Network.emulateNetworkConditions", {
+            offline: false,
+            latency,
+            downloadThroughput: 10000000,
+            uploadThroughput: 10000000,
+          });
+        }
         const guard = await installDragReadGuard(page.context(), server.origin);
         await page.goto(`${server.origin}/deals`);
         const editor = page.frames().find((frame) => frame.url().includes("/tours/route-editor.html"));
         assert.ok(editor);
+        await editor
+          .locator("#status")
+          .filter({ hasText: /^Tour (ready\.|loaded\. Client responses are unavailable\.)$/ })
+          .waitFor();
+        await editor.waitForFunction(
+          () => document.querySelector<HTMLButtonElement>("#saved-space-searches button")?.disabled === false,
+        );
         await editor.locator("#route-editing").evaluate((node) => {
           if (node instanceof HTMLDetailsElement) node.open = true;
         });
         await editor.evaluate((theme) => {
           document.documentElement.dataset.theme = theme;
         }, theme);
-        const touch = await page.context().newCDPSession(page);
         try {
           for (const input of ["mouse", "touch"]) {
             const handle = editor.locator(`[data-property-id="${propA}"] [data-stop-drag]`);

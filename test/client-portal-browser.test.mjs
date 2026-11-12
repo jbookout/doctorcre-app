@@ -13,14 +13,14 @@ async function open(t, width = 390) {
   return page;
 }
 
-test('keyboard unlock focuses the current roadmap in both themes and viewport sizes', async t => {
+test('keyboard unlock focuses the client view in both themes and viewport sizes', async t => {
   for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     const page = await open(t, width);
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     await page.getByLabel('Portal name').fill('demo-practice');
     await page.getByLabel('Portal password').fill('demo-portal');
     await page.keyboard.press('Enter');
-    const heading = page.getByRole('heading', { name: 'Your transaction roadmap' });
+    const heading = page.getByRole('heading', { name: 'Your client view' });
     await heading.waitFor();
     assert.equal(await heading.evaluate(element => element === document.activeElement), true);
     assert.equal(await heading.getAttribute('tabindex'), '-1');
@@ -32,15 +32,15 @@ test('keyboard unlock focuses the current roadmap in both themes and viewport si
   }
 });
 
-test('fixture portal renders canonical current phase and shared text at phone and desktop widths', async t => {
+test('fixture portal hides automatic phases and renders shared text at phone and desktop widths', async t => {
   for (const width of [390, 1440]) {
     const page = await open(t, width);
     await page.getByLabel('Portal name').fill('demo-practice');
     await page.getByLabel('Portal password').fill('demo-portal');
     await page.getByRole('button', { name: 'Open portal', exact: true }).click();
-    await page.getByRole('heading', { name: 'Your transaction roadmap' }).waitFor();
-    assert.equal(await page.locator('[aria-current="step"]').innerText(), 'Negotiation\nCurrent step');
-    assert.equal(await page.locator('#portalPhases li').count(), 8);
+    await page.getByRole('heading', { name: 'Your client view' }).waitFor();
+    assert.equal(await page.locator('[aria-current="step"]').count(),0);
+    assert.equal(await page.locator('#portalPhases li').count(), 0);
     assert.match(await page.getByRole('region', { name: 'Shared material' }).innerText(), /Demo tour summary/);
     assert.equal(await page.getByLabel('Portal password').inputValue(), '');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -51,14 +51,14 @@ test('fixture portal renders canonical current phase and shared text at phone an
     assert.equal(await page.getByLabel('Portal password').inputValue(), '');
     await page.getByLabel('Portal password').fill('demo-portal');
     await page.getByRole('button', { name: 'Open portal', exact: true }).click();
-    await page.getByRole('heading', { name: 'Your transaction roadmap' }).waitFor();
+    await page.getByRole('heading', { name: 'Your client view' }).waitFor();
     await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
     assert.equal(await page.locator('#portalContent').innerText(), '');
     assert.equal(await page.getByLabel('Portal password').inputValue(), '');
   }
 });
 
-test('held unlock only focuses the current roadmap and respects focus moved to Lock', async t => {
+test('held unlock only focuses the client view and respects focus moved to Lock', async t => {
   for (const action of ['wait', 'focus-lock', 'blur', 'lock', 'obsolete', 'pagehide', 'invalidate', 'mismatched-slug']) {
     await t.test(action, async t => {
       const page = await open(t);
@@ -96,7 +96,7 @@ test('held unlock only focuses the current roadmap and respects focus moved to L
       }
       if (action === 'pagehide') await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
       if (action === 'invalidate') await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
-      const heading = page.getByRole('heading', { name: 'Your transaction roadmap' });
+      const heading = page.getByRole('heading', { name: 'Your client view' });
       if (action === 'obsolete') {
         await page.getByLabel('Portal password').fill('synthetic-password');
         await page.keyboard.press('Enter');
@@ -114,7 +114,7 @@ test('held unlock only focuses the current roadmap and respects focus moved to L
         assert.equal(await page.locator('#portalContent').innerText(), '');
         if (['lock', 'mismatched-slug'].includes(action)) assert.equal(await page.getByLabel('Portal password').evaluate(element => element === document.activeElement), true);
       }
-      if (action === 'obsolete') assert.equal(await page.locator('#portalPhases').innerText(), 'Current research\nCurrent step');
+      if (action === 'obsolete') assert.equal(await page.locator('#portalPhases').count(),0);
       assert.equal(await page.getByLabel('Portal password').inputValue(), '');
     });
   }
@@ -137,7 +137,7 @@ test('live portal transport renders shared text safely and clears material befor
   await page.getByLabel('Portal name').fill('demo-practice');
   await page.getByLabel('Portal password').fill('synthetic-password');
   await page.getByRole('button', { name: 'Open portal', exact: true }).click();
-  await page.getByRole('heading', { name: 'Your transaction roadmap' }).waitFor();
+  await page.getByRole('heading', { name: 'Your client view' }).waitFor();
   assert.equal(await page.locator('#portalContent script, #portalContent img').count(), 0);
   assert.equal(await page.evaluate(() => window.injected), undefined);
   assert.match(await page.locator('#portalContent').innerText(), /<script>window.injected=true<\/script>/);
@@ -161,7 +161,7 @@ test('live portal transport renders shared text safely and clears material befor
   await page.getByLabel('Portal name').fill('demo-practice');
   await page.getByLabel('Portal password').fill('synthetic-password');
   await page.getByRole('button', { name: 'Open portal', exact: true }).click();
-  await page.getByRole('heading', { name: 'Your transaction roadmap' }).waitFor();
+  await page.getByRole('heading', { name: 'Your client view' }).waitFor();
   assert.deepEqual(requests, [
     { name: 'read-client-portal', arguments: { slug: 'demo-practice', password: 'synthetic-password' } },
     { name: 'read-client-portal', arguments: { slug: 'demo-practice', password: 'wrong-password' } },
@@ -199,7 +199,7 @@ test('locking cancels an in-flight read and page retirement clears portal conten
   await page.getByLabel('Portal name').fill('demo-practice');
   await page.getByLabel('Portal password').fill('demo-portal');
   await page.getByRole('button', { name: 'Open portal', exact: true }).click();
-  await page.getByRole('heading', { name: 'Your transaction roadmap' }).waitFor();
+  await page.getByRole('heading', { name: 'Your client view' }).waitFor();
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
   assert.equal(await page.locator('#portalContent').innerText(), '');
   assert.equal(await page.getByLabel('Portal password').inputValue(), '');

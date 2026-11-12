@@ -1,0 +1,14 @@
+stateDiagram-v2
+  [*] --> Board
+  Board --> Detail: Open exact lead
+  Detail --> Detail: Replace source revision
+  Detail --> Unknown: Source support withdrawn
+  Unknown --> Detail: Source support restored
+  Detail --> Board: Close detail
+  Unknown --> Board: Close detail
+  Board --> Retired: Session ends
+  Detail --> Retired: Session ends
+  Unknown --> Retired: Session ends
+  Retired --> Board: Fresh session read
+  %% never Retired shows private dates
+  %% never Unknown shows a source date
