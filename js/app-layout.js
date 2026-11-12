@@ -161,7 +161,9 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     items[next]?.focus();
   });
   const boot = resolveDealroomBoot(globalThis.location);
-  const calendarPanels = ready.then(() => import('./ui-calendar-panels.generated.js')).then(module => layout.isConnected ? module.mountCalendarPanels(layout.querySelector('#appCalendarSlot'), layout.querySelector('#appScheduleSlot')) : null).catch(() => {
+  const weekHost = pathname === '/' ? root.createElement('div') : null;
+  if (weekHost) main.prepend(weekHost);
+  const calendarPanels = ready.then(() => import('./ui-calendar-panels.generated.js')).then(module => layout.isConnected ? module.mountCalendarPanels(layout.querySelector('#appCalendarSlot'), layout.querySelector('#appScheduleSlot'), weekHost) : null).catch(() => {
     for (const id of ['#appCalendarSlot', '#appScheduleSlot']) layout.querySelector(id).textContent = 'Calendar unavailable. Reload to try again.';
     return null;
   });
@@ -246,7 +248,7 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     if (signal.aborted) return;
     const interaction = preparation.capture();
     const preparationSignal = AbortSignal.any([signal, interaction.signal]);
-    const [board, triage, meetings] = await Promise.allSettled([
+    const [board, triage, meetings, agenda] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(async () => {
         const brief = normalizeBrief(await client.morningBrief());
@@ -255,11 +257,12 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
         return client.todayTriage();
       }, { signal }),
       readWithDeadline(() => client.calendarMeetingPrep({ signal: preparationSignal }), { signal: preparationSignal }),
+      weekHost ? import('./home-dashboard-model.js').then(({ readHomeAgenda }) => readHomeAgenda(client, { signal })) : Promise.resolve(null),
     ]);
     if (signal?.aborted || win.navigator.onLine === false) return;
     const panels = await calendarPanels;
     if (signal.aborted) return;
-    if (interaction.current()) panels?.render(meetings.status === 'fulfilled' ? meetings.value : null);
+    if (interaction.current()) panels?.render(meetings.status === 'fulfilled' ? meetings.value : null, agenda.status === 'fulfilled' ? agenda.value : null);
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid && !failedReads.length);
@@ -345,10 +348,11 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
   const ageTick = mountLocalTicker({ document: root, window: win, tick: () => { if (!pageOwnsMoves && feed.caught_up) renderMoves(); }, intervalMs: 60_000 });
   const invalidateSession = () => {
     preparation.retire();
+    void calendarPanels.then(panel => panel?.retire());
     lifetime.abort(); auto.dispose(); ageTick.dispose(); unavailableRead();
   };
   win.addEventListener('doctorcre-session-invalidated', invalidateSession);
   win.addEventListener('pagehide', event => {
-    if (!event.persisted) { lifetime.abort(); preparation.retire(); win.removeEventListener('doctorcre-session-invalidated', invalidateSession); ageTick.dispose(); auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
+    if (!event.persisted) { void calendarPanels.then(panel => panel?.retire()); lifetime.abort(); preparation.retire(); win.removeEventListener('doctorcre-session-invalidated', invalidateSession); ageTick.dispose(); auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
   });
 }

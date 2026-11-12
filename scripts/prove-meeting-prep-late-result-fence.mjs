@@ -80,7 +80,7 @@ export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com',
     root = fixtureRoot ? await realpath(fixtureRoot) : null;
     release = root ? null : await readAppRelease(origin, url => proofFetch(url, { signal: controller.signal }).then(async response => ({ type: response.headers.get('content-type'), body: Buffer.from(await response.arrayBuffer()) })));
     const fixture = await createFixtureClient({ seedUrl: `data:application/json;base64,${(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
-    const fixtures = { 'deal-room-board': await fixture.getBoard(), 'morning-brief': await fixture.morningBrief(), 'calendar-meeting-prep': await fixture.calendarMeetingPrep(), 'today-triage': await fixture.todayTriage(), 'list-feature-switches': await fixture.listFeatureSwitches() };
+    const fixtures = { 'read-home-agenda': await fixture.getHomeAgenda(), 'deal-room-board': await fixture.getBoard(), 'morning-brief': await fixture.morningBrief(), 'calendar-meeting-prep': await fixture.calendarMeetingPrep(), 'today-triage': await fixture.todayTriage(), 'list-feature-switches': await fixture.listFeatureSwitches() };
     assert.ok(fixtures['calendar-meeting-prep'].items.length > 0, 'nonempty contract fixture');
     await read('/js/app-layout.js');
     browser = await launchProofBrowser(engine, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }, { signal: controller.signal });

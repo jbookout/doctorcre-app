@@ -1,0 +1,24 @@
+stateDiagram-v2
+state WorkingWeek {
+ state Selection {
+  [*] --> Day
+  Day --> Day: choose day
+  Day --> Detail: open returned item
+  Detail --> Day: close or Escape
+  Detail --> Day: selected source changes
+  Day --> Day: refresh sources
+  Detail --> Detail: refresh unchanged sources
+  Day --> Ended: session ends
+  Detail --> Ended: session ends
+ }
+ --
+ state Sources {
+  [*] --> Available
+  Available --> Partial: feed incomplete
+  Partial --> Available: feed recovers
+  Available --> Retired: session ends
+  Partial --> Retired: session ends
+ }
+}
+%% never NoRetiredDetails: Detail & Retired -- Session retirement removes open details.
+%% never NoRetiredWork: Day & Retired -- Session retirement removes returned work.
