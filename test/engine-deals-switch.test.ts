@@ -83,6 +83,19 @@ test("one deal encodes its reference and optional board arguments are absent", a
   assert.equal(f.engine[1]?.url, `${origin}/api/engine/deals`);
 });
 
+for (const deal of ["\ud800", "\udc00"]) {
+  test(`unpaired surrogate ${JSON.stringify(deal)} falls back with original body`, async () => {
+    const f = fixture();
+    const body = call("get-deal-room", { deal });
+    const response = await f.send(body);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "old");
+    assert.deepEqual(f.carr, [JSON.stringify(body)]);
+    assert.equal(f.engine.length, 0);
+    assert.deepEqual(f.kv, [["deals-from-engine", { cacheTtl: 30 }]]);
+  });
+}
+
 for (const body of [
   call("other"),
   call("deal-room-board", { workspace: 5 }),
