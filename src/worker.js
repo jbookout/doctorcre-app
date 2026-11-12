@@ -148,11 +148,6 @@ async function engineDealResponse(request, env) {
   const url = new URL(request.url);
   const origin = request.headers.get('origin');
   if (origin && origin !== url.origin) return json({ error: 'origin_mismatch' }, 403);
-  url.pathname = name === 'get-deal-room' ? `/api/engine/deals/${encodeURIComponent(args.deal)}` : '/api/engine/deals';
-  url.search = '';
-  if (name === 'deal-room-board') for (const key of declared) {
-    if (Object.hasOwn(args, key)) url.searchParams.set(key, args[key]);
-  }
   const headers = new Headers();
   for (const key of ['cookie', 'origin']) {
     const value = request.headers.get(key);
@@ -162,6 +157,11 @@ async function engineDealResponse(request, env) {
   let timer;
   let reader;
   try {
+    url.pathname = name === 'get-deal-room' ? `/api/engine/deals/${encodeURIComponent(args.deal)}` : '/api/engine/deals';
+    url.search = '';
+    if (name === 'deal-room-board') for (const key of declared) {
+      if (Object.hasOwn(args, key)) url.searchParams.set(key, args[key]);
+    }
     return await Promise.race([
       (async () => {
         const response = await env.ENGINE.fetch(new Request(url, { headers, signal: controller.signal, redirect: 'manual' }));
