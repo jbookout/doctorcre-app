@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { promisify } from "node:util";
 import { chromium as rawChromium } from "playwright";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { prove } from "../scripts/prove-lead-opportunity-timing.ts";
-import { chromium } from "./browser-harness.mjs";
+import { chromium, settles } from "./browser-harness.mjs";
 import { timingFixture } from "./opportunity-timing-fixture.ts";
 import { ownedCdpFixture } from "./owned-cdp-fixture.ts";
 
@@ -157,25 +157,32 @@ test("Proof fails on a near-miss date and refuses absent containing releases", a
 test("Proof deadline closes a late browser launch and a stalled evaluation", async (t) => {
   const { server } = await setup(t);
   for (const mode of ["late-launch", "stalled-evaluation"]) {
-    let acquired: Awaited<ReturnType<typeof rawChromium.launch>> | undefined;
+    const acquired = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+    t.after(() => acquired.close());
+    const session = await acquired.newBrowserCDPSession();
+    const ownedPids = (await session.send("SystemInfo.getProcessInfo")).processInfo.map((process) => process.id);
+    await session.detach();
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const closed = Promise.withResolvers<void>();
+    const close = acquired.close.bind(acquired);
+    acquired.close = async () => {
+      await close();
+      closed.resolve();
+    };
     let evaluated = false;
-    let ownedPids: number[] = [];
     const engine = {
-      async launch(options: Parameters<typeof rawChromium.launch>[0]) {
-        acquired = await rawChromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options?.args || [])] });
-        const session = await acquired.newBrowserCDPSession();
-        try {
-          ownedPids = (await session.send("SystemInfo.getProcessInfo")).processInfo.map((process) => process.id);
-        } finally {
-          await session.detach();
-        }
-        if (mode === "late-launch") await new Promise((resolve) => setTimeout(resolve, 1500));
-        else {
+      async launch() {
+        if (mode === "late-launch") {
+          reached.resolve();
+          await release.promise;
+        } else {
           const newPage = acquired.newPage.bind(acquired);
           acquired.newPage = async (...args) => {
             const page = await newPage(...args);
             page.evaluate = () => {
               evaluated = true;
+              reached.resolve();
               return new Promise(() => {});
             };
             return page;
@@ -184,23 +191,35 @@ test("Proof deadline closes a late browser launch and a stalled evaluation", asy
         return acquired;
       },
     };
-    await assert.rejects(
-      prove({
-        origin: server.origin,
-        producerOrigin: server.origin,
-        expectedCommit: appCommit,
-        fixture: true,
-        timeoutMs: 1000,
-        engine,
-      }),
-      { exitCode: 78 },
-    );
-    await new Promise((resolve) => setTimeout(resolve, 1700));
-    assert.ok(acquired, "proof acquired the run-owned browser");
+    const { result, expire } = deadlineProof(t, {
+      origin: server.origin,
+      producerOrigin: server.origin,
+      expectedCommit: appCommit,
+      fixture: true,
+      engine,
+    });
+    const refused = assert.rejects(result, { exitCode: 78 });
+    try {
+      await Promise.race([
+        reached.promise,
+        refused.then(() => {
+          throw Error(`Proof missed ${mode}`);
+        }),
+      ]);
+      expire();
+      await refused;
+      release.resolve();
+      await closed.promise;
+    } finally {
+      release.resolve();
+      await acquired.close();
+    }
     assert.equal(acquired.isConnected(), false, mode);
     assert.ok(ownedPids.length > 0);
-    for (const pid of ownedPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
-    if (mode === "stalled-evaluation") assert.equal(evaluated, true);
+    await settles(() => {
+      for (const pid of ownedPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+    });
+    assert.equal(evaluated, mode === "stalled-evaluation");
   }
 });
 
@@ -217,24 +236,36 @@ test("Late borrowed CDP page closes before disconnect and preserves existing tab
   await existing.goto("about:blank#existing");
   const newPage = context.newPage.bind(context);
   let acquired = 0;
+  const reached = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
   context.newPage = async () => {
     const page = await newPage();
     acquired++;
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    reached.resolve();
+    await release.promise;
     return page;
   };
-  await assert.rejects(
-    prove({
-      origin: server.origin,
-      producerOrigin: server.origin,
-      expectedCommit: appCommit,
-      expectedProducerCommit: producerCommit,
-      cdpUrl,
-      timeoutMs: 1000,
-      engine: { launch: rawChromium.launch.bind(rawChromium), connectOverCDP: async () => connection },
-    }),
-    { exitCode: 78 },
-  );
+  const { result, expire } = deadlineProof(t, {
+    origin: server.origin,
+    producerOrigin: server.origin,
+    expectedCommit: appCommit,
+    expectedProducerCommit: producerCommit,
+    cdpUrl,
+    engine: { launch: rawChromium.launch.bind(rawChromium), connectOverCDP: async () => connection },
+  });
+  const refused = assert.rejects(result, { exitCode: 78 });
+  try {
+    await Promise.race([
+      reached.promise,
+      refused.then(() => {
+        throw Error("Proof missed borrowed page acquisition");
+      }),
+    ]);
+    expire();
+  } finally {
+    release.resolve();
+  }
+  await refused;
   assert.equal(acquired, 1);
   const fresh = await rawChromium.connectOverCDP(cdpUrl);
   try {
@@ -246,3 +277,19 @@ test("Late borrowed CDP page closes before disconnect and preserves existing tab
     await fresh.close();
   }
 });
+
+function deadlineProof(t: TestContext, options: Parameters<typeof prove>[0]) {
+  const schedule = globalThis.setTimeout;
+  let expire: () => void = () => {
+    throw Error("Proof did not arm its deadline");
+  };
+  const timer = t.mock.method(globalThis, "setTimeout", (callback: () => void, ms?: number) => {
+    if (ms === 30000) expire = callback;
+    return schedule(callback, ms);
+  });
+  try {
+    return { result: prove({ ...options, timeoutMs: 30000 }), expire: () => expire() };
+  } finally {
+    timer.mock.restore();
+  }
+}

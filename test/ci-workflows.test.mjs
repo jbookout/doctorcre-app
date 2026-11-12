@@ -54,6 +54,10 @@ test('merge groups run every required CI job on the group SHA and emit exactly t
     assert.equal(checkout.with?.ref ?? '${{ github.sha }}', '${{ github.sha }}', name);
     for (const step of job.steps.filter(step => step.run && !step.name?.includes('typed surfaces'))) {
       if (step.if?.includes("github.event_name == 'push'") || step.if?.includes("github.event_name == 'pull_request'")) continue;
+      if (name === 'reusable checks' && step.run === 'node --test test/*.browser.ts') {
+        assert.equal(eventCondition(step.if, github), false, 'native shards own browser tests on merge groups');
+        continue;
+      }
       assert.ok(eventCondition(step.if, github), `${name}: ${step.name ?? step.run}`);
     }
   }
@@ -612,7 +616,10 @@ test('release handoff admits both app identities through the source rule and ref
  assert.ok(config.files.includes('test/watch-controls.browser.ts'));
  assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
  assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
- assert.doesNotMatch(checks, /node --test test\/\*\.browser\.ts/);
+ const standalone = workflowDocument(checks).jobs.checks.steps.find(step => step.run === 'node --test test/*.browser.ts');
+ for (const event_name of ['push', 'pull_request', 'merge_group', 'schedule', 'workflow_dispatch']) {
+   assert.equal(eventCondition(standalone.if, { event_name }), ['schedule', 'workflow_dispatch'].includes(event_name), event_name);
+ }
  });
 
 
