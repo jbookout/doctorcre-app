@@ -9,7 +9,11 @@ test("production can reach CARR without making the app publicly routable", () =>
   assert.equal(config.workers_dev, false);
   assert.equal(config.preview_urls, false);
   assert.deepEqual(config.routes, []);
-  assert.deepEqual(config.services, [{ binding: "CARR", service: "carr-mcp" }]);
+  assert.deepEqual(config.services, [
+    { binding: "CARR", service: "carr-mcp" },
+    { binding: "ENGINE", service: "doctorcre-engine" },
+  ]);
+  assert.deepEqual(config.kv_namespaces, [{ binding: "DEALS_ROUTING", id: "1b69f9569abb4f33b22356bd621349d4" }]);
   assert.equal(config.vars.APP_ENV, "production");
 });
 
@@ -18,7 +22,11 @@ test("staging remains isolated from production CARR and production hostnames", (
   assert.equal(staging.name, "doctorcre-app-staging");
   assert.equal(staging.workers_dev, false);
   assert.deepEqual(staging.routes, []);
-  assert.deepEqual(staging.services, [{ binding: "CARR", service: "carr-mcp-staging" }]);
+  assert.deepEqual(staging.services, [
+    { binding: "CARR", service: "carr-mcp-staging" },
+    { binding: "ENGINE", service: "doctorcre-engine-staging" },
+  ]);
+  assert.deepEqual(staging.kv_namespaces, [{ binding: "DEALS_ROUTING", id: "1b69f9569abb4f33b22356bd621349d4" }]);
   assert.equal(staging.vars.APP_ENV, "staging");
 });
 

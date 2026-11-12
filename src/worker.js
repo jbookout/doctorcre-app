@@ -127,6 +127,81 @@ function copySessionCookies(from, to) {
   return new Response(to.body, { status: to.status, statusText: to.statusText, headers });
 }
 
+const ENGINE_DEAL_READS = new Map([
+  ['deal-room-board', ['workspace', 'account_client_id']],
+  ['get-deal-room', ['deal']],
+]);
+
+async function engineDealResponse(request, env) {
+  if (request.method !== 'POST') return null;
+  let call;
+  try { call = await request.clone().json(); } catch { return null; }
+  const name = call?.params?.name;
+  const declared = ENGINE_DEAL_READS.get(name);
+  const args = call?.params?.arguments === undefined ? {} : call.params.arguments;
+  if (call?.method !== 'tools/call' || !declared || !args || typeof args !== 'object'
+      || Array.isArray(args) || Object.entries(args).some(([key, value]) => !declared.includes(key) || typeof value !== 'string')) return null;
+  if (name === 'get-deal-room' && (!args.deal || args.deal === '.' || args.deal === '..')) return null;
+  try {
+    if (await env?.DEALS_ROUTING?.get('deals-from-engine', { cacheTtl: 30 }) !== 'on') return null;
+  } catch { return null; }
+  const url = new URL(request.url);
+  const origin = request.headers.get('origin');
+  if (origin && origin !== url.origin) return json({ error: 'origin_mismatch' }, 403);
+  const headers = new Headers();
+  for (const key of ['cookie', 'origin']) {
+    const value = request.headers.get(key);
+    if (value !== null) headers.set(key, value);
+  }
+  const controller = new AbortController();
+  let timer;
+  let reader;
+  try {
+    url.pathname = name === 'get-deal-room' ? `/api/engine/deals/${encodeURIComponent(args.deal)}` : '/api/engine/deals';
+    url.search = '';
+    if (name === 'deal-room-board') for (const key of declared) {
+      if (Object.hasOwn(args, key)) url.searchParams.set(key, args[key]);
+    }
+    return await Promise.race([
+      (async () => {
+        const response = await env.ENGINE.fetch(new Request(url, { headers, signal: controller.signal, redirect: 'manual' }));
+        if (controller.signal.aborted) {
+          void response.body?.cancel().catch(() => {});
+          return null;
+        }
+        if ([401, 403, 429].includes(response.status)) return response;
+        if (response.status >= 500 || (response.status !== 200 && response.status < 400)) {
+          void response.body?.cancel().catch(() => {});
+          return null;
+        }
+        reader = response.body?.getReader();
+        const chunks = [];
+        const decoder = new TextDecoder();
+        if (reader) {
+          // eslint-disable-next-line no-restricted-syntax -- Engine body reads stop after the two-second request deadline cancels this reader.
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(decoder.decode(value, { stream: true }));
+          }
+        }
+        chunks.push(decoder.decode());
+        const result = { content: [{ type: 'text', text: chunks.join('') }] };
+        if (response.status >= 400) result.isError = true;
+        return copySessionCookies(response, json({ jsonrpc: '2.0', id: call.id ?? null, result }));
+      })(),
+      new Promise(resolve => {
+        // eslint-disable-next-line no-restricted-syntax -- One engine deadline fires after two seconds and is cleared when the response settles.
+        timer = setTimeout(() => {
+        controller.abort();
+        void reader?.cancel().catch(() => {});
+        resolve(null);
+      }, 2000); }),
+    ]);
+  } catch { return null; }
+  finally { clearTimeout(timer); reader?.releaseLock(); }
+}
+
 function release(env) {
   const sourceCommit = /^[0-9a-f]{40}$/.test(env?.GIT_SHA || "") ? env.GIT_SHA : null;
   const provider = env?.CF_VERSION_METADATA || {};
@@ -198,6 +273,10 @@ async function handleRequest(request, env) {
   }
 
   if (PROXY_EXACT.has(pathname) || PROXY_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    if (pathname === '/mcp') {
+      const engine = await engineDealResponse(request, env);
+      if (engine) return engine;
+    }
     return carrResponse(request, env);
   }
   return json({ error: "not_found" }, 404);
