@@ -612,17 +612,17 @@ test('release handoff admits both app identities through the source rule and ref
  assert.ok(config.files.includes('test/watch-controls.browser.ts'));
  assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
  assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
- assert.match(checks, /node --test test\/\*\.browser\.ts/);
+ assert.doesNotMatch(checks, /node --test test\/\*\.browser\.ts/);
  });
 
 
-test('reply proof browser journeys run after browser installation and remain typechecked', async () => {
+test('reply proof browser journeys run once in native shards after browser installation and remain typechecked', async () => {
   const config = JSON.parse(await readFile(new URL('../tsconfig.node.generated.json', import.meta.url), 'utf8'));
   assert.ok(config.files.includes('test/prove-reply-action-link.browser.ts'));
   assert.ok(!config.files.includes('test/prove-reply-action-link.test.ts'));
-  const steps = workflowDocument(checks).jobs.checks.steps;
+  const steps = workflowDocument(ci).jobs.shards.steps;
   const install = steps.findIndex(step => step.uses?.endsWith('/.github/actions/setup-browsers'));
-  const journeys = steps.findIndex(step => step.run === 'node --test test/*.browser.ts');
+  const journeys = steps.findIndex(step => step.run?.includes('test/*.test.mjs test/*.browser.ts'));
   assert.ok(install >= 0 && install < journeys);
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
