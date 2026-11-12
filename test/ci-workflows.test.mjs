@@ -54,6 +54,10 @@ test('merge groups run every required CI job on the group SHA and emit exactly t
     assert.equal(checkout.with?.ref ?? '${{ github.sha }}', '${{ github.sha }}', name);
     for (const step of job.steps.filter(step => step.run && !step.name?.includes('typed surfaces'))) {
       if (step.if?.includes("github.event_name == 'push'") || step.if?.includes("github.event_name == 'pull_request'")) continue;
+      if (name === 'reusable checks' && step.run === 'node --test test/*.browser.ts') {
+        assert.equal(eventCondition(step.if, github), false, 'native shards own browser tests on merge groups');
+        continue;
+      }
       assert.ok(eventCondition(step.if, github), `${name}: ${step.name ?? step.run}`);
     }
   }
@@ -612,17 +616,20 @@ test('release handoff admits both app identities through the source rule and ref
  assert.ok(config.files.includes('test/watch-controls.browser.ts'));
  assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
  assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
- assert.match(checks, /node --test test\/\*\.browser\.ts/);
+ const standalone = workflowDocument(checks).jobs.checks.steps.find(step => step.run === 'node --test test/*.browser.ts');
+ for (const event_name of ['push', 'pull_request', 'merge_group', 'schedule', 'workflow_dispatch']) {
+   assert.equal(eventCondition(standalone.if, { event_name }), ['schedule', 'workflow_dispatch'].includes(event_name), event_name);
+ }
  });
 
 
-test('reply proof browser journeys run after browser installation and remain typechecked', async () => {
+test('reply proof browser journeys run once in native shards after browser installation and remain typechecked', async () => {
   const config = JSON.parse(await readFile(new URL('../tsconfig.node.generated.json', import.meta.url), 'utf8'));
   assert.ok(config.files.includes('test/prove-reply-action-link.browser.ts'));
   assert.ok(!config.files.includes('test/prove-reply-action-link.test.ts'));
-  const steps = workflowDocument(checks).jobs.checks.steps;
+  const steps = workflowDocument(ci).jobs.shards.steps;
   const install = steps.findIndex(step => step.uses?.endsWith('/.github/actions/setup-browsers'));
-  const journeys = steps.findIndex(step => step.run === 'node --test test/*.browser.ts');
+  const journeys = steps.findIndex(step => step.run?.includes('test/*.test.mjs test/*.browser.ts'));
   assert.ok(install >= 0 && install < journeys);
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);

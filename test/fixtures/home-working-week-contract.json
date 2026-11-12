@@ -1,0 +1,205 @@
+{
+  "type": "object",
+  "required": ["read-home-agenda", "calendar-meeting-prep"],
+  "properties": {
+    "read-home-agenda": {
+      "type": "object",
+      "required": ["schema_version", "actor", "deals", "missing_next_action"],
+      "properties": {
+        "schema_version": {"const": "home-agenda.v1"},
+        "actor": {"type": "string"},
+        "deals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "owner",
+              "type",
+              "attention",
+              "next_step",
+              "next_date",
+              "last_touch",
+              "last_review_at",
+              "workspace_kind",
+              "account_client_id",
+              "outcome",
+              "closed_on",
+              "invoiced_on",
+              "client_status",
+              "prospect_engagement_status",
+              "id",
+              "name",
+              "short_name",
+              "phase",
+              "operating_state",
+              "needs_next_action",
+              "critical_dates",
+              "next_actions",
+              "item_schema_version",
+              "items"
+            ],
+            "properties": {
+              "owner": {"type": ["string", "null"]},
+              "type": {"type": ["string", "null"]},
+              "attention": {"type": ["string", "null"]},
+              "next_step": {"type": ["string", "null"]},
+              "next_date": {"type": ["string", "null"]},
+              "last_touch": {"type": ["string", "null"]},
+              "last_review_at": {"type": ["string", "null"]},
+              "workspace_kind": {"type": ["string", "null"]},
+              "account_client_id": {"type": ["string", "null"]},
+              "outcome": {"type": ["string", "null"]},
+              "closed_on": {"type": ["string", "null"]},
+              "invoiced_on": {"type": ["string", "null"]},
+              "client_status": {"type": ["string", "null"]},
+              "prospect_engagement_status": {"type": ["string", "null"]},
+              "id": {"type": "string"},
+              "name": {"type": "string"},
+              "short_name": {"type": "string"},
+              "phase": {
+                "enum": [
+                  "pending",
+                  "research",
+                  "site_selection",
+                  "negotiation",
+                  "legal",
+                  "due_diligence",
+                  "closing",
+                  "closed"
+                ]
+              },
+              "operating_state": {"type": "string"},
+              "needs_next_action": {"type": "boolean"},
+              "critical_dates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "kind", "due_on", "note", "status"],
+                  "properties": {
+                    "id": {"type": "string"},
+                    "kind": {"type": "string"},
+                    "due_on": {"type": ["string", "null"]},
+                    "note": {"type": ["string", "null"]},
+                    "status": {"type": "string"}
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "next_actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "owner", "description", "due_on", "status", "version", "hold_until"],
+                  "properties": {
+                    "id": {"type": "string"},
+                    "owner": {"type": ["string", "null"]},
+                    "description": {"type": "string"},
+                    "due_on": {"type": ["string", "null"]},
+                    "status": {"const": "open"},
+                    "version": {"type": "integer"},
+                    "hold_until": {"type": ["string", "null"]}
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "item_schema_version": {"const": "deal-items.v1"},
+              "items": {"type": "array", "maxItems": 0}
+            },
+            "additionalProperties": false
+          }
+        },
+        "missing_next_action": {"type": "array", "maxItems": 0}
+      },
+      "additionalProperties": false
+    },
+    "calendar-meeting-prep": {
+      "type": "object",
+      "required": ["state", "source", "observed_at", "notes", "sources", "match_basis", "items"],
+      "properties": {
+        "state": {"enum": ["partial", "ready"]},
+        "source": {"const": "outlook_local_store"},
+        "observed_at": {"type": "string"},
+        "notes": {"type": "array", "items": {"type": "string"}},
+        "sources": {
+          "type": "object",
+          "required": ["outlook_calendar", "deal_suggestions"],
+          "properties": {
+            "outlook_calendar": {
+              "type": "object",
+              "required": ["state"],
+              "properties": {"state": {"enum": ["ready", "partial", "unavailable", "stale"]}},
+              "additionalProperties": false
+            },
+            "deal_suggestions": {
+              "type": "object",
+              "required": ["state"],
+              "properties": {"state": {"enum": ["ready", "partial", "unavailable", "stale"]}},
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "match_basis": {"const": "attendee_email_possible_match"},
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "start",
+              "end",
+              "title",
+              "location",
+              "organizer",
+              "attendees",
+              "attendee_count",
+              "all_day",
+              "recurring",
+              "time_changed",
+              "times",
+              "conflict",
+              "schedule_conflict",
+              "schedule_conflicts",
+              "schedule_conflicts_omitted",
+              "possible_deals"
+            ],
+            "properties": {
+              "start": {"type": "string"},
+              "end": {"type": "string"},
+              "title": {"type": "string"},
+              "location": {"type": ["string", "null"]},
+              "organizer": {
+                "type": "object",
+                "required": ["name", "email"],
+                "properties": {"name": {"type": ["string", "null"]}, "email": {"type": ["string", "null"]}},
+                "additionalProperties": false
+              },
+              "attendees": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "email"],
+                  "properties": {"name": {"type": ["string", "null"]}, "email": {"type": ["string", "null"]}},
+                  "additionalProperties": false
+                }
+              },
+              "attendee_count": {"type": "integer"},
+              "all_day": {"type": "boolean"},
+              "recurring": {"type": "boolean"},
+              "time_changed": {"type": "boolean"},
+              "times": {"type": "array", "items": {"type": "string"}},
+              "conflict": {"type": "boolean"},
+              "schedule_conflict": {"type": "boolean"},
+              "schedule_conflicts": {"type": "array", "maxItems": 0},
+              "schedule_conflicts_omitted": {"type": "integer"},
+              "possible_deals": {"type": "array", "maxItems": 0}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$comment": "Consumer fixture contract projection from DoctorCRE/carr-system at 24eba8116a467fa13a0a152aaf2ad0ecd8bb6f0f. read-home-agenda: mcp-server/src/tools.js:9269-9345 (SQL projections and response). calendar-meeting-prep: mcp-server/src/calendar-meeting-prep.js:6-35 and brief-calendar.js:51-155,186-229. Synthetic populated, no-match, no-conflict cohort only; not the complete producer union."
+}
