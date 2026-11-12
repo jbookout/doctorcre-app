@@ -272,6 +272,20 @@ async function handleRequest(request, env) {
     return assetResponse(request, env, staticAsset);
   }
 
+  if (pathname.startsWith('/api/engine/')) {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      const response = json({ error: 'method_not_allowed' }, 405);
+      response.headers.set('allow', 'GET, HEAD');
+      return response;
+    }
+    if (!env?.ENGINE?.fetch) return json({ error: 'engine_unavailable' }, 503);
+    try {
+      return await env.ENGINE.fetch(new Request(request, { redirect: 'manual' }));
+    } catch {
+      return json({ error: 'engine_unavailable' }, 503);
+    }
+  }
+
   if (PROXY_EXACT.has(pathname) || PROXY_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     if (pathname === '/mcp') {
       const engine = await engineDealResponse(request, env);
