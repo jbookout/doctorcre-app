@@ -1,3 +1,4 @@
+import { createMcpRequests } from './mcp-requests.mjs';
 import { mountWatchControl } from './ui-watches.generated.js';
 import { workCard } from './work-card.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
@@ -874,6 +875,7 @@ function refusePanelDetail(error) {
   state.panelDetail = null;
   disposeChecklist();
   disposeWatchControl();
+  clientPublicationsPanel?.dispose(); clientPublicationsPanel = null;
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   bindDraftActor(null);
@@ -1025,13 +1027,14 @@ async function copyRequirementDraft() {
     form.elements.message.focus(); form.elements.message.select();
   }
 }
-const workspaceTabs = [
+export const workspaceTabs = [
   {id:'overview', label:'Overview'},
   {id:'market-terms', label:'Compare terms'},
   {id:'timeline', label:'Timeline'},
   {id:'correspondence', label:'Correspondence & notes'},
   {id:'tours', label:'Tours'},
   {id:'documents', label:'Documents'},
+  {id:'client-view', label:'Client view'},
 ];
 let workspaceTab = 'overview';
 let boardScroll = 0;
@@ -1060,6 +1063,11 @@ function selectWorkspaceTab(id) {
   }
   if (id === 'market-terms') void marketTermsPanel?.load();
   if (id === 'documents') void dealDocumentsPanel?.load();
+  if (id === 'client-view') {
+    const strip = $('workspaceTabs');
+    strip.scrollLeft += $('tab-client-view').getBoundingClientRect().left - strip.getBoundingClientRect().left;
+    void clientPublicationsPanel?.load();
+  }
   if (id === 'tours') void dealToursPanel?.load();
   $('panelContextOpenWrap').hidden = id !== 'overview' || !state.panelDetail;
   if (id === 'correspondence' && state.panelDetail) {
@@ -1083,7 +1091,7 @@ function workspaceEventsHtml(detail) {
   if (!events.some(event => event.type === timelineType)) timelineType = '';
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
-let factReviewPanel, marketTermsPanel, dealToursPanel, dealDocumentsPanel;
+let factReviewPanel, marketTermsPanel, dealToursPanel, dealDocumentsPanel, clientPublicationsPanel;
 let checklistPanel;
 function disposeChecklist() { checklistPanel?.dispose(); checklistPanel = null; }
 function disposeWatchControl() { watchControl?.dispose(); watchControl = null; watchElement = null; watchSubject = null; }
@@ -1136,6 +1144,7 @@ function workspaceHtml(detail) {
     <div data-detail-read="updates">${renderDealUpdates(detail)}</div></section>
     <section id="workspace-market-terms" role="tabpanel" aria-labelledby="tab-market-terms" hidden></section>
     <section id="workspace-documents" role="tabpanel" aria-labelledby="tab-documents" hidden></section>
+    <section id="workspace-client-view" role="tabpanel" aria-labelledby="tab-client-view" hidden></section>
     <section id="workspace-tours" role="tabpanel" aria-labelledby="tab-tours" hidden></section>
     <section id="workspace-timeline" role="tabpanel" aria-labelledby="tab-timeline" hidden><div data-detail-read="events">${workspaceEventsHtml(detail)}</div>${renderDealTimeline(detail)}</section>
     <section id="workspace-correspondence" role="tabpanel" aria-labelledby="tab-correspondence" hidden><h2>Correspondence &amp; notes</h2><details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details><div data-detail-read="notes">${workspaceNotesHtml(detail)}</div></section>`;
@@ -1264,6 +1273,7 @@ function paintPanel(detail) {
   factReviewPanel?.dispose();
   marketTermsPanel?.dispose();
   disposeChecklist();
+  clientPublicationsPanel?.dispose(); clientPublicationsPanel = null;
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
@@ -1377,6 +1387,34 @@ function paintPanel(detail) {
     confirmLeave() { return documentsMounted?.confirmLeave() ?? true; },
     dispose() { documentsDisposed = true; documentsMounted?.dispose(); },
   };
+  let clientDisposed = false, clientLoading = false, clientMounted;
+  clientPublicationsPanel = {
+    async load() {
+      if (clientDisposed || clientLoading || clientMounted) return;
+      clientLoading = true;
+      const element = $('workspace-client-view');
+      element.textContent = 'Loading client view…';
+      try {
+        const { mountClientPublications, createPublicationFixture } = await import('./ui-client-publications.generated.js');
+        if (clientDisposed) return;
+        const mcp = createMcpRequests();
+        const request = resolveDealroomBoot(location).mode === 'fixture' ? createPublicationFixture() : async (name, args, { signal }) => {
+          const result = await mcp(name, args, { signal, timeoutMs: 10000 });
+          if (result.kind !== 'payload') throw Error('Client view unavailable');
+          return result.payload;
+        };
+        element.replaceChildren();
+        clientMounted = mountClientPublications(element, { dealId: detail.deal.id, request });
+      } catch {
+        if (!clientDisposed) {
+          element.textContent = 'Client view unavailable. ';
+          const retry = document.createElement('button'); retry.className = 'btn'; retry.textContent = 'Retry client view';
+          retry.addEventListener('click', () => void clientPublicationsPanel?.load()); element.append(retry);
+        }
+      } finally { clientLoading = false; }
+    },
+    dispose() { clientDisposed = true; clientMounted?.dispose(); },
+  };
   selectWorkspaceTab(workspaceTab);
   mountPanelActivityAttribution();
   void mountPanelEmailFollowups(detail.deal.id);
@@ -1386,6 +1424,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   disposeChecklist();
   disposeWatchControl();
+  clientPublicationsPanel?.dispose(); clientPublicationsPanel = null;
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
@@ -1399,7 +1438,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   disposePanelEmailFollowups();
   setContextOpenVisible(false);
   if (!state.panelDeal) boardScroll = history.state?.boardScroll ?? scrollY;
-  workspaceTab = new URLSearchParams(location.search).get('tab') === 'tours' ? 'tours' : 'overview'; timelineType = '';
+  workspaceTab = ['tours','client-view'].includes(new URLSearchParams(location.search).get('tab')) ? new URLSearchParams(location.search).get('tab') : 'overview'; timelineType = '';
   state.panelDeal = dealId; state.panelDetail = null; updateDraft = null;
   const url = new URL(location.href);
   if (!fromHistory && url.searchParams.get('deal') !== dealId) {
@@ -1443,6 +1482,7 @@ async function closeWorkspace({ fromHistory = false } = {}) {
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   disposeChecklist();
   disposeWatchControl();
+  clientPublicationsPanel?.dispose(); clientPublicationsPanel = null;
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();

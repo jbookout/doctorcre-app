@@ -19,7 +19,7 @@ test('portal reader sends only the selected portal and password over authenticat
     request = { path, init };
     return response({ ok: true, schema_version: 'client-portal.v1', portal });
   } });
-  assert.deepEqual(await client.read({ slug: 'demo-practice', password: 'synthetic-password' }), portal);
+  assert.deepEqual(await client.read({ slug: 'demo-practice', password: 'synthetic-password' }), {...portal,roadmap:{current_phase:null,phases:[]},publications:[]});
   assert.equal(request.path, '/mcp');
   assert.equal(request.init.credentials, 'same-origin');
   assert.deepEqual(JSON.parse(request.init.body).params, {
@@ -27,13 +27,11 @@ test('portal reader sends only the selected portal and password over authenticat
   });
 });
 
-test('portal reader refuses another portal, unsupported versions and incomplete roadmap or material', async () => {
+test('portal reader refuses another portal, unsupported versions and incomplete material', async () => {
   const valid = { ok: true, schema_version: 'client-portal.v1', portal };
   for (const payload of [
     { ...valid, schema_version: 'client-portal.v2' },
     { ...valid, portal: { ...portal, slug: 'another-practice' } },
-    { ...valid, portal: { ...portal, roadmap: { ...portal.roadmap, current_phase: 'missing' } } },
-    { ...valid, portal: { ...portal, roadmap: { ...portal.roadmap, phases: [] } } },
     { ...valid, portal: { ...portal, materials: [{ kind: 'note', title: 'Internal', content: 'Do not share' }] } },
     { ...valid, portal: { ...portal, materials: [{ kind: 'report', title: 'Incomplete' }] } },
     { ok: false, error: 'portal_access_denied' },
@@ -48,7 +46,7 @@ test('portal projection never exposes additional internal fields from a response
     ...portal, internal_note: 'Synthetic internal note',
     materials: [{ ...portal.materials[0], internal_note: 'Not shared' }],
   } }) });
-  assert.deepEqual(await client.read({ slug: 'demo-practice', password: 'synthetic-password' }), portal);
+  assert.deepEqual(await client.read({ slug: 'demo-practice', password: 'synthetic-password' }), {...portal,roadmap:{current_phase:null,phases:[]},publications:[]});
 });
 
 test('portal read pins the exact isolated server contract without widening other consumers', async () => {
@@ -71,4 +69,17 @@ test('portal transport never returns material after refusal, HTTP outage or an e
     const client = createClientPortalClient(options);
     await assert.rejects(client.read({ slug: 'demo-practice', password: 'synthetic-password' }), /Portal unavailable/);
   }
+});
+
+test('publication contract accepts explicit milestones and file metadata with an empty roadmap',async()=>{
+  const projection={slug:'demo-practice',roadmap:{current_phase:null,phases:[]},materials:[],publications:[{kind:'milestone',title:'Published step',content:'Client update'},{kind:'deliverable',title:'Final report',deliverable:{id:'11111111-1111-4111-8111-111111111111',filename:'report.pdf',mime:'application/pdf',bytes:400}}]};
+  const client=createClientPortalClient({fetchImpl:async()=>response({ok:true,schema_version:'client-portal.v1',portal:projection})});
+  assert.deepEqual(await client.read({slug:projection.slug,password:'synthetic-password'}),projection);
+});
+
+test('legacy roadmap phases never become published client milestones',async()=>{
+  const client=createClientPortalClient({fetchImpl:async()=>response({ok:true,schema_version:'client-portal.v1',portal})});
+  const visible=await client.read({slug:portal.slug,password:'synthetic-password'});
+  assert.deepEqual(visible.roadmap,{current_phase:null,phases:[]});
+  assert.deepEqual(visible.publications,[]);
 });

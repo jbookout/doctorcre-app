@@ -1,0 +1,27 @@
+stateDiagram-v2
+state Panel {
+  [*] --> Loading
+  Loading --> Ready: Both reads succeed
+  Loading --> Unavailable: Either read fails
+  Unavailable --> Loading: Refresh
+  Ready --> Saving: Save hidden draft or publish exact file version
+  Saving --> Loading: Receipt advances publication version
+  Saving --> Refused: Server refuses stale or inaccessible content
+  Refused --> Loading: Refresh authoritative versions
+  Saving --> Uncertain: Server does not confirm
+  Uncertain --> Saving: Retry same action and key
+  Uncertain --> Loading: Refresh current server state
+  Ready --> Loading: Refresh
+  Loading --> Closed: Close deal or session changes
+  Ready --> Closed: Close deal or session changes
+  Saving --> Closed: Close deal or session changes
+  Refused --> Closed: Close deal or session changes
+  Uncertain --> Closed: Close deal or session changes
+  Unavailable --> Closed: Close deal or session changes
+  --
+  [*] --> Unconfirmed
+  Unconfirmed --> Confirmed: Receipt advances publication version
+  Confirmed --> Unconfirmed: Save hidden draft or publish exact file version
+  %% never SaveAwaitsReceipt: Saving & Confirmed -- A pending write never displays a confirmed new version.
+  %% never RefusalIsUnconfirmed: Refused & Confirmed -- Refused writes never confirm a new version.
+}
