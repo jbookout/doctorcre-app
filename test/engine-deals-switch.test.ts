@@ -275,3 +275,98 @@ test("numeric MCP request id survives engine wrapping", async () => {
   const response = await f.send(call("deal-room-board", {}, { id: 0 }));
   assert.equal((await response.json()).id, 0);
 });
+
+for (const method of ["GET", "HEAD"]) {
+  test(`direct engine ${method} preserves the request without reading KV`, async () => {
+    const f = fixture(new Error("KV must not be read"), async () => new Response(method === "HEAD" ? null : payload));
+    const url = `${origin}/api/engine/deals/demo%2Fa?workspace=all%20deals&workspace=mine`;
+    const response = await worker.fetch(
+      new Request(url, {
+        method,
+        headers: { cookie: "session=synthetic", origin, accept: "application/json" },
+      }),
+      f.env,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), method === "HEAD" ? "" : payload);
+    assert.equal(f.engine.length, 1);
+    const request = f.engine[0];
+    assert.ok(request);
+    assert.equal(request.url, url);
+    assert.equal(request.method, method);
+    assert.equal(request.headers.get("cookie"), "session=synthetic");
+    assert.equal(request.headers.get("origin"), origin);
+    assert.equal(request.headers.get("accept"), "application/json");
+    assert.equal(request.redirect, "manual");
+    assert.deepEqual(f.kv, []);
+    assert.deepEqual(f.carr, []);
+  });
+}
+
+for (const status of [200, 302, 401, 403, 429, 503]) {
+  test(`direct engine response ${status} preserves body, headers and separate cookies`, async () => {
+    const upstream = new Response(payload, {
+      status,
+      statusText: "Synthetic",
+      headers: [
+        ["content-type", "application/json"],
+        ["location", "/auth/login"],
+        ["retry-after", "5"],
+        ["set-cookie", "session=fresh; Expires=Wed, 21 Oct 2037 07:28:00 GMT; HttpOnly"],
+        ["set-cookie", "other=fresh; Secure"],
+      ],
+    });
+    const f = fixture("off", async () => upstream);
+    const response = await worker.fetch(new Request(`${origin}/api/engine/deals?workspace=mine`), f.env);
+    assert.equal(response.status, status);
+    assert.equal(response.statusText, upstream.statusText);
+    assert.deepEqual([...response.headers], [...upstream.headers]);
+    assert.deepEqual(response.headers.getSetCookie(), upstream.headers.getSetCookie());
+    assert.equal(await response.text(), payload);
+    assert.deepEqual(f.kv, []);
+    assert.deepEqual(f.carr, []);
+  });
+}
+
+for (const method of ["POST", "DELETE", "OPTIONS"]) {
+  test(`direct engine ${method} refuses with Allow before accessing bindings`, async () => {
+    const response = await worker.fetch(new Request(`${origin}/api/engine/deals`, { method }), {
+      GIT_SHA: "0".repeat(40),
+      APP_ENV: "staging",
+    });
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.get("allow"), "GET, HEAD");
+  });
+}
+
+test("direct engine missing binding returns fixed unavailable response", async () => {
+  const f = fixture();
+  const { ENGINE, ...env } = f.env;
+  assert.ok(ENGINE);
+  const response = await worker.fetch(new Request(`${origin}/api/engine/deals`), env);
+  assert.equal(response.status, 503);
+  assert.equal(await response.text(), '{"error":"engine_unavailable"}');
+  assert.deepEqual(f.kv, []);
+  assert.deepEqual(f.carr, []);
+});
+
+test("direct engine throwing binding returns fixed unavailable response without details", async () => {
+  const f = fixture("on", async () => {
+    throw new Error("sensitive synthetic details");
+  });
+  const response = await worker.fetch(new Request(`${origin}/api/engine/deals`), f.env);
+  assert.equal(response.status, 503);
+  assert.equal(await response.text(), '{"error":"engine_unavailable"}');
+  assert.deepEqual(f.kv, []);
+  assert.deepEqual(f.carr, []);
+});
+
+for (const path of ["/api/engine", "/api/engine-other/deals"]) {
+  test(`direct engine prefix excludes ${path}`, async () => {
+    const f = fixture();
+    const response = await worker.fetch(new Request(`${origin}${path}`), f.env);
+    assert.equal(response.status, 404);
+    assert.deepEqual(f.engine, []);
+    assert.deepEqual(f.kv, []);
+  });
+}
