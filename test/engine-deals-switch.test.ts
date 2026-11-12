@@ -328,14 +328,49 @@ for (const status of [200, 302, 401, 403, 429, 503]) {
   });
 }
 
-for (const method of ["POST", "DELETE", "OPTIONS"]) {
+for (const appEnv of ["staging", "production"]) {
+  test(`direct engine POST forwards unchanged bytes and security headers in ${appEnv}`, async () => {
+    const upstream = new Response(payload, { status: 503, headers: { "retry-after": "5" } });
+    const f = fixture(new Error("KV must not be read"), async () => upstream);
+    const url = `${origin}/api/engine/presence?field=phase%20name&field=other`;
+    const body = new Uint8Array([0, 255, 13, 10, 32, 123, 125]);
+    const headers = {
+      cookie: "session=synthetic",
+      origin,
+      "sec-fetch-site": "same-origin",
+      "x-carr-csrf": "synthetic-csrf",
+      "content-type": "application/octet-stream",
+    };
+    const response = await worker.fetch(new Request(url, { method: "POST", headers, body }), {
+      ...f.env,
+      APP_ENV: appEnv,
+    });
+    assert.equal(response, upstream);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get("retry-after"), "5");
+    assert.equal(await response.text(), payload);
+    assert.equal(f.engine.length, 1);
+    const request = f.engine[0];
+    assert.ok(request);
+    assert.equal(request.method, "POST");
+    assert.equal(request.url, url);
+    assert.deepEqual(new Uint8Array(await request.arrayBuffer()), body);
+    for (const [name, value] of Object.entries(headers)) assert.equal(request.headers.get(name), value);
+    assert.equal(request.redirect, "manual");
+    assert.deepEqual(f.kv, []);
+    assert.deepEqual(f.carr, []);
+  });
+}
+
+for (const method of ["PUT", "PATCH", "DELETE", "OPTIONS"]) {
   test(`direct engine ${method} refuses with Allow before accessing bindings`, async () => {
     const response = await worker.fetch(new Request(`${origin}/api/engine/deals`, { method }), {
       GIT_SHA: "0".repeat(40),
       APP_ENV: "staging",
     });
     assert.equal(response.status, 405);
-    assert.equal(response.headers.get("allow"), "GET, HEAD");
+    assert.equal(response.headers.get("allow"), "GET, HEAD, POST");
+    assert.deepEqual(await response.json(), { error: "method_not_allowed" });
   });
 }
 

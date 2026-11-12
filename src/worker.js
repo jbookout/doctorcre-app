@@ -273,9 +273,9 @@ async function handleRequest(request, env) {
   }
 
   if (pathname.startsWith('/api/engine/')) {
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
+    if (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'POST') {
       const response = json({ error: 'method_not_allowed' }, 405);
-      response.headers.set('allow', 'GET, HEAD');
+      response.headers.set('allow', 'GET, HEAD, POST');
       return response;
     }
     if (!env?.ENGINE?.fetch) return json({ error: 'engine_unavailable' }, 503);
