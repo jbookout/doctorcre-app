@@ -24,7 +24,7 @@ import { dealsSaveToEngine, deploymentIdentity, resolveDealroomBoot } from './bo
 import { ACTOR_LABEL, FACT_TERMS, authorLabel } from './client.js';
 import { mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
-import { businessDay } from './business-date.js';
+import { BUSINESS_TIME_ZONE, businessDay } from './business-date.js';
 import {
   createBoardSync, batchTouchesBoard, HEALTH, SYNC_STATES,
 } from './board-sync.mjs';
@@ -1243,10 +1243,13 @@ function syncUpdateForm() {
   form.elements.step.disabled = form.elements.date.disabled = Boolean(pending || pendingStep) || !state.selfActor;
   const button = form.querySelector('button[type="submit"]');
   button.disabled = pending?.status === 'pending' || pendingStep?.status === 'pending' || !state.selfActor;
-  button.textContent = pending || pendingStep ? 'Check outcome'
-    : canSaveStepOnly && changed && (!updateDraft.text.trim() || updateDraft.noteSaved) ? 'Save next step' : 'Add update';
+  const noteOnly = updateDraft.text.trim() && !changed && !updateDraft.noteSaved;
+  const saveLabel = canSaveStepOnly ? (noteOnly ? 'Save note' : 'Save next step') : 'Add update';
+  button.textContent = pending || pendingStep ? 'Check outcome' : saveLabel;
   form.querySelector('[data-review-update-step]').hidden = !updateDraft.conflict;
-  form.querySelector('[data-discard-update]').disabled = Boolean(pending || pendingStep) || !(updateDraft.text || (canSaveStepOnly && changed));
+  const discard = form.querySelector('[data-discard-update]');
+  discard.hidden = !(pending || pendingStep || updateDraft.text || changed);
+  discard.disabled = Boolean(pending || pendingStep);
   if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? updateDraft.message || 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : updateDraft.message || '';
   if (pending) $('detailUpdateStatus').textContent = pending.message || 'Saving update…';
 }
@@ -1283,7 +1286,11 @@ async function saveUpdate(id) {
   const step = draft.step.trim();
   const changed = updateStepChanged(draft);
   const stepOnly = draft.reviewed.currentStep !== undefined && changed;
-  if (!pending && !text && !draft.noteSaved && !stepOnly) { $('detailUpdateStatus').textContent = 'Enter an update'; return; }
+  if (!pending && !text && !draft.noteSaved && !stepOnly) {
+    $('detailUpdateStatus').textContent = draft.reviewed.currentStep !== undefined
+      ? 'Enter a new next step or change the date.' : 'Enter an update';
+    return;
+  }
   if (changed && draft.conflict) { form.querySelector('[data-review-update-step]').focus(); return; }
   const pendingStep = pendingCommand(commandState, nextStepKey(id));
   if (changed && !pendingStep && !validateUpdateStep(draft, form)) return;
@@ -1432,16 +1439,16 @@ function legacyTimelineEntries(detail, nextItem) {
   const view = dealTimeline(detail);
   return [
     ...view.entries.filter(e => e.day).map(e => ({type:e.type, day:e.day, text:[...new Set([e.summary,e.original].filter(Boolean))].join('\n\n')})),
-    ...(detail.items || detail.deal.items || []).filter(e => e !== nextItem && calendarDay(e.due_on)).map(e => ({type:'Deal item', day:calendarDay(e.due_on), text:noteText(e.title)})),
+    ...(detail.items || detail.deal.items || []).filter(e => e !== nextItem && calendarDay(e.due_on)).map(e => ({type:'Checklist item', day:calendarDay(e.due_on), text:noteText(e.title)})),
     ...view.dates.map(e => ({type:'Critical date', day:e.day, text:[e.label,e.original].filter(Boolean).join(' · ')})),
     ...view.phases.filter(e => e.day).map(e => ({type:'Phase', day:e.day, text:e.label})),
-    ...(detail.next_actions || []).flatMap(e => [['due_on','Due'],['hold_until','Held until']].filter(([key]) => (key !== 'due_on' || e.status === 'done') && calendarDay(e[key])).map(([key,label]) => ({type:'Action', day:calendarDay(e[key]), text:`${label} · ${noteText(e.description)}`}))),
+    ...(detail.next_actions || []).flatMap(e => [['due_on','Due'],['hold_until','Held until']].filter(([key]) => (key !== 'due_on' || e.status === 'done') && calendarDay(e[key])).map(([key,label]) => ({type:'Next step', day:calendarDay(e[key]), text:`${label} · ${noteText(e.description)}`}))),
     ...(detail.history || []).filter(e => calendarDay(e.recorded_at) && !view.entries.some(entry => entry.id === e.id)).map(e => ({type:'Change', day:calendarDay(e.recorded_at), text:noteText(e.summary) || `${fieldLabel(e.field)} · ${readableValue(e.field, e.new_value)}`})),
   ].sort((a,b) => b.day.localeCompare(a.day))
     .map(({ type, day, text }) => ({ type, when: day, caption: dateCaption(day), actor: '', text }));
 }
 function workspaceEventsHtml(detail, nextItem, fromEngine) {
-  const events = fromEngine ? engineTimelineEntries(detail) : legacyTimelineEntries(detail, nextItem);
+  const events = fromEngine ? engineTimelineEntries(detail) : legacyTimelineEntries(detail, nextItem).filter(event => event.text.trim());
   if (!events.some(event => event.type === timelineType)) timelineType = '';
   return `<h2>Dated events</h2><label for="timelineType">Filter by kind</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}>${e.actor ? `<b>${esc(e.actor)}</b> ` : ''}<time datetime="${esc(e.when)}">${esc(e.caption)}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : fromEngine ? '<p>No dated events yet.</p>' : '<p>No dated events recorded.</p>'}`;
 }
@@ -1494,14 +1501,39 @@ function filedDocumentsHtml(documents) {
   }).join('')}</ul>` : '<p>No documents filed for this deal.</p>';
 }
 
+const emailDay = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: BUSINESS_TIME_ZONE });
+
+function dealEmailSender({ sender_name, sender, happened_at }) {
+  const name = (sender_name || sender || '').split('<', 1)[0].trim().replace(/^["']|["']$/g, '').split(/\s+/, 1)[0];
+  const from = name && !name.includes('@') ? `From ${name}` : 'Unknown sender';
+  const date = Date.parse(happened_at);
+  return Number.isFinite(date) ? `${from}, ${emailDay.format(date)}` : from;
+}
+
+function cleanEmailExcerpt(text) {
+  const body = text.trim()
+    .replace(/^Email from [^\n]+?:[^\n]*(?:\r?\n|$)/i, '')
+    .replace(/^(?:(?:from|to|cc|bcc|sent|date|subject):[^\n]*(?:\n[ \t]+[^\n]*)*\n?)+/i, '')
+    .split(/^[ \t]*(?:-+ Original Message -+|On .+ wrote:|--)[ \t]*\r?$/im, 1)[0];
+  return body.split(/(\s+)/).filter(word => {
+    const [local, domain] = word.split('@', 2);
+    return !local || !domain?.includes('.');
+  }).join('').trim();
+}
+
 function dealEmailFollowupsHtml({ correspondence, email_follow_ups, next_deal_saves }) {
   const today = businessDay();
   const filed = new Set(correspondence?.filter(entry => entry.kind === 'email' && entry.activity_id).map(entry => entry.activity_id));
   const followups = email_follow_ups.filter(row => row.kind !== 'file_to_deal' || !filed.has(row.email?.activity_id));
   return `<h2>Email follow-ups</h2>${followups.map(row => {
     const email = row.email || {};
-    const sender = [email.sender_name || email.sender || 'Unknown sender', email.happened_at && sourceTime(email.happened_at)].filter(Boolean).join(' · ');
-    const title = emailSubject(email.subject);
+    const subject = emailSubject(email.subject);
+    const evidence = cleanEmailExcerpt(row.evidence || '');
+    const preview = evidence || cleanEmailExcerpt(email.summary || '');
+    const body = emailSubject(preview) === subject ? '' : preview;
+    const title = subject === '(No subject)' ? concise(body, 72) || 'Email' : subject;
+    const showBody = body && title !== body.replace(/\s+/g, ' ');
+    const excerpt = evidence ? `<details><summary>Read email excerpt</summary><q>${esc(body)}</q></details>` : `<p>${esc(body)}</p>`;
     const change = row.kind === 'file_to_deal' ? 'File email to this deal'
       : row.kind === 'phase_move' ? `Move to ${columnBySlug(row.to_phase)?.label || 'the next phase'}`
       : row.what && emailPlaceholderText(row.what) || 'Review email';
@@ -1516,9 +1548,9 @@ function dealEmailFollowupsHtml({ correspondence, email_follow_ups, next_deal_sa
       <button class="btn" type="submit" value="dismiss" formnovalidate data-detail-focus="dismiss-${id}">Dismiss</button>
     </form>` : '';
     return workCard({className:'email-proposal', title:esc(title), actions,
-      meta:`<p>${esc(sender)}</p>`,
-      body:`<p>${esc(change)}${owner ? ` · ${esc(owner)}` : ''}${row.due_on ? ` · ${dueDateHtml(row.due_on, today)}` : ''}</p>${email.summary ? `<p>${esc(emailPlaceholderText(email.summary))}</p>` : ''}
-        ${row.evidence ? `<details><summary>Read email excerpt</summary><q>${esc(row.evidence)}</q></details>` : ''}`});
+      meta:`<p>${esc(dealEmailSender(email))}</p>`,
+      body:`<p>${esc(change)}${owner ? ` · ${esc(owner)}` : ''}${row.due_on ? ` · ${dueDateHtml(row.due_on, today)}` : ''}</p>
+        ${showBody ? excerpt : ''}`});
   }).join('') || '<p>No email follow-ups.</p>'}`;
 }
 
@@ -1562,16 +1594,32 @@ const completeStepKey = id => `complete-step:${state.selfActor}:${id}`;
 
 function openDealStepsHtml(detail, steps, today) {
   const heading = isClosedDeal(detail.deal) && steps.length ? 'Open before this deal ended' : 'Next steps';
-  const rows = steps.map(step => {
-    const id = esc(step.id);
-    const canFinish = detail.next_deal_saves && Number.isSafeInteger(detail.deal.seen) && dealStepVersion(step);
-    const saving = pendingCommand(commandState, completeStepKey(step.id))?.status === 'pending';
-    return `<li${stepFocusAttrs(step)}>
-      <div><strong id="step-text-${id}">${esc(step.description.trim())}</strong>
-        <p>${esc(actorName(step.owner))} · ${dueDateHtml(calendarDay(step.due_on), today)}</p>
-        ${stepOrigin(step)}
-      </div>
-      ${canFinish ? `<button class="btn" type="button" data-complete-step="${id}" data-detail-focus="done-${id}" aria-describedby="step-text-${id}"${saving ? ' aria-disabled="true"' : ''}>Done</button>` : ''}
+  const groups = new Map();
+  const ids = new Set();
+  for (const step of steps) {
+    if (step.id && ids.has(step.id)) continue;
+    ids.add(step.id);
+    const key = JSON.stringify([step.description.trim(), calendarDay(step.due_on)]);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(step);
+  }
+  const rows = [...groups.values()].map(group => {
+    const [first] = group;
+    const shared = group.length > 1;
+    const title = `step-text-${esc(first.id)}`;
+    return `<li${shared ? '' : stepFocusAttrs(first)}><strong id="${title}">${esc(first.description.trim())}</strong>
+      ${group.map(step => {
+        const id = esc(step.id);
+        const canFinish = detail.next_deal_saves && Number.isSafeInteger(detail.deal.seen) && dealStepVersion(step);
+        const saving = pendingCommand(commandState, completeStepKey(step.id))?.status === 'pending';
+        const owner = `step-owner-${id}`;
+        const label = `${title} ${owner}`;
+        return `<div class="deal-step-assignment"${shared ? `${stepFocusAttrs(step)} role="group" aria-labelledby="${label}"` : ''}>
+          <div><p id="${owner}">${esc(actorName(step.owner))} · ${dueDateHtml(calendarDay(step.due_on), today)}</p>
+            ${stepOrigin(step)}</div>
+          ${canFinish ? `<button class="btn" type="button" data-complete-step="${id}" data-detail-focus="done-${id}" aria-describedby="${label}"${saving ? ' aria-disabled="true"' : ''}>Done</button>` : ''}
+        </div>`;
+      }).join('')}
     </li>`;
   }).join('');
   return `<section class="deal-open-steps" aria-labelledby="deal-open-steps-heading">
@@ -1647,7 +1695,8 @@ function workspaceHtml(detail) {
   const websiteSetup = !d.client_portal_url && (fromEngine ? detail.next_deal_saves && d.client_id : controlsAvailable)
     ? clientPortalSetupHtml() : '';
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
-    <section id="workspace-overview" role="tabpanel" aria-labelledby="tab-overview">${fromEngine ? '<p id="detailStepStatus" role="status"></p>' : ''}<section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
+    <section id="workspace-overview" role="tabpanel" aria-labelledby="tab-overview">${fromEngine ? '<p id="detailStepStatus" role="status"></p>' : ''}<section class="deal-opening-snapshot" aria-label="Deal snapshot">
+      <div data-detail-read="step-overview">
       ${websiteLink}
       ${renderInvoiceClose(d, state.nextDealSaves)}
       ${fromEngine || phaseMove ? `<div data-phase-move>${phaseMove}</div>` : ''}
@@ -1655,16 +1704,20 @@ function workspaceHtml(detail) {
       ${completedStep ? `<section aria-label="Completed step"${stepFocusAttrs(completedStep)}>
       <h2>Completed step</h2><p>${esc(completedStep.description)}</p>${stepOrigin(completedStep)}
     </section>` : ''}
+      </div>
+      ${ownStep ? `<details id="detailNextStepEditor" class="deal-step-editor"><summary>Add next step</summary>${dealUpdateFormHtml(true, today)}</details>` : ''}
+      <div data-detail-read="snapshot">
     <div class="deal-alert">${renderDealItems({...d,items:items.filter(item => item !== nextItem)},{today:stepToday,buttons:true,empty:false,itemOwners})}</div>
       ${renderSnapshotFacts(d, fromEngine)}
       ${!fromEngine && d.client_portal_url ? renderClientPortalLink(d.client_portal_url) || '<p>Client website link is invalid.</p>' : ''}
+      </div>
     </section>
     ${detail.next_deal_saves ? `<div data-detail-read="attention">${Number.isSafeInteger(d.seen) && !ended
       ? `<button class="btn" type="button" data-deal-attention data-detail-focus="attention">${d.attention === true ? 'Clear needs attention' : 'Mark needs attention'}</button>` : ''}</div>` : ''}
     ${fromEngine ? `<div data-detail-read="client-portal">${websiteSetup}</div>` : ''}
     ${engineSaves ? '' : '<section id="panelTerms" aria-label="Terms"><h2>Terms</h2><button type="button" class="btn" data-open-terms>Show sourced terms</button></section>'}
     <div data-detail-read="checklist"></div>
-    <form id="detailUpdateForm" class="deal-update-form" novalidate><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000"${detail.next_deal_saves ? '' : ' required'}></textarea><details id="detailNextStepEditor"><summary>${ownStep ? 'Change your next step' : 'Change next step'}</summary><div class="deal-next-step-fields"><label for="dealUpdateStep">${ownStep ? 'Your next step' : 'Next step'}</label><input id="dealUpdateStep" name="step" maxlength="10000" autocomplete="off"><label for="dealUpdateDate">Next date</label><input id="dealUpdateDate" name="date" type="date" min="${today}"><small id="detailUpdateDateHint" hidden>Current next date is overdue.</small></div></details><button class="btn btn-primary" type="submit">Add update</button><button class="btn" type="button" data-review-update-step hidden>Review current next step</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
+    ${ownStep ? '' : dealUpdateFormHtml(false, today)}
     <section id="panelEmailFollowups" aria-label="Email follow-ups"${fromEngine ? ' data-detail-read="email-followups"' : ''}>${fromEngine ? dealEmailFollowupsHtml(detail) : '<p role="status">Updating email follow-ups…</p>'}</section>
     ${requirementEmailHtml(d)}
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
@@ -1683,6 +1736,18 @@ function workspaceHtml(detail) {
     <section id="workspace-correspondence" role="tabpanel" aria-labelledby="tab-correspondence" hidden><h2>Correspondence &amp; notes</h2>
       ${fromEngine ? `<div data-detail-read="correspondence">${renderCorrespondence(detail.correspondence, detail.email_follow_ups.filter(row => row.kind === 'file_to_deal').length)}</div>` : '<details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details>'}
       <div data-detail-read="notes">${workspaceNotesHtml(detail)}</div></section>`;
+}
+function dealUpdateFormHtml(stepEditor, today) {
+  const stepFields = `<div class="deal-next-step-fields"><label for="dealUpdateStep">${stepEditor ? 'Your next step' : 'Next step'}</label><input id="dealUpdateStep" name="step" maxlength="10000" autocomplete="off"><label for="dealUpdateDate">Next date</label><input id="dealUpdateDate" name="date" type="date" min="${today}"><small id="detailUpdateDateHint" hidden>Current next date is overdue.</small></div>`;
+  const noteField = `<label for="dealUpdate">${stepEditor ? 'Note' : 'Update'}</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000"${stepEditor ? '' : ' required'}></textarea>`;
+  return `<form id="detailUpdateForm" class="deal-update-form" novalidate>
+    ${stepEditor ? `${stepFields}<details id="detailNoteEditor"><summary>Add a note</summary>${noteField}</details>`
+      : `${noteField}<details id="detailNextStepEditor"><summary>Change next step</summary>${stepFields}</details>`}
+    <button class="btn btn-primary" type="submit">${stepEditor ? 'Save next step' : 'Add update'}</button>
+    <button class="btn" type="button" data-review-update-step hidden>Review current next step</button>
+    <button class="btn btn-quiet" type="button" data-discard-update hidden>Discard draft</button>
+    <p id="detailUpdateStatus" role="status"></p>
+  </form>`;
 }
 function criticalDateFormHtml() {
   return `<details class="add-critical-date"><summary>Add critical date</summary>
@@ -1920,6 +1985,10 @@ function paintPanel(detail) {
   disposeActivityAttribution();
   disposePanelEmailFollowups();
   syncUpdateForm();
+  if ($('detailNoteEditor') && updateDraft) {
+    $('detailNoteEditor').open = Boolean(updateDraft.text);
+    $('detailNextStepEditor').open = !$('detailUpdateForm').querySelector('[data-discard-update]').hidden;
+  }
   updateDetailTimestamp();
   let marketDisposed = false, marketLoading = false;
   marketTermsPanel = {
@@ -2612,7 +2681,11 @@ function wire() {
     if (done) return completeDealStep(done);
     const attention = e.target.closest('[data-deal-attention]');
     if (attention) return toggleDealAttention(attention);
-    if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal)) && !pendingCommand(commandState, nextStepKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
+    if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal)) && !pendingCommand(commandState, nextStepKey(state.panelDeal))) {
+      discardUpdate(state.panelDeal);
+      syncUpdateForm();
+      ($('detailNoteEditor') ? $('dealUpdateStep') : $('dealUpdate')).focus();
+    }
     if (e.target.closest('[data-review-update-step]') && updateDraft?.conflict) {
       const draft = updateDraft;
       void readDealDetail(draft.id).then(detail => {

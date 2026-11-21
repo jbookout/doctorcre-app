@@ -405,12 +405,15 @@ for (const [actor, readsOn, savesOn] of [['joe', false, false], ['joe', true, tr
       kind, status, error, hint, id: crypto.randomUUID(), subject: `Example follow-up ${index + 1}`,
     })) : [];
     const filedEmail = { activity_id: crypto.randomUUID(), kind: 'email', subject: actor === 'joe' ? '(no subject)' : '',
-      sender_name: 'Example Sender', happened_at: '2026-11-01T14:00:00+00:00' };
+      sender_name: 'Example Sender', happened_at: '2026-11-01T14:00:00+00:00',
+      summary: 'Email from Example Sender <sender@example.test>: (no subject)' };
     let email_follow_ups = [
-      { proposal_id: first, kind: 'next_step', what: 'Send the plan (no subject)', owner: 'dell', due_on: '2026-11-02', email: filedEmail },
+      { proposal_id: first, kind: 'next_step', what: 'Send the plan (no subject)', owner: 'dell', due_on: '2026-11-02', email: filedEmail,
+        evidence: 'From: Example Sender <sender@example.test>\nTo: Team <team@example.test>\nSubject: (no subject)\n\nThe plan is ready for review this week. Please send comments to <team@example.test> by Friday so we can revise the drawings.' },
       { proposal_id: crypto.randomUUID(), kind: 'file_to_deal', email: filedEmail },
       { proposal_id: second, kind: 'file_to_deal', evidence: 'The letter is attached.',
-        email: { subject: 'Letter attached', sender: 'sender@example.test', summary: 'Follow up (no subject)' } },
+        email: { subject: 'Letter attached', sender: 'Morgan Example <sender@example.test>',
+          happened_at: '2026-11-02T15:00:00Z', summary: 'Email from Morgan Example <sender@example.test>: Letter attached' } },
       ...refusals.map(({ kind, id, subject }) => ({
         proposal_id: id, kind, what: 'Review the example', to_phase: 'legal', email: { subject, sender: 'sender@example.test' },
       })),
@@ -513,15 +516,19 @@ for (const [actor, readsOn, savesOn] of [['joe', false, false], ['joe', true, tr
     await page.goto(`${origin}/deals?mode=live${fromBoard ? '' : `&deal=${deal}`}`);
     if (fromBoard) await page.locator('.kanban-column').getByRole('button', { name: row.name, exact: true }).click();
     const followups = page.getByRole('region', { name: 'Email follow-ups' });
-    await followups.getByText(readsOn ? '(No subject)' : 'No email follow-ups.', { exact: true }).waitFor({ timeout: 5000 });
+    await followups.getByText(readsOn ? 'From Example, Nov 1' : 'No email follow-ups.', { exact: true }).waitFor({ timeout: 5000 });
     if (readsOn) {
-      const planCard = followups.getByRole('article').filter({ has: page.getByRole('heading', { name: '(No subject)', exact: true }) });
+      const planCard = followups.getByRole('article').filter({ has: page.getByRole('heading', { name: /^The plan is ready for review this week/ }) });
       const letterCard = followups.getByRole('article').filter({ hasText: 'Letter attached' });
       assert.equal(await planCard.count(), 1);
-      assert.match(await planCard.innerText(), /Example Sender.*Nov 1/);
+      assert.equal(await planCard.getByText('From Example, Nov 1', { exact: true }).count(), 1);
       assert.doesNotMatch(await planCard.innerText(), /File email to this deal/);
       assert.match(await letterCard.innerText(), /File email to this deal/);
-      assert.match(await letterCard.innerText(), /Follow up \(No subject\)/);
+      assert.equal((await letterCard.innerText()).match(/Letter attached/g)?.length, 1);
+      assert.equal(await letterCard.getByText('From Morgan, Nov 2', { exact: true }).count(), 1);
+      assert.doesNotMatch(await followups.innerText(), /Email from |@example\.test/);
+      await planCard.getByText('Read email excerpt').click();
+      assert.doesNotMatch(await planCard.innerText(), /(?:From|To|Subject):|@example\.test/);
       assert.match(await followups.innerText(), /Send the plan \(No subject\).*Dell.*16 days late/);
       assert.doesNotMatch(await planCard.innerText(), /\(no subject\)/);
       assert.doesNotMatch(await followups.innerText(), /2026-11-01T|file_to_deal/);
@@ -1013,9 +1020,16 @@ for (const width of [1440, 390]) {
     await itemDialog.getByRole('button', { name: 'Mark done' }).waitFor();
     await itemDialog.getByRole('button', { name: 'Close item' }).click();
 
-    await page.getByText('Change your next step', { exact: true }).click();
+    const discard = page.getByRole('button', { name: 'Discard draft', exact: true });
+    assert.equal(await discard.count(), 0);
+    assert.equal(await page.getByLabel('Update', { exact: true }).count(), 0);
+    await page.getByText('Add next step', { exact: true }).click({ timeout: 3000 });
     const localStep = page.getByLabel('Your next step', { exact: true });
     assert.equal(await localStep.inputValue(), otherStep.description);
+    await localStep.fill('Unsaved step');
+    await discard.click();
+    assert.equal(await localStep.inputValue(), otherStep.description);
+    assert.equal(await discard.count(), 0);
     await localStep.fill('Confirm the plan');
     await page.getByLabel('Next date', { exact: true }).fill('2026-11-23');
     await page.locator('#detailUpdateForm').screenshot({ path: join(evidence, `owner-next-step-${width}-local-editor.png`) });
@@ -2430,9 +2444,11 @@ for (const width of [1440, 390]) test(`Timeline shows read-only history from the
     occurred_at: '2025-01-03T10:00:00.000001Z', recorded_at: '2025-01-03T10:00:00.000003Z' });
   const detail = { ...row, thread, events, imported_deal_history, email_follow_ups: [],
     phase_started_on: { legal: '2026-11-17' },
+    activities: [{ id: 'empty-call', kind: 'call', summary: ' ', occurred_at: beforeDocument }],
     documents: [{ id: 'file', name: 'Example plan.pdf', actor: 'mail_capture', prepared_at: '2026-11-16T14:00:00Z' }],
     next_actions: [
       { id: 'step', owner: 'dell', actor: 'joe', description: 'Check the floor plan', status: 'open', updated_at: '2026-11-17T18:00:00Z' },
+      { id: 'checklist', owner: 'dell', actor: 'dell', title: 'Review the checklist', status: 'open', updated_at: beforeDocument },
       ...stepChanges.map(([description, status]) => ({
         id: status, owner: 'dell', actor: 'joe', description, status, due_on: '2026-11-19', updated_at: beforeDocument,
       })),
@@ -2506,13 +2522,16 @@ for (const width of [1440, 390]) test(`Timeline shows read-only history from the
   assert.equal(await oldHistory.locator('a, button, input, select, textarea, [contenteditable]').count(), 0);
   assert.equal(await oldHistory.evaluate(el => el.scrollWidth <= el.clientWidth), true);
   const rows = timeline.locator('li[data-event-type]:not([hidden])');
+  assert.equal(await rows.getByText('Call', { exact: true }).count(), 0);
+  const checklistRow = rows.filter({ hasText: 'Review the checklist' });
+  assert.equal(await checklistRow.getByText('Checklist item', { exact: true }).count(), 1);
   const contents = await rows.allTextContents();
   assert.equal(await oldHistory.getByText(copiedStepText, { exact: false }).count(), 1);
   const recordedSteps = timeline.getByText('Recorded next step', { exact: false });
   assert.deepEqual(await recordedSteps.locator('..').locator('time').evaluateAll(times =>
     times.map(time => time.dateTime)), ['2025-01-03T10:00:00.000004Z', '2025-01-03T10:00:00.000002Z'],
     'Both notes remain visible when the event supplies no activity ID');
-  assert.equal(contents.length, 8 + stepChanges.length + (dates.length - 1) + dealChanges.length);
+  assert.equal(contents.length, 9 + stepChanges.length + (dates.length - 1) + dealChanges.length);
   assert.match(contents[0], /Automatically.*Nov 17.*7:00 PM.*Legal/);
   assert.match(contents[1], /Dell.*Nov 17.*2:00 PM.*Tour plans confirmed/);
   assert.match(contents[2], /Dell.*Nov 17.*1:00 PM.*Due diligence.*Due Nov 19/);
@@ -2534,8 +2553,10 @@ for (const width of [1440, 390]) test(`Timeline shows read-only history from the
   savesOn = true;
   await page.reload();
   await page.getByRole('tab', { name: 'Overview' }).click();
-  await page.getByLabel('Update', { exact: true }).fill('Tour plans confirmed');
-  await page.getByRole('button', { name: 'Add update' }).click();
+  await page.getByText('Add next step', { exact: true }).click();
+  await page.getByText('Add a note', { exact: true }).click();
+  await page.getByLabel('Note', { exact: true }).fill('Tour plans confirmed');
+  await page.getByRole('button', { name: 'Save note', exact: true }).click();
   await page.locator('#detailUpdateStatus').getByText('Update added', { exact: true }).waitFor();
   await openTimeline();
   const notes = rows.filter({ hasText: 'Tour plans confirmed' });
@@ -2881,12 +2902,13 @@ for (const width of [1440, 390]) {
       await page.getByRole('button', { name: 'Back', exact: true }).click();
       await page.getByRole('button', { name: 'Back', exact: true }).click();
       await page.getByRole('link', { name: row.name }).click();
-      await page.getByLabel('Update', { exact: true }).fill('Example deal page update');
-      await page.getByText('Change your next step', { exact: true }).click();
+      await page.getByText('Add next step', { exact: true }).click();
+      await page.getByText('Add a note', { exact: true }).click();
+      await page.getByLabel('Note', { exact: true }).fill('Example deal page update');
       const localStep = page.getByLabel('Your next step', { exact: true });
       assert.equal(await localStep.inputValue(), 'Send the revised plan');
       await localStep.fill('Send the final plan');
-      await page.getByRole('button', { name: 'Add update' }).click();
+      await page.getByRole('button', { name: 'Save next step', exact: true }).click();
       await page.locator('#detailUpdateStatus').getByText('Update added', { exact: true }).waitFor();
       assert.deepEqual(stepBody().seen_current_step, { next_step_id: next_actions[2].id, change_id: 9 });
     }
@@ -3012,7 +3034,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`a 
   const row = { id: deal, deal_id: deal, name: 'Example Deal', owner: 'joe', phase: 'research', seen: 23 };
   const own = { id: crypto.randomUUID(), description: 'Send the sample plan', owner: 'joe', due_on: '2026-11-24', status: 'open', change_id: 10,
     set_by: 'Example Partner', set_at: '2026-10-29T13:51:00Z' };
-  const other = { id: crypto.randomUUID(), description: 'Check the sample lease', owner: 'dell', due_on: '2026-11-25', status: 'open', change_id: 11,
+  const other = { ...own, id: crypto.randomUUID(), owner: 'dell', change_id: 11,
     set_by: null, set_at: '2026-10-30T14:30:00Z' };
   const writes = [];
   let ownReceipt;
@@ -3059,9 +3081,12 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`a 
   await page.goto(`${fixtureOrigin}/deals?deal=${deal}&mode=live`);
   const snapshot = page.getByRole('region', { name: 'Deal snapshot' });
   const steps = snapshot.getByRole('region', { name: 'Next steps' });
-  const stepRow = step => steps.getByRole('listitem').filter({ hasText: step.description });
-  await stepRow(own).getByText('Set by Example Partner · Oct 29, 8:51 AM CDT', { exact: true }).waitFor();
-  await stepRow(other).getByText('Set Oct 30, 9:30 AM CDT', { exact: true }).waitFor();
+  const stepRows = steps.getByRole('listitem');
+  await steps.getByText(own.description, { exact: true }).first().waitFor();
+  assert.equal(await stepRows.count(), 1);
+  assert.equal(await steps.getByText(own.description, { exact: true }).count(), 1);
+  await stepRows.first().getByText('Set by Example Partner · Oct 29, 8:51 AM CDT', { exact: true }).waitFor();
+  await stepRows.first().getByText('Set Oct 30, 9:30 AM CDT', { exact: true }).waitFor();
   const capture = (region, stage) => region.screenshot({ path: join(evidence, `deal-step-${stage}-${width}-${theme}.png`), animations: 'disabled' });
   await capture(snapshot, 'open');
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);

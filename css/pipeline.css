@@ -167,7 +167,7 @@
 .deal-update-form { display:grid; gap:var(--space-2); margin-bottom:var(--space-4); }
 .deal-update-form textarea { min-height:80px; width:100%; box-sizing:border-box; }
 .deal-update-form input { min-height:44px; width:100%; box-sizing:border-box; }
-.deal-update-form summary { cursor:pointer; min-height:var(--touch); line-height:var(--touch); }
+.deal-step-editor summary, .deal-update-form summary { cursor:pointer; min-height:var(--touch); line-height:var(--touch); }
 .deal-document-upload label { display:grid; gap:var(--space-1); min-width:0; }
 .deal-document-upload select { max-width:100%; width:100%; }
 .deal-next-step-fields { display:grid; gap:var(--space-2); }
@@ -410,13 +410,16 @@ button.client-portal-link:disabled { cursor: wait; }
 .deal-open-steps h2 { margin: 0 0 var(--space-1); font-size: var(--font-size-2); }
 .deal-open-steps ul { list-style: none; margin: 0; padding: 0; }
 .deal-open-steps li {
+  padding-block: var(--space-2);
+  overflow-wrap: anywhere;
+}
+.deal-step-assignment {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
-  padding-block: var(--space-2);
-  overflow-wrap: anywhere;
 }
+.deal-step-assignment + .deal-step-assignment { margin-block-start: var(--space-2); }
 .deal-open-steps li + li { border-top: var(--hairline-width) solid var(--hairline); }
 .deal-open-steps :is(p, small) { margin: 0; color: var(--fg-muted); }
 .deal-open-steps button[aria-disabled="true"] { color: var(--fg-muted); cursor: wait; }

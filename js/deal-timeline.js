@@ -155,13 +155,13 @@ export function engineTimelineEntries(detail) {
     ...notes.map(note => ({ type: 'Note', when: note.created_at, actor: note.actor, text: noteText(note.text) })),
     ...(detail.activities || []).map(activity => ({
       type: activityLabels[activity.kind] || 'Activity', when: activity.occurred_at,
-      actor: activity.actor, text: noteText(activity.summary),
+      actor: activity.actor, text: noteText(activity.summary).trim() || noteText(activity.detail),
     })),
     ...(detail.documents || []).map(file => ({
       type: 'Document', when: file.prepared_at, actor: file.actor, text: file.name,
     })),
     ...(detail.next_actions || []).map(step => ({
-      type: step.title ? 'Deal item' : 'Next step', when: step.updated_at || step.due_on, actor: step.actor,
+      type: step.title ? 'Checklist item' : 'Next step', when: step.updated_at || step.due_on, actor: step.actor,
       text: [
         step.title || step.description,
         STEP_STATES.get(step.status),
@@ -183,7 +183,7 @@ export function engineTimelineEntries(detail) {
     })),
   ];
   return entries.flatMap(({ type, when, actor, text }) => {
-    if (!calendarDay(when)) return [];
+    if (!text?.trim() || !calendarDay(when)) return [];
     const dateOnly = when.length === 10;
     const instant = new Date(when);
     if (!Number.isFinite(instant.getTime())) return [];
