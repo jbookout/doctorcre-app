@@ -1,6 +1,7 @@
 import {
   Fragment,
   type KeyboardEvent,
+  type PointerEvent,
   type ReactNode,
   type RefObject,
   useCallback,
@@ -130,6 +131,15 @@ type TimelineViewProps = TimelineProps & {
   board?: boolean;
   reveal?: { group: string; row?: string | undefined; day: string } | undefined;
   onOpen?: (id: string) => void;
+  changeDate?:
+    | {
+        source: (id: string) => TimelineRow | undefined;
+        canMove: (row: TimelineRow) => boolean;
+        preview: { id: string; day: string } | null;
+        show: (change: { id: string; day: string } | null) => void;
+        begin: (id: string) => (day: string) => void;
+      }
+    | undefined;
 };
 
 type Folds = Record<string, boolean>;
@@ -821,6 +831,85 @@ function Arrows({
   );
 }
 
+type DateChange = NonNullable<TimelineViewProps["changeDate"]>;
+
+function DateGrip({
+  box,
+  change,
+  today,
+  px,
+}: {
+  box: Extract<RowBox, { kind: "bar" }>;
+  change: DateChange;
+  today: string;
+  px: number;
+}) {
+  type Edit = { day: string; save: (day: string) => void };
+  const drag = useRef<(Edit & { x: number }) | null>(null);
+  const keyEdit = useRef<Edit | null>(null);
+  const { row, spec } = box;
+  const source = change.source(row.id) ?? row;
+  const end = "due" in source ? source.due : "end" in source ? source.end : today;
+  const minimum = Math.max(dayOf(today), "start" in row ? dayOf(row.start) : dayOf(today));
+  const dayAt = (day: string, offset: number) =>
+    new Date(Math.max(minimum, dayOf(day) + offset) * 86_400_000).toISOString().slice(0, 10);
+  const show = (day: string) => change.show({ id: row.id, day });
+  const shifted = (event: PointerEvent<HTMLButtonElement>, start: { x: number; day: string }) =>
+    dayAt(start.day, Math.round((event.clientX - start.x) / px));
+  return (
+    <button
+      type="button"
+      className="timeline-grip"
+      aria-label={`Change date for ${row.name}`}
+      style={{ left: spec.left + spec.width - 10 }}
+      onPointerDown={(event) => {
+        if (event.pointerType === "touch" || event.button !== 0) return;
+        drag.current = { x: event.clientX, day: end, save: change.begin(row.id) };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (drag.current) show(shifted(event, drag.current));
+      }}
+      onPointerUp={(event) => {
+        if (!drag.current) return;
+        const day = shifted(event, drag.current);
+        const edit = drag.current;
+        drag.current = null;
+        change.show(null);
+        if (day !== edit.day) edit.save(day);
+      }}
+      onLostPointerCapture={() => {
+        if (drag.current) {
+          drag.current = null;
+          change.show(null);
+        }
+      }}
+      onKeyDown={(event) => {
+        const current = change.preview?.id === row.id ? change.preview.day : end;
+        if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
+          event.preventDefault();
+          keyEdit.current ??= { day: end, save: change.begin(row.id) };
+          show(dayAt(current, (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 7 : 1)));
+        } else if (event.key === "Escape") {
+          drag.current = null;
+          keyEdit.current = null;
+          change.show(null);
+        } else if (event.key === "Enter" && keyEdit.current) {
+          event.preventDefault();
+          const edit = keyEdit.current;
+          keyEdit.current = null;
+          change.show(null);
+          if (current !== edit.day) edit.save(current);
+        }
+      }}
+      onBlur={() => {
+        keyEdit.current = null;
+        if (!drag.current && change.preview?.id === row.id) change.show(null);
+      }}
+    />
+  );
+}
+
 export function Timeline({
   foldKey,
   today,
@@ -832,6 +921,7 @@ export function Timeline({
   board,
   reveal,
   onOpen,
+  changeDate,
   toolsHost,
 }: TimelineViewProps) {
   // middle is the day to centre after a zoom change; null puts today a third of the way in.
@@ -930,7 +1020,11 @@ export function Timeline({
     cutouts,
     bodyHeight,
   } = layoutTimeline(groups, folds, rowHeight, start, now, px, measure);
-  const activeHovered = hoveredId !== null && boxes.has(hoveredId) ? hoveredId : null;
+  const preview = changeDate?.preview;
+  const previewBox = preview && boxes.get(preview.id);
+  const original = preview && changeDate?.source(preview.id);
+  const prior = original && rowBox(original, rowMeta(original, now), 0, rowHeight, start, now, px, measure);
+  const activeHovered = !preview && hoveredId !== null && boxes.has(hoveredId) ? hoveredId : null;
   const hoveredBox = activeHovered ? boxes.get(activeHovered) : undefined;
   const note = hoveredBox ? noteForRow(hoveredBox.row, hoveredBox.meta, now, links, allRows) : undefined;
   const tipId = `${uid}-tip`;
@@ -994,6 +1088,7 @@ export function Timeline({
           </div>
           <div className="timeline-body">
             <div className="timeline-grid" aria-hidden="true">
+              {preview && <i className="timeline-drag-day" style={{ left: x(dayOf(preview.day)), width: px }} />}
               {saturdays.map((d) => (
                 <i
                   key={d}
@@ -1153,6 +1248,9 @@ export function Timeline({
                               onEnter={() => setHoveredId(row.id)}
                               onLeave={() => clearHover(row.id)}
                             />
+                            {changeDate && zoom !== "month" && box?.kind === "bar" && changeDate.canMove(row) && (
+                              <DateGrip box={box} change={changeDate} today={today} px={px} />
+                            )}
                           </div>
                         </div>
                       );
@@ -1161,6 +1259,27 @@ export function Timeline({
               );
             })}
             <div className="timeline-list-fill" />
+            {preview && previewBox?.kind === "bar" && (
+              <>
+                {prior?.kind === "bar" && (
+                  <i
+                    className="timeline-drag-original"
+                    aria-hidden="true"
+                    style={{
+                      left: `calc(var(--list) + ${prior.spec.left}px)`,
+                      width: prior.spec.width,
+                      top: previewBox.rowTop + 6,
+                    }}
+                  />
+                )}
+                <span
+                  className="timeline-drag-label"
+                  style={{ left: `calc(var(--list) + ${x(dayOf(preview.day))}px)`, top: previewBox.rowTop }}
+                >
+                  {weekdayDate(dayOf(preview.day), yearOf(now))}
+                </span>
+              </>
+            )}
             {hoveredBox && note && (
               <div ref={tipRef} id={tipId} role="tooltip" className="timeline-tip" data-for={hoveredBox.row.id}>
                 <strong className="timeline-tip-title">{note.title}</strong>

@@ -452,9 +452,10 @@ function renderPlan(detail) {
   if (!host || workspaceTab !== 'plan' || !detail?.plan) return;
   dealPlan ??= mountDealPlan(host);
   dealPlan.update({
-    mode: 'plan', today: businessDay(), viewer: state.selfActor,
-    plan: detail.plan, deal: detail.deal.id,
+    mode: 'plan', today: businessDay(), viewer: state.selfActor, request: sessionFetch,
+    reload: () => refreshPanel({ changed: true }), plan: detail.plan, deal: detail.deal.id,
     phase: columnByValue(detail.deal.phase)?.slug, steps: detail.next_actions || [],
+    kind: detail.deal.kind, canSave: state.nextDealSaves,
   });
 }
 
@@ -489,7 +490,8 @@ function renderBoard() {
       const phase = columnByValue(deal.phase)?.slug;
       return phase && deal.timeline ? [{ ...deal, phase }] : [];
     });
-    boardTimeline.update({ mode: 'board', deals, toolsHost: $('boardTimelineTools'), today: businessDay(), viewer: state.selfActor });
+    boardTimeline.update({ mode: 'board', deals, toolsHost: $('boardTimelineTools'), today: businessDay(), viewer: state.selfActor,
+      request: sessionFetch, reload: loadBoard, canSave: state.nextDealSaves });
     return;
   }
   const grouped = groupByColumn(rows);

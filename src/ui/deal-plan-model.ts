@@ -201,3 +201,57 @@ export function range(groups: TimelineGroup[], today: string) {
   to.sort();
   return { from: from[0] ?? today, to: dateAfter(to.at(-1) ?? today, 15) };
 }
+
+export function previewDates(
+  groups: TimelineGroup[],
+  links: TimelineLink[],
+  change: { id: string; day: string },
+  own: Record<string, string>,
+  today: string,
+) {
+  const rows = new Map(groups.flatMap((group) => group.rows.map((row) => [row.id, row] as const)));
+  const next = new Map(links.filter((link) => link.kind === "workflow").map((link) => [link.from, link.to]));
+  const original = rows.get(change.id);
+  if (original?.kind === "step" && original.state === "open")
+    rows.set(original.id, { ...original, due: change.day, when: dayText(change.day, today) });
+  if (original?.kind === "todo" && original.state === "expected") {
+    let prior = change.day;
+    let id: string | undefined = original.id;
+    for (const row of rows.values()) {
+      if (row.id !== id) continue;
+      if (row.kind !== "todo" || row.state !== "expected") break;
+      const start = id === change.id ? row.start : prior;
+      const target = own[id];
+      let end = change.day;
+      if (id !== change.id) {
+        end = target ?? dateAfter(start, dayOf(row.end) - dayOf(row.start));
+        if (end < start) end = start;
+      }
+      rows.set(id, { ...row, start, end, when: `exp. ${dayText(end, today)}` });
+      prior = end;
+      id = next.get(id);
+    }
+  }
+  const risk = new Set<string>();
+  const updated = links.map((link) => {
+    if (link.kind !== "deadline") return link;
+    const date = rows.get(link.to);
+    const todo = rows.get(link.from);
+    if (date?.kind !== "date" || todo?.kind !== "todo" || todo.state !== "expected" || date.detail === "Done")
+      return link;
+    const atRisk = todo.end > date.day;
+    if (atRisk) risk.add(todo.id);
+    rows.set(date.id, { ...date, atRisk });
+    return { ...link, atRisk };
+  });
+  return {
+    groups: groups.map((group) => ({
+      ...group,
+      rows: group.rows.map((row) => {
+        const fresh = rows.get(row.id) ?? row;
+        return fresh.kind === "todo" && fresh.state === "expected" ? { ...fresh, atRisk: risk.has(fresh.id) } : fresh;
+      }),
+    })),
+    links: updated,
+  };
+}

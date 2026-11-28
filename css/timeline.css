@@ -182,9 +182,24 @@
   .timeline-filters button, .timeline-tools button { padding-inline: 7px; }
   #workspace-plan:not([hidden]), #boardTimeline:not([hidden]) { height: max(380px, calc(100dvh - 168px)); }
 }
+.timeline-grip { position: absolute; z-index: 4; top: 5px; width: 20px; height: 24px; border-radius: var(--radius-2); cursor: ew-resize; touch-action: none; opacity: 0; }
+.timeline-track:hover .timeline-grip, .timeline-grip:focus-visible { opacity: 1; }
+.timeline-grip::before { content: ""; display: block; width: 3px; height: 12px; margin: auto; border-inline: 1px solid var(--fg); }
+.timeline-drag-day { position: absolute; inset-block: 0; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.timeline-drag-label { position: absolute; z-index: 4; pointer-events: none; padding: 2px 6px; background: var(--accent); color: var(--on-accent); border-radius: var(--radius-2); font-size: var(--font-size-1); white-space: nowrap; }
+@media (max-width: 760px), (pointer: coarse) { .timeline-grip { display: none; } }
+.timeline-drag-original { position: absolute; z-index: 3; pointer-events: none; height: 22px; border: 1px dashed var(--fg-muted); border-radius: var(--radius-2); }
+.deal-plan-typical { order: 1; margin-top: auto; }
+.deal-plan-details form { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 8px; }
+.deal-plan-details label { display: flex; gap: 6px; align-items: center; justify-content: space-between; flex: 1 1 auto; }
+.deal-plan-details input { color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius-2); padding: 4px; }
+.deal-plan-lengths { width: min(460px, 100%); max-height: calc(100% - 60px); overflow: auto; }
+.deal-plan-length h4 { margin: 12px 0 0; color: var(--fg-quiet); }
+.deal-plan-length input { width: 68px; }
 .app-layout-main .deal-plan-footer { display: flex; }
 .deal-plan-footer > button { flex: none; }
 #workspace-plan > .deal-plan { margin-block-end: 0; }
+#workspace-plan .timeline :is(.timeline-name, .timeline-label, .timeline-grip, .timeline-bar, .timeline-date-mark) { min-height: 0; min-width: 0; }
 .board-toolbar:has(#boardTimelineTools:not([hidden])) { gap: 4px; }
 #boardTimelineTools .timeline-tools { height: auto; gap: 3px; padding-inline: 0; }
 #boardTimelineTools .timeline-tools svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
@@ -197,4 +212,3 @@ body:has(#workspace-plan:not([hidden])) #panelBody { padding-block: 8px 0; }
   #workspace-plan:not([hidden]) { height: max(380px, calc(100dvh - 168px)); }
   #boardTimeline:not([hidden]) { height: max(380px, calc(100dvh - 214px)); }
 }
-#workspace-plan .timeline :is(.timeline-name, .timeline-label, .timeline-bar, .timeline-date-mark) { min-height: 0; min-width: 0; }
