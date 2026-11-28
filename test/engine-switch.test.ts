@@ -3051,7 +3051,11 @@ test("An introduction saves only with Clients and Vendors, Deals and Deal saves 
   const clientsVendors = ["clients-vendors-from-engine", "on"] as const;
   const dealsRead = ["deals-from-engine", "on"] as const;
   const dealSaves = ["deals-saves-from-engine", "on"] as const;
-  for (const path of ["/api/engine/introductions", `/api/engine/introductions/${id}`]) {
+  for (const path of [
+    "/api/engine/introductions",
+    `/api/engine/introductions/${id}`,
+    `/api/engine/introductions/${id}/remove`,
+  ]) {
     const request = () =>
       new Request(origin + path, { method: "POST", headers: { cookie: "session=synthetic", origin }, body: "{}" });
     for (const routing of [

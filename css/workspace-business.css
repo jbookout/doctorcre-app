@@ -522,12 +522,12 @@ body:not([data-directory-view="meetings"]) .vendor-meetings-host { display: none
 .client-deal-add { min-height: var(--touch); margin-top: var(--space-2); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-2); background: none; color: var(--fg-muted); font: inherit; font-weight: var(--font-weight-strong); cursor: pointer; }
 .client-deal-add:hover { background: var(--surface-2); color: var(--fg); }
 .deal-add-vendor { display: flex; flex-direction: column; gap: var(--space-2); box-sizing: border-box; max-width: 360px; margin-top: var(--space-1); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); font-size: var(--font-size-2); }
-.deal-add-vendor label, .deal-add-vendor legend { display: flex; flex-direction: column; gap: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
+.deal-add-vendor label, :is(.deal-add-vendor, .deal-vendor-menu) legend { display: flex; flex-direction: column; gap: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
 .deal-add-vendor :is(input, select) { min-height: var(--touch); padding: 0 var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; font-size: var(--font-size-2); }
-.deal-add-vendor fieldset { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; border: 0; }
-.deal-add-vendor legend { width: 100%; margin-bottom: var(--space-1); padding: 0; }
-.deal-add-vendor fieldset button { min-height: var(--touch); padding: 0 var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: none; color: var(--fg); font: inherit; cursor: pointer; }
-.deal-add-vendor fieldset button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); font-weight: var(--font-weight-strong); }
+:is(.deal-add-vendor, .deal-vendor-menu) fieldset { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; border: 0; }
+:is(.deal-add-vendor, .deal-vendor-menu) legend { width: 100%; margin-bottom: var(--space-1); padding: 0; }
+:is(.deal-add-vendor, .deal-vendor-menu) fieldset button { min-height: var(--touch); padding: 0 var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: none; color: var(--fg); font: inherit; cursor: pointer; }
+:is(.deal-add-vendor, .deal-vendor-menu) fieldset button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); font-weight: var(--font-weight-strong); }
 .deal-add-vendor-found { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; color: var(--fg-muted); }
 .deal-add-vendor-found button { width: 100%; min-height: var(--touch); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-2); background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
 .deal-add-vendor-found button:hover { background: var(--surface-2); }

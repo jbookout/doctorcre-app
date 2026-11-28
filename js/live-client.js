@@ -71,6 +71,15 @@ export function createLiveClient(opts = {}) {
     if (selfActor && selfActor !== session.actor.slug) throw Object.assign(new Error('Session changed. Reopen the record before writing.'), { code: 'session_changed' });
     return `${session.actor.slug}:${session.csrf_token}`;
   };
+  const postPartnerRecord = async (path, receipt, body, binding, send = fetchReadImpl) => {
+    const response = await send(path, { method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) },
+      body: JSON.stringify(body) });
+    const data = await response.json();
+    if (!response.ok) throw Object.assign(Error('Save refused'), { status: response.status, payload: data });
+    if (typeof data?.[receipt] !== 'string') throw Error('Save receipt unavailable');
+    return { ok: true, data, sent: body };
+  };
   const sessionCommands = createRetainedCommands({ scope: commandSession });
   const sessionWrites = new Set(['link-parties', 'set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
@@ -294,17 +303,25 @@ export function createLiveClient(opts = {}) {
     },
     async getPostCallFollowups({ signal } = {}) { return rpc('read-post-call-followups', {}, signal); },
 
+    async savePartnerRecordOnce(path, receipt, args) {
+      let binding;
+      try {
+        binding = await commandSession();
+      } catch (error) {
+        return { ok: false, problem: error.payload ?? { error: error.code } };
+      }
+      try {
+        return await postPartnerRecord(path, receipt, { ...args, idempotency_key: uuidv4() }, binding, fetchImpl);
+      } catch (error) {
+        return { ok: false, problem: error.payload ?? { error: error.code },
+          pending: classifyCommandOutcome({ error }).status === 'unknown' };
+      }
+    },
+
     async savePartnerRecord(path, key, receipt, args) {
       try {
-        return await sessionCommands.send(key, args ?? sessionCommands.pending(key), async (body, binding) => {
-          const response = await fetchReadImpl(path, { method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) },
-            body: JSON.stringify(body) });
-          const data = await response.json();
-          if (!response.ok) throw Object.assign(Error('Save refused'), { status: response.status, payload: data });
-          if (typeof data?.[receipt] !== 'string') throw Error('Save receipt unavailable');
-          return { ok: true, data, sent: body };
-        });
+        return await sessionCommands.send(key, args ?? sessionCommands.pending(key),
+          (body, binding) => postPartnerRecord(path, receipt, body, binding));
       } catch (error) {
         return { ok: false, problem: error.payload ?? { error: error.code }, pending: Boolean(error.pendingRequest) };
       }

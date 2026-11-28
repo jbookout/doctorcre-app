@@ -13,6 +13,8 @@ export interface Role {
 export interface ClientDeal {
   id: string;
   name: string;
+  client_id?: string;
+  client_name?: string;
   phase: string | null;
   phase_label: string | null;
   open: boolean;
@@ -21,9 +23,11 @@ export interface ClientDeal {
   vendors: { party_id: string; name: string; roles: Role[]; introduction_id: string | null }[];
   introductions: {
     id: string;
+    version?: string;
     vendor_id: string;
     vendor_name: string;
-    made_by: "vendor" | "team";
+    made_by: "vendor" | "team" | "client";
+    removable?: boolean;
     introduced_by: Partner | null;
     introduced_party_id: string;
     introduced_party_name: string;
@@ -32,7 +36,7 @@ export interface ClientDeal {
     chosen: boolean;
   }[];
 }
-type Introduction = ClientDeal["introductions"][number];
+export type Introduction = ClientDeal["introductions"][number];
 
 export interface Vendor {
   id: string;
@@ -46,6 +50,7 @@ interface Referral extends Vendor {
   referred: string;
 }
 type Introducer = Partner | "unrecorded";
+type Source = Introducer | "client";
 export interface DiagramClient {
   id: string;
   name: string;
@@ -63,7 +68,7 @@ function treeOf(client: DiagramClient, deal: ClientDeal) {
     introduction,
   });
   const referredBy = new Map<string, Referral>();
-  const introducedFor = new Map<Introducer, Map<string, Vendor>>();
+  const introducedFor = new Map<Source, Map<string, Vendor>>();
   for (const intro of deal.introductions) {
     const box = vendor(intro.vendor_id, intro.vendor_name, intro.chosen, intro);
     if (intro.made_by === "vendor") {
@@ -71,10 +76,10 @@ function treeOf(client: DiagramClient, deal: ClientDeal) {
       referredBy.set(box.id, { ...box, referred });
       continue;
     }
-    const by = intro.introduced_by ?? "unrecorded";
+    const by = intro.made_by === "client" ? "client" : (intro.introduced_by ?? "unrecorded");
     introducedFor.set(by, (introducedFor.get(by) ?? new Map()).set(box.id, box));
   }
-  const list = (by: Introducer) => [...(introducedFor.get(by)?.values() ?? [])];
+  const list = (by: Source) => [...(introducedFor.get(by)?.values() ?? [])];
   return {
     referredBy: [...referredBy.values()],
     introducedFor: list,
@@ -174,6 +179,7 @@ function VendorBox({
   trail,
   boxRef,
   still = false,
+  referred,
 }: {
   vendor: Vendor;
   mark: Mark;
@@ -181,6 +187,7 @@ function VendorBox({
   boxRef?: Ref<HTMLDivElement> | undefined;
   // A box inside the stacked pile is part of the pile's own button.
   still?: boolean;
+  referred?: string;
 }) {
   const menu = useContext(Menu);
   const [open, setOpen] = useState(false);
@@ -192,12 +199,17 @@ function VendorBox({
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
-  const caption = withRole(roleOf(vendor), <span className="deal-diagram-word">{WORD[mark]}</span>);
-  const detail = useContext(Large) ? dated("Introduced", vendor.introduction?.introduced_on ?? null) : null;
+  const caption = withRole(
+    roleOf(vendor),
+    referred ? `Referred ${referred}` : <span className="deal-diagram-word">{WORD[mark]}</span>,
+  );
+  const detail = useContext(Large)
+    ? dated(referred ? "Referred" : "Introduced", vendor.introduction?.introduced_on ?? null)
+    : null;
   const box = (toggle?: BoxProps["toggle"]) => (
     <Box
-      tone={mark}
-      lead={<Glyph mark={mark} />}
+      tone={referred ? "person" : mark}
+      lead={<Glyph mark={referred ? "referred" : mark} />}
       name={vendor.name}
       caption={caption}
       detail={detail}
@@ -312,25 +324,24 @@ interface DiagramProps {
 }
 
 function Diagram({ client, deal, large }: { client: DiagramClient; deal: ClientDeal; large: boolean }) {
-  const { referredBy, introducedFor, notRecorded } = treeOf(client, deal);
+  const subject =
+    deal.client_id && deal.client_id !== client.id
+      ? { id: deal.client_id, name: deal.client_name ?? client.name }
+      : client;
+  const { referredBy, introducedFor, notRecorded } = treeOf(subject, deal);
   const others = (["joe", "dell", "unrecorded"] as const).filter((by) => by !== deal.owner);
   return (
     <Large.Provider value={large}>
       <div className="deal-diagram" data-size={large ? "large" : undefined}>
-        <Box tone="client" lead={null} name={client.name} caption="Client" />
+        <Box tone="client" lead={null} name={subject.name} caption="Client" />
         <ul>
           {referredBy.map((vendor) => (
             <Branch key={vendor.id} line="plain">
-              <Box
-                tone="person"
-                lead={<Glyph mark="referred" />}
-                name={vendor.name}
-                caption={withRole(roleOf(vendor), `Referred ${vendor.referred}`)}
-                detail={large ? dated("Referred", vendor.introduction?.introduced_on ?? null) : null}
-              />
+              <VendorBox vendor={vendor} mark={vendor.chosen ? "chosen" : "introduced"} referred={vendor.referred} />
             </Branch>
           ))}
           <IntroducerBranch by={deal.owner} label="Deal owner" vendors={introducedFor(deal.owner)} />
+          <Vendors vendors={introducedFor("client")} />
           {others.map(
             (by) =>
               introducedFor(by).length > 0 && (

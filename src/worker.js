@@ -1264,14 +1264,16 @@ self.addEventListener('activate', event => event.waitUntil((async () => {
         || ((dealRead || pathname.startsWith('/api/engine/documents/')) && !await routeToEngine(env, DEALS))
         || (pathname === '/api/engine/leads/counts' && !await routeToEngine(env, LEADS)))
       return json({ error: 'not_found' }, 404);
+    const introductionDoor = /^\/api\/engine\/introductions(?:\/[0-9a-fA-F-]{36}(?:\/remove)?)?$/.test(pathname);
     const nextDealsOnly = (pathname === '/api/engine/parties/search' && url.searchParams.has('role'))
       || /^\/api\/engine\/clients\/[^/]+\/leases$/.test(pathname)
       || /^\/api\/engine\/deals\/[^/]+\/parties(?:\/remove)?$/.test(pathname)
-      || /^\/api\/engine\/introductions(?:\/[0-9a-fA-F-]{36})?$/.test(pathname);
+      || introductionDoor;
     if (nextDealsOnly && (!await routeToEngine(env, DEALS) || !await routeToEngine(env, NEXT_DEAL_SAVES)))
       return json({ error: 'not_found' }, 404);
     // Party saves and their read land in the new database, so they follow the Clients and Vendors switch.
-    const partyDoor = (request.method === 'POST' && /^\/api\/engine\/(?:parties|clients|vendors|party-links|introductions)(?:\/[0-9a-fA-F-]{36})?$/.test(pathname))
+    const partyDoor = (request.method === 'POST' && /^\/api\/engine\/(?:parties|clients|vendors|party-links)(?:\/[0-9a-fA-F-]{36})?$/.test(pathname))
+      || (request.method === 'POST' && introductionDoor)
       || /^\/api\/engine\/parties\/[0-9a-fA-F-]{36}$/.test(pathname)
       // Link's search names no role, so it reads the new database; a Deals client search names its role.
       || (pathname === '/api/engine/parties/search' && !url.searchParams.has('role'));

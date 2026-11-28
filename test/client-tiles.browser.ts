@@ -109,26 +109,38 @@ test("Clients opens on tiles in the approved order, and a tile opens its clients
   await page.waitForFunction(() => document.querySelector("a.directory-tile .tile-count")?.textContent === "40");
   assert.equal(asked.at(-1)?.searchParams.get("owner"), "dell");
 
+  const listRead = (practiceType: string | null) =>
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.ok() &&
+        url.pathname === "/api/v1/business/clients" &&
+        !url.searchParams.has("tiles") &&
+        url.searchParams.get("practice_type") === practiceType
+      );
+    });
+  const dentalRead = listRead("Dental");
   await dental.click();
   await page.waitForURL(/practice_type=Dental/);
+  const list = new URL((await dentalRead).url());
   await page.locator(".record-row").first().waitFor();
   assert.equal(await page.locator("#directoryTiles").isHidden(), true);
-  const list = asked.at(-1);
-  assert.equal(list?.searchParams.get("practice_type"), "Dental");
-  assert.equal(list?.searchParams.get("owner"), "dell");
-  assert.equal(list?.searchParams.has("tiles"), false);
+  assert.equal(list.searchParams.get("owner"), "dell");
 
   await page.goBack();
+  const notSetRead = listRead("");
   await page.locator("a.directory-tile", { hasText: "Not set" }).click();
   await page.waitForURL(/not_set=true/);
+  await notSetRead;
   await page.locator(".record-row").first().waitFor();
-  assert.equal(asked.at(-1)?.searchParams.get("practice_type"), "");
 
   await page.goBack();
+  const allRead = listRead(null);
   await page.locator("a.directory-tile", { hasText: "All clients" }).click();
   await page.waitForURL(/all=true/);
+  const all = new URL((await allRead).url());
   await page.locator(".record-row").first().waitFor();
-  assert.equal(asked.at(-1)?.searchParams.has("all"), false, "All clients is the plain list read");
+  assert.equal(all.searchParams.has("all"), false, "All clients is the plain list read");
 });
 
 test("Inside a tile its chips count and filter its clients, and Clients goes back to the tiles", async (t) => {
