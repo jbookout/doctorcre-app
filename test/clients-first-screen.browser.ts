@@ -25,12 +25,10 @@ async function openClients(
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height } });
   await page.clock.install({ time: new Date("2026-10-01T18:00:00Z") });
-  const listReads: URL[] = [];
   await page.route("https://**", (r) => r.abort());
   await page.route("**/api/v1/business/**", async (r) => {
     await held;
     const url = new URL(r.request().url());
-    if (url.pathname === "/api/v1/business/clients") listReads.push(url);
     return r.fulfill({ json: directoryFixture(url.href) });
   });
   await page.route("**/mcp", (route) => {
@@ -41,7 +39,7 @@ async function openClients(
   });
   await page.goto(`${server.url}${path}`);
   await page.locator(ready).first().waitFor();
-  return { page, listReads };
+  return { page };
 }
 
 const firstScreen = (page: Page) =>
@@ -167,7 +165,7 @@ test("loading Clients shows row-height placeholders that fill the list", async (
 });
 
 test("a column name sorts the list and a second click returns to name order", async (t) => {
-  const { page, listReads } = await openClients(t, 1280, 800);
+  const { page } = await openClients(t, 1280, 800);
   for (const [label, sort] of [
     ["Status", "status"],
     ["Practice type", "vertical"],
@@ -176,10 +174,15 @@ test("a column name sorts the list and a second click returns to name order", as
     ["Updated", "recent"],
   ] as const) {
     const heading = page.locator(".list-head").getByRole("button", { name: label, exact: true });
-    await heading.click();
+    const [response] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === "/api/v1/business/clients" && url.searchParams.get("sort") === sort;
+      }),
+      heading.click(),
+    ]);
+    assert.equal(response.ok(), true, `${label} asks the engine for its order`);
     await page.waitForURL(new RegExp(`sort=${sort}`));
-    await page.locator(".record-row").first().waitFor();
-    assert.equal(listReads.at(-1)?.searchParams.get("sort"), sort, `${label} asks the engine for its order`);
     assert.equal(await heading.getAttribute("aria-pressed"), "true");
   }
   await page.locator(".list-head").getByRole("button", { name: "Updated", exact: true }).click();
