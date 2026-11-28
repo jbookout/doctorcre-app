@@ -64,6 +64,7 @@ export const UI_ENTRIES = {
   'ui-vendor-relationships': 'vendor-relationships',
   'ui-deal-client-portal': 'deal-client-portal',
   'ui-timeline': 'timeline',
+  'ui-deal-plan': 'deal-plan',
   'ui-deal-tours': 'deal-tours',
   'ui-deal-tour-plans': 'deal-tour-plans',
   'ui-inbox': 'inbox-entry',

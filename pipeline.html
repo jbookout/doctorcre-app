@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="/css/deal-next-steps.css">
   <link rel="stylesheet" href="/css/correspondence.css">
   <link rel="stylesheet" href="/css/deal-timeline.css">
+  <link rel="stylesheet" href="/css/timeline.css">
   <link rel="stylesheet" href="/css/deal-path.css">
   <link rel="stylesheet" href="/css/deal-client-portal.css">
   <link rel="stylesheet" href="/css/deal-attention.css">
@@ -43,10 +44,12 @@
         <div class="chip-bar" role="group" aria-label="Deal view">
           <button class="chip" id="boardView" type="button" aria-pressed="true">Board</button>
           <button class="chip" id="listView" type="button" aria-pressed="false">List</button>
+          <button class="chip" id="timelineView" type="button" aria-pressed="false" aria-controls="boardTimeline" hidden>Timeline</button>
           <button class="chip" id="closedView" type="button" aria-pressed="false" aria-controls="closedDealsView">Closed deals</button>
           <button class="chip" id="lostView" type="button" aria-pressed="false" aria-controls="closedDealsView">Lost deals</button>
           <button class="chip" id="parkedToggle" type="button" aria-pressed="false">Parked</button>
         </div>
+        <div id="boardTimelineTools" hidden></div>
     </div>
 
     <div class="app-section-tabs" data-layout-slot="title"><nav aria-label="Deals pages"><a href="/deals" aria-current="page">Local Deals</a><a href="/deals?view=national" aria-label="National Accounts"><span>National<span class="wide-only"> Accounts</span></span></a></nav><h1 id="pageTitle" class="sr-only">Local Deals</h1><div class="deal-crumb"><button id="panelClose" type="button" aria-label="Back to deals">Deals</button><h1 id="panelTitle" tabindex="-1">Deal</h1></div></div>
@@ -71,6 +74,7 @@
 
     <div class="pipeline-layout">
       <div class="kanban" id="kanban" aria-label="Deals by phase" tabindex="-1"></div>
+      <div id="boardTimeline" hidden></div>
       <section id="closedDealsView" hidden aria-labelledby="closedDealsTitle">
         <h2 id="closedDealsTitle">Closed deals</h2>
         <div class="field"><label for="closedSearch">Search closed deals</label><input id="closedSearch" type="search" placeholder="Deal, client, kind, or close date"></div>

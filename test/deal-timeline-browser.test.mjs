@@ -6,9 +6,9 @@ import {dealHref} from '../js/home-dashboard-model.js';
 const root=new URL('../',import.meta.url);
 // A touch tablet: the iPad Mini portrait profile.
 const ipad={viewport:{width:768,height:1024},deviceScaleFactor:2,isMobile:true,hasTouch:true};
-async function open(t,{width=1440,device,link=false,reducedMotion='no-preference',fixtureDelayMs=0,noteOrder=false}={}) {
+async function open(t,{width=1440,height=960,touch,device,link=false,reducedMotion='no-preference',fixtureDelayMs=0,noteOrder=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({...(device?ipad:{viewport:{width,height:960}}),reducedMotion});
+ const page=await browser.newPage({...(device?ipad:{viewport:{width,height},...(touch === undefined ? {} : {hasTouch:touch,isMobile:touch})}),reducedMotion});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install({time:new Date('2026-10-04T17:00:00Z')});
  await page.route('**/*',async route=>{
@@ -167,4 +167,76 @@ for (const timezoneId of ['UTC','America/Chicago','America/Los_Angeles','Asia/To
  const assertions=await exercise(page,`${fixture.origin}/js/deal-timeline.js`);
  assert.equal(assertions.length,83);
  assert.ok(assertions.every(result=>result.passed));
+});
+
+const planPhase={phase:'legal',from_on:'2026-10-03',to_on:null,expected_from_on:null,expected_to_on:'2026-11-05'};
+const planRows=[
+ {id:'review',kind:'todo',phase:'legal',label:'Review the lease',state:'current',day:2,typical_days:7,from_on:'2026-10-03',expected_to_on:'2026-10-10'},
+ {id:'sign',kind:'todo',phase:'legal',label:'Sign the lease',state:'expected',typical_days:7,expected_from_on:'2026-10-10',expected_to_on:'2026-10-17'},
+ {id:'step:sample',kind:'step',phase:'legal',owner:'dell',state:'open',from_on:'2026-10-04',to_on:'2026-10-07',done_on:null,label:'Call about the lease',change_id:12},
+];
+const plan={phases:[planPhase],rows:planRows,arrows:[{from:'review',to:'sign',at_risk:false}],expected_signing_on:'2026-10-17',stale:null,own_dates:{},base_version:0};
+async function showPlan(page) {
+ await page.evaluate(async plan=>{
+  const {state}=await import('/js/pipeline.js');
+  const get=state.client.getDeal.bind(state.client);
+  state.client.getDeal=async (...args)=>({...await get(...args),plan,next_actions:[{id:'sample',description:'Call about the lease',change_id:12}]});
+ },plan);
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();
+ await page.getByRole('button',{name:'Lease signing expected Oct 17'}).click({timeout:3000});
+ return page.getByRole('tabpanel',{name:'Plan'});
+}
+
+for(const [width,height,touch] of [[1280,640,false],[1440,900,false],[390,844,true]]) {
+ test(`Plan keeps the chart on screen at ${width} × ${height}`,async t=>{
+  const {page,errors}=await open(t,{width,height,touch});
+  const tab=await showPlan(page);
+  await tab.getByRole('button',{name:'Sign the lease',exact:true}).first().waitFor();
+  if(touch) {
+   await tab.getByRole('button',{name:'Sign the lease',exact:true}).first().tap();
+   await tab.getByRole('region',{name:'Sign the lease'}).waitFor();
+   assert.equal(await tab.getByRole('button',{name:/Change date for/}).count(),0);
+   assert.equal(await tab.locator('.timeline-scroll').evaluate(node=>node.scrollWidth>node.clientWidth),true);
+  } else {
+   await tab.getByRole('button',{name:'Recorded only'}).click();
+   assert.equal(await tab.getByRole('button',{name:/Sign the lease/}).count(),0);
+   assert.equal(await tab.getByRole('button',{name:/Review the lease/}).count()>0,true);
+   await tab.getByRole('button',{name:'Recorded only'}).click();
+  }
+  await mkdir(new URL('out/test-artifacts/',root),{recursive:true});
+  await page.screenshot({path:new URL(`out/test-artifacts/deal-plan-${width}.png`,root).pathname});
+  const box=await tab.locator('.timeline').boundingBox();
+  assert.ok(box.y+box.height <= height);
+  assert.deepEqual(errors,[]);
+ });
+}
+
+for(const [width,height,touch] of [[1280,640,false],[1440,900,false],[390,844,true]]) test(`Deals Timeline expands one row per open deal at ${width} × ${height}`,async t=>{
+ const {page}=await open(t,{width,height,touch});
+ await page.evaluate(async ({planPhase,planRows})=>{
+  const {state}=await import('/js/pipeline.js');
+  const get=state.client.getBoard.bind(state.client);
+  const timeline={phase_spans:[planPhase],rows:planRows,arrows:[],dates:[],at_risk_count:0,expected_signing_on:'2026-10-17',stale:null};
+  state.client.getBoard=async (...args)=>{
+    const board=await get(...args);
+    const rows=board.deals.filter(row=>row.id==='d14').map(row=>({...row,name:'Example active deal',short_name:'Example active deal',owner:'dell',timeline}));
+    const more=Array.from({length:23},(_,index)=>({...rows[0],id:`sample-${index}`,name:`Example timeline deal ${index+1}`,short_name:null,owner:index%2?'joe':'dell'}));
+    return {...board,board_from_engine:true,deals:[...rows,...more]};
+  };
+ },{planPhase,planRows});
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
+ await page.getByRole('button',{name:'Refresh',exact:true}).click();
+ await page.getByRole('button',{name:'Timeline',exact:true}).click();
+ const chart=page.locator('#boardTimeline');
+ assert.equal(await chart.getByRole('link',{name:'Example active deal',exact:true}).count(),1);
+ assert.equal(await chart.locator('[data-group]').count(),24);
+ assert.equal(await chart.locator('.timeline-scroll').evaluate(node=>node.scrollWidth>node.clientWidth),true);
+ assert.equal(await chart.getByRole('button',{name:'Sign the lease',exact:true}).count(),0);
+ await chart.getByRole('button',{name:'Show rows for Example active deal'}).click();
+ await chart.getByRole('button',{name:'Sign the lease',exact:true}).first().waitFor();
+ await page.getByRole('button',{name:'Month',exact:true}).click();
+ assert.equal(await chart.locator('.timeline').getAttribute('data-day-width'),'4');
+ await mkdir(new URL('out/test-artifacts/',root),{recursive:true});
+ await page.screenshot({path:new URL(`out/test-artifacts/deals-timeline-${width}.png`,root).pathname});
 });

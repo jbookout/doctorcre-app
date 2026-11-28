@@ -1,3 +1,4 @@
+import { mountDealPlan } from './ui-deal-plan.generated.js';
 import { hasTourDrafts, legacyTourDraftScope, TOUR_DRAFT_KEYS } from './offline-tour-session.js';
 import { createDayStore } from '../tours/day-store.js';
 import { emailConversation, redactEmailAddresses, suggestionEmail } from './ui-deal-suggestion-email.generated.js';
@@ -86,7 +87,7 @@ const state = {
   filter: ['joe','dell'].includes(incomingScope.get('owner')) ? incomingScope.get('owner') : 'all',
   personalScope: incomingScope.get('owner') === 'me',
   scopeFilter: ['flagged', 'no-next-step'].includes(incomingScope.get('filter')) ? incomingScope.get('filter') : 'all',
-  view: ['list','closed','lost'].includes(incomingScope.get('view')) ? incomingScope.get('view') : 'board',
+  view: ['list','timeline','closed','lost'].includes(incomingScope.get('view')) ? incomingScope.get('view') : 'board',
   closedDeals: null,
   lostDeals: null,
   parkedOpen: false,
@@ -444,13 +445,31 @@ function renderBoardPlaceholder() {
   board.innerHTML = reading ? boardPlaceholderHtml() : '';
 }
 
+let boardTimeline;
+let dealPlan;
+function renderPlan(detail) {
+  const host = $('workspace-plan');
+  if (!host || workspaceTab !== 'plan' || !detail?.plan) return;
+  dealPlan ??= mountDealPlan(host);
+  dealPlan.update({
+    mode: 'plan', today: businessDay(), viewer: state.selfActor,
+    plan: detail.plan, deal: detail.deal.id,
+    phase: columnByValue(detail.deal.phase)?.slug, steps: detail.next_actions || [],
+  });
+}
+
 function renderBoard() {
   const board = $('kanban');
   if (!board) return;
-  board.hidden = ['closed','lost'].includes(state.view);
-  $('boardLive').hidden = ['closed','lost'].includes(state.view);
+  const timeline = state.view === 'timeline';
+  $('timelineView').hidden = !state.boardFromEngine;
+  $('timelineView').setAttribute('aria-pressed', String(timeline));
+  $('boardTimeline').hidden = !timeline;
+  $('boardTimelineTools').hidden = !timeline;
+  board.hidden = timeline || ['closed','lost'].includes(state.view);
+  $('boardLive').hidden = timeline || ['closed','lost'].includes(state.view);
   $('closedDealsView').hidden = !['closed','lost'].includes(state.view);
-  $('parkedToggle').hidden = ['closed','lost'].includes(state.view);
+  $('parkedToggle').hidden = timeline || ['closed','lost'].includes(state.view);
   if (['closed','lost'].includes(state.view)) { renderClosedDeals(); return; }
   if (!state.boardRead) { renderBoardPlaceholder(); return; }
   board.removeAttribute('aria-busy');
@@ -464,6 +483,15 @@ function renderBoard() {
   }
   publishDocRead('getBoard', { deals: rows });
   renderBoardMessage();
+  if (timeline) {
+    boardTimeline ??= mountDealPlan($('boardTimeline'));
+    const deals = rows.flatMap(deal => {
+      const phase = columnByValue(deal.phase)?.slug;
+      return phase && deal.timeline ? [{ ...deal, phase }] : [];
+    });
+    boardTimeline.update({ mode: 'board', deals, toolsHost: $('boardTimelineTools'), today: businessDay(), viewer: state.selfActor });
+    return;
+  }
   const grouped = groupByColumn(rows);
   state.unplaced = grouped.unplaced.length;
   const focusedStage = board.contains(document.activeElement) ? document.activeElement?.dataset?.collapseStage : null;
@@ -600,6 +628,7 @@ function applyBoardSnapshot(board) {
     pageDocContext?.finish(contextRead, board);
     ++panelReadSequence;
     state.panelDetail = null;
+    dealPlan?.dispose(); dealPlan = null;
     disposeChecklist();
     disposeActivityAttribution();
     disposePanelCallReview();
@@ -1464,6 +1493,7 @@ async function copyRequirementDraft() {
 }
 export const workspaceTabs = [
   {id:'overview', label:'Overview'},
+  {id:'plan', label:'Plan'},
   {id:'activity', label:'Activity'},
   {id:'tours', label:'Tours'},
   {id:'documents', label:'Documents'},
@@ -1518,6 +1548,8 @@ function revealTab(tab) {
 function placeFreshness(id) {
   const line = $('panelBody').querySelector('.deal-freshness');
   if (!line) return;
+  if (id === 'plan') line.hidden = true;
+  else line.hidden = false;
   if (id === 'overview') $('workspace-overview').querySelector('[data-detail-read="add-critical-date"]').after(line, $('detailReadStatus'));
   else $('panelBody').prepend(line, $('detailReadStatus'));
 }
@@ -1532,6 +1564,7 @@ function selectWorkspaceTab(id) {
   }
   placeFreshness(id);
   revealTab($(`tab-${id}`));
+  if (id === 'plan') renderPlan(state.panelDetail);
   if (id === 'documents') void dealDocumentsPanel?.load();
   if (id === 'tours') void dealToursPanel?.load();
   if (id === 'activity') {
@@ -1989,7 +2022,7 @@ function workspaceHtml(detail, engineMode = privateSession()?.engineSignIn) {
     <div data-detail-read="add-critical-date" data-available="${canAddCriticalDate}">${canAddCriticalDate ? criticalDateFormHtml() : ''}</div>
     <div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     ${fromEngine ? `<p id="detailStepStatus" role="status"></p><div class="deal-parked-line" data-detail-read="parked">${parked ? `${parkingSummary}${controlsAvailable ? `<button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : ''}` : ''}</div>` : ''}
-    <div data-detail-read="path">${dealPathHtml({ phases: COLUMNS, current: columnByValue(d.phase)?.slug ?? null, checklist: detail.checklist, showTodos: fromEngine, today, canMove: controlsAvailable && !parked, receiptHtml: fromEngine ? phaseMove : '', focusedItem: focusedChecklistItem(d.id) })}</div>${fromEngine ? `<div class="deal-overview-grid">${stepsHtml(`${snapshotHtml}${ownStep ? '' : dealUpdateFormHtml(false, today)}`)}
+    <div data-detail-read="path">${dealPathHtml({ phases: COLUMNS, current: columnByValue(d.phase)?.slug ?? null, checklist: detail.checklist, showTodos: fromEngine, today, canMove: controlsAvailable && !parked, receiptHtml: fromEngine ? phaseMove : '', focusedItem: focusedChecklistItem(d.id), signingOn: detail.plan?.expected_signing_on })}</div>${fromEngine ? `<div class="deal-overview-grid">${stepsHtml(`${snapshotHtml}${ownStep ? '' : dealUpdateFormHtml(false, today)}`)}
       <div data-detail-read="latest">${renderLatestActivity(detail, { planTours, note: activityNoteDraft, canNote: Boolean(state.selfActor), ports: activityPorts })}</div>
       <div class="deal-overview-side">
         <div data-detail-read="invoice">${dealInvoiceHtml(detail.invoice, dateCaption)}</div>
@@ -2007,6 +2040,7 @@ function workspaceHtml(detail, engineMode = privateSession()?.engineSignIn) {
     <section id="workspace-documents" role="tabpanel" aria-labelledby="tab-documents" hidden>${fromEngine ? `<h2>Documents</h2>${detail.next_deal_saves ? '<div id="deal-document-upload"></div>' : ''}<div data-detail-read="filed-documents">${filedDocumentsHtml(detail.documents)}</div>` : ''}</section>
     <section id="workspace-client-portal" role="tabpanel" aria-labelledby="tab-client-portal" hidden>${fromEngine ? `<div data-detail-read="client-website">${clientPortalHtml({ deal: d.id, url: d.client_portal_url, clientName: d.client_name })}</div>` : ''}</section>
     <section id="workspace-tours" role="tabpanel" aria-labelledby="tab-tours" hidden>${engineMode ? '<p>Not available yet</p>' : ''}</section>
+    <section id="workspace-plan" role="tabpanel" aria-labelledby="tab-plan" hidden></section>
     <section id="workspace-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>${fromEngine ? activityPanel(detail, planTours) : `<div data-detail-read="events">${workspaceEventsHtml(detail, nextItem)}</div>${renderDealTimeline(detail)}
       <h2>Correspondence &amp; notes</h2>
       <details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details>
@@ -2279,6 +2313,7 @@ async function readPanel(id) {
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
         }
       }
+      renderPlan(detail);
       void dealToursPanel?.refresh();
       void dealDocumentsPanel?.refresh();
       loadSuggestionEmails(detail);
@@ -2314,6 +2349,7 @@ async function refreshEvidence(detail, id, seq) {
 }
 
 function paintPanel(detail) {
+  dealPlan?.dispose(); dealPlan = null;
   $('panelTitle').textContent = dealTitle(detail.deal);
   renderWorkspaceFacts(detail);
   disposeChecklist();
@@ -2458,6 +2494,8 @@ function paintPanel(detail) {
     dispose() { documentsDisposed = true; documentsMounted?.dispose(); },
   };
   $('tab-client-portal').hidden = !fromEngine;
+  $('tab-plan').hidden = !detail.plan;
+  if (workspaceTab === 'plan' && !detail.plan) workspaceTab = 'overview';
   selectWorkspaceTab(fromEngine && requestedClientPortal ? 'client-portal'
     : !fromEngine && workspaceTab === 'client-portal' ? 'overview' : workspaceTab);
   mountPanelActivityAttribution();
@@ -2466,6 +2504,7 @@ function paintPanel(detail) {
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   if (!fromHistory && dealDocumentsPanel && !dealDocumentsPanel.confirmLeave()) return;
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
+  dealPlan?.dispose(); dealPlan = null;
   disposeChecklist();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
@@ -2482,7 +2521,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   const toursLink = scope.get('deal') === dealId && (scope.has('property') || scope.get('tab') === 'tours');
   const linkedTab = scope.get('deal') === dealId ? scope.get('tab') : null;
   const renamedTab = renamedTabs[linkedTab] ?? linkedTab;
-  workspaceTab = toursLink ? 'tours' : renamedTab === 'activity' ? 'activity' : 'overview';
+  workspaceTab = toursLink ? 'tours' : ['plan', 'activity'].includes(renamedTab) ? renamedTab : 'overview';
   requestedClientPortal = !toursLink && renamedTab === 'client-portal';
   timelineType = '';
   activityFilter = 'all';
@@ -2507,6 +2546,8 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   $('workspaceFacts').replaceChildren();
   $('workspaceTabs').innerHTML = workspaceTabs.map(tab => `<button class="workspace-tab" type="button" role="tab" id="tab-${tab.id}" aria-controls="workspace-${tab.id}" aria-selected="${tab.id === workspaceTab}" tabindex="${tab.id === workspaceTab ? 0 : -1}" data-workspace-tab="${tab.id}">${tab.label}</button>`).join('');
   $('tab-client-portal').hidden = true;
+  $('tab-plan').hidden = true;
+  dealPlan?.dispose(); dealPlan = null;
   $('main').hidden = true; panel.hidden = false;
   document.body.classList.add('workspace-open');
   pageScroller().scrollTo({ top: 0, behavior: 'instant' });
@@ -2544,6 +2585,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
 async function closeWorkspace({ fromHistory = false } = {}) {
   if (!fromHistory && dealDocumentsPanel && !dealDocumentsPanel.confirmLeave()) return;
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
+  dealPlan?.dispose(); dealPlan = null;
   disposeChecklist();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
@@ -2935,6 +2977,9 @@ function wire() {
     else closeWorkspace({fromHistory:true});
   });
   $('panelClose')?.addEventListener('click', () => closeWorkspace());
+  $('panelBody').addEventListener('click', event => {
+    if (event.target.closest('[data-open-deal-plan]')) { selectWorkspaceTab('plan'); $('tab-plan').focus(); }
+  });
   $('workspaceTabs').addEventListener('click', event => {
     const tab = event.target.closest('[data-workspace-tab]');
     if (tab) { selectWorkspaceTab(tab.dataset.workspaceTab); pageScroller().scrollTo(0,0); }
@@ -3010,6 +3055,7 @@ function wire() {
   });
   $('boardView').addEventListener('click', () => changeView('board'));
   $('listView').addEventListener('click', () => changeView('list'));
+  $('timelineView').addEventListener('click', () => changeView('timeline'));
   $('parkedToggle').addEventListener('click', () => { state.parkedOpen = !state.parkedOpen; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); renderBoard(); });
   $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
   $('panelBody').addEventListener('toggle', event => {

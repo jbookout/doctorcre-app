@@ -1,6 +1,7 @@
 import {
   Fragment,
   type KeyboardEvent,
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -10,7 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   arrowPath,
@@ -44,7 +45,7 @@ interface TimelineRowBase {
   id: string;
   name: string;
   phase: TimelinePhase;
-  when?: string;
+  when?: string | undefined;
   note?: string;
 }
 
@@ -56,11 +57,18 @@ export type TimelineTodo = TimelineRowBase &
         state: "current";
         start: string;
         end: string;
-        progress?: string;
+        progress?: string | undefined;
         overTypical?: boolean;
-        atRisk?: boolean;
+        atRisk?: boolean | undefined;
       }
-    | { kind: "todo"; state: "expected"; start: string; end: string; length?: string; atRisk?: boolean }
+    | {
+        kind: "todo";
+        state: "expected";
+        start: string;
+        end: string;
+        length?: string | undefined;
+        atRisk?: boolean | undefined;
+      }
     | { kind: "todo"; state: "stale"; start: string }
     | { kind: "todo"; state: "unrecorded" }
     | { kind: "todo"; state: "waiting" }
@@ -76,8 +84,8 @@ export type TimelineDate = TimelineRowBase & {
   kind: "date";
   day: string;
   state: "confirmed" | "proposed" | "expected";
-  atRisk?: boolean;
-  detail?: string;
+  atRisk?: boolean | undefined;
+  detail?: string | undefined;
 };
 
 export type TimelineRow = TimelineTodo | TimelineStep | TimelineDate;
@@ -92,14 +100,19 @@ export interface TimelineGroup {
   name: string;
   count?: string;
   done?: boolean;
-  bar?: TimelinePhaseBar;
+  bar?: TimelinePhaseBar | undefined;
+  bars?: readonly TimelinePhaseBar[];
+  href?: string;
+  attention?: string | undefined;
+  owner?: TimelinePartner | undefined;
+  signing?: { day: string; recorded: boolean } | undefined;
   startsFolded: boolean;
   rows: readonly TimelineRow[];
 }
 
 export type TimelineLink =
   | { kind: "workflow"; from: string; to: string }
-  | { kind: "deadline"; from: string; to: string; atRisk?: boolean };
+  | { kind: "deadline"; from: string; to: string; atRisk?: boolean | undefined };
 
 export interface TimelineProps {
   // Folds are remembered per chart, so a deal's plan and Deals Timeline keep their own.
@@ -110,6 +123,14 @@ export interface TimelineProps {
   groups: readonly TimelineGroup[];
   links?: readonly TimelineLink[];
 }
+
+type TimelineViewProps = TimelineProps & {
+  controls?: ReactNode;
+  toolsHost?: HTMLElement | undefined;
+  board?: boolean;
+  reveal?: { group: string; row?: string | undefined; day: string } | undefined;
+  onOpen?: (id: string) => void;
+};
 
 type Folds = Record<string, boolean>;
 type Tone = "default" | "late" | "soon";
@@ -553,13 +574,15 @@ interface MarkProps {
   tipId: string;
   onEnter: () => void;
   onLeave: () => void;
+  onOpen?: (() => void) | undefined;
 }
 
-function RowMark({ box, hovered, tipId, onEnter, onLeave }: MarkProps) {
+function RowMark({ box, hovered, tipId, onEnter, onLeave, onOpen }: MarkProps) {
   if (!box) return null;
   const events = {
     "data-hovered": hovered ? "" : undefined,
     "aria-describedby": hovered ? tipId : undefined,
+    onClick: onOpen,
     onMouseEnter: onEnter,
     onMouseLeave: onLeave,
     onFocus: onEnter,
@@ -798,7 +821,19 @@ function Arrows({
   );
 }
 
-function Timeline({ foldKey, today, from, to, groups, links = [] }: TimelineProps) {
+export function Timeline({
+  foldKey,
+  today,
+  from,
+  to,
+  groups,
+  links = [],
+  controls,
+  board,
+  reveal,
+  onOpen,
+  toolsHost,
+}: TimelineViewProps) {
   // middle is the day to centre after a zoom change; null puts today a third of the way in.
   const [view, setView] = useState<{ zoom: Zoom; middle: number | null }>({ zoom: "week", middle: null });
   const [folds, setFolds] = useState(() => readFolds(foldKey));
@@ -854,6 +889,29 @@ function Timeline({ foldKey, today, from, to, groups, links = [] }: TimelineProp
     scroller.current?.scrollTo({ left: Math.max(0, (day - start) * DAY_WIDTH[view.zoom] - visible * at) });
   }, [view, now, start]);
 
+  useLayoutEffect(() => {
+    if (!reveal || !scroller.current) return;
+    const parent = groups.find((group) => group.id === reveal.group);
+    if (!parent) return;
+    if (reveal.row && (folds[parent.id] ?? parent.startsFolded)) {
+      setFolds({ ...folds, [parent.id]: false });
+      return;
+    }
+    const row = [...scroller.current.querySelectorAll<HTMLElement>("[data-row], [data-group]")].find((item) =>
+      reveal.row ? item.dataset.row === reveal.row : item.dataset.group === reveal.group,
+    );
+    if (!row) return;
+    const scroll = scroller.current;
+    scroll.scrollTo({
+      left: (dayOf(reveal.day) - start + 0.5) * px - visibleTrack(scroll, corner.current) / 2,
+      top:
+        scroll.scrollTop +
+        row.getBoundingClientRect().top -
+        scroll.getBoundingClientRect().top -
+        (corner.current?.offsetHeight ?? 0),
+    });
+  }, [reveal, folds, groups, start, px]);
+
   function changeZoom(next: Zoom) {
     const left = scroller.current?.scrollLeft ?? 0;
     setView({ zoom: next, middle: start + (left + visibleTrack(scroller.current, corner.current) / 2) / px });
@@ -880,28 +938,33 @@ function Timeline({ foldKey, today, from, to, groups, links = [] }: TimelineProp
   const clearHover = (id: string) => setHoveredId((current) => (current === id ? null : current));
   useTipPosition(tipRef, scroller, corner, hoveredBox, rowHeight, note, font);
 
+  const tools = (
+    <div className="timeline-tools">
+      {controls}
+      <fieldset className="timeline-zoom" aria-label="Zoom">
+        {ZOOMS.filter((z) => !board || z !== "day").map((z) => (
+          <button key={z} type="button" aria-pressed={z === zoom} onClick={() => changeZoom(z)}>
+            {ZOOM_LABEL[z]}
+          </button>
+        ))}
+      </fieldset>
+      <button type="button" onClick={() => setView({ zoom, middle: null })}>
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+        </svg>
+        Today
+      </button>
+    </div>
+  );
+
   return (
     <section className="timeline" ref={rootRef} data-day-width={px}>
       <p className="timeline-sr">
         The chart runs from {from} to {to}. Today is {today}.
       </p>
       <span ref={probe} className="timeline-bar timeline-probe" aria-hidden="true" />
-      <div className="timeline-tools">
-        <fieldset className="timeline-zoom" aria-label="Zoom">
-          {ZOOMS.map((z) => (
-            <button key={z} type="button" aria-pressed={z === zoom} onClick={() => changeZoom(z)}>
-              {ZOOM_LABEL[z]}
-            </button>
-          ))}
-        </fieldset>
-        <button type="button" onClick={() => setView({ zoom, middle: null })}>
-          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="8" />
-            <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-          </svg>
-          Today
-        </button>
-      </div>
+      {toolsHost ? createPortal(tools, toolsHost) : tools}
       <section className="timeline-scroll" ref={scroller} aria-label="Timeline">
         <div className="timeline-canvas">
           <div className="timeline-head">
@@ -959,16 +1022,59 @@ function Timeline({ foldKey, today, from, to, groups, links = [] }: TimelineProp
               const heading = (
                 <>
                   <span className="timeline-group-title">
-                    <span className="timeline-name">{group.name}</span>
+                    {group.href ? (
+                      <a className="timeline-name" href={group.href}>
+                        {group.name}
+                      </a>
+                    ) : (
+                      <span className="timeline-name">{group.name}</span>
+                    )}
+                    {group.attention && (
+                      <span
+                        className="timeline-attention"
+                        role="img"
+                        aria-label={group.attention}
+                        title={group.attention}
+                      />
+                    )}
                     {group.done && <CheckIcon size={14} className="timeline-glyph-check" />}
                   </span>
                   {group.count && <span className="timeline-when">{group.count}</span>}
+                  {group.owner && (
+                    <span className="timeline-owner" role="img" aria-label={group.owner}>
+                      {group.owner[0]}
+                    </span>
+                  )}
                 </>
               );
               return (
                 <Fragment key={group.id}>
                   <div className="timeline-row timeline-group" data-group={group.id}>
-                    {group.rows.length > 0 ? (
+                    {group.href ? (
+                      <div className="timeline-label">
+                        {group.rows.length > 0 ? (
+                          <button
+                            type="button"
+                            aria-label={`Show rows for ${group.name}`}
+                            aria-expanded={open}
+                            onClick={() => toggle(group)}
+                          >
+                            <svg
+                              className="timeline-chevron"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                            >
+                              <path d="M10 6l6 6-6 6" />
+                            </svg>
+                          </button>
+                        ) : (
+                          <span className="timeline-chevron-gap" aria-hidden="true" />
+                        )}
+                        {heading}
+                      </div>
+                    ) : group.rows.length > 0 ? (
                       <button
                         type="button"
                         className="timeline-label"
@@ -988,7 +1094,23 @@ function Timeline({ foldKey, today, from, to, groups, links = [] }: TimelineProp
                       </div>
                     )}
                     <div className="timeline-track" style={{ width }}>
-                      {group.bar && <PhaseBar bar={group.bar} start={start} now={now} px={px} />}
+                      {(group.bars ?? (group.bar ? [group.bar] : [])).map((bar) => (
+                        <PhaseBar key={bar.phase} bar={bar} start={start} now={now} px={px} />
+                      ))}
+                      {group.signing && (
+                        <span
+                          className="timeline-group-signing"
+                          data-phase="closing"
+                          style={{ left: x(dayOf(group.signing.day)) + px / 2 }}
+                        >
+                          <i
+                            className="timeline-glyph-diamond"
+                            data-state={group.signing.recorded ? "confirmed" : "expected"}
+                          />
+                          {group.signing.recorded ? "" : "exp. "}
+                          {shortDate(dayOf(group.signing.day), yearOf(now))}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {open &&
@@ -1004,7 +1126,13 @@ function Timeline({ foldKey, today, from, to, groups, links = [] }: TimelineProp
                         >
                           <div className="timeline-label">
                             <RowGlyph row={row} />
-                            <span className="timeline-name">{row.name}</span>
+                            {onOpen ? (
+                              <button type="button" className="timeline-name" onClick={() => onOpen(row.id)}>
+                                {row.name}
+                              </button>
+                            ) : (
+                              <span className="timeline-name">{row.name}</span>
+                            )}
                             {alert && (
                               <span className="timeline-alert" role="img" aria-label={alert}>
                                 !
@@ -1021,6 +1149,7 @@ function Timeline({ foldKey, today, from, to, groups, links = [] }: TimelineProp
                               box={box}
                               hovered={activeHovered === row.id}
                               tipId={tipId}
+                              onOpen={onOpen && (() => onOpen(row.id))}
                               onEnter={() => setHoveredId(row.id)}
                               onLeave={() => clearHover(row.id)}
                             />

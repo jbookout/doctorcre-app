@@ -1,3 +1,5 @@
+import { dayOf, shortDate, yearOf } from "./timeline-scale.ts";
+
 type Status = "complete" | "received" | "not_recorded" | "due" | "overdue" | "upcoming";
 type Todo = {
   id: string;
@@ -17,6 +19,7 @@ export type PathView = {
   canMove: boolean;
   receiptHtml: string;
   focusedItem: string | null;
+  signingOn?: string | null;
 };
 
 const STATUSES = new Set<unknown>(["complete", "received", "not_recorded", "due", "overdue", "upcoming"]);
@@ -89,7 +92,11 @@ function tileHtml(phase: Phase, place: Place, todos: Todo[] | undefined, view: P
   const check = place === "done" ? '<span class="deal-path-check" aria-label="Finished">✓</span>' : "";
   const list = todos?.length ? todoListHtml(todos, view) : todos ? '<p class="deal-path-empty">Nothing listed</p>' : "";
   const receipt = place === "current" ? `<div data-phase-move aria-live="polite">${view.receiptHtml}</div>` : "";
-  return `<li class="deal-path-tile" data-phase="${esc(phase.slug)}" data-place="${place}"${place === "current" ? ' aria-current="step"' : ""}><div class="deal-path-head">${name}${check}${count}</div>${receipt}${list}</li>`;
+  const signing =
+    place === "current" && view.signingOn
+      ? `<button type="button" class="btn btn-quiet deal-plan-signing-link" data-open-deal-plan>Lease signing expected ${shortDate(dayOf(view.signingOn), yearOf(dayOf(view.today)))}</button>`
+      : "";
+  return `<li class="deal-path-tile" data-phase="${esc(phase.slug)}" data-place="${place}"${place === "current" ? ' aria-current="step"' : ""}><div class="deal-path-head">${name}${check}${count}</div>${receipt}${signing}${list}</li>`;
 }
 
 /** Every phase as a tile with its to-dos; a phase name asks before it moves the deal. */
