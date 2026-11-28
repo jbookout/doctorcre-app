@@ -1341,18 +1341,7 @@ test("Ask Doc opens inside the app shell with full-size targets on a phone", asy
   await page.setViewportSize({ width: 1440, height: 844 });
   await page.goto(`${origin}/doc-chats?mode=live&chat=${id}`);
   await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
-  const askDoc = page.getByRole("link", { name: "Ask Doc", exact: true });
-  await expect(askDoc).toHaveAttribute("aria-current", "page");
-  const look = (control: Locator) =>
-    control.evaluate((element) => {
-      const { color, backgroundColor } = getComputedStyle(element);
-      return { color, backgroundColor };
-    });
-  assert.notDeepEqual(
-    await look(askDoc),
-    await look(page.getByRole("button", { name: "Search and quick switcher" })),
-    "Ask Doc looks current",
-  );
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`Ask Doc / ${question}`);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("link", { name: deal.label })).toBeVisible();
   const toolbar = page.getByRole("region", { name: "App controls" });
@@ -1444,6 +1433,7 @@ for (const [width, height] of [
     assert.equal(await inView(page.getByRole("button", { name: "Send", exact: true })), true, "Send stays on screen");
     assert.equal(await inView(page.getByRole("link", { name: "New chat" })), true);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(`Ask Doc / ${question}`);
+    await expect(page.getByRole("link", { name: "Ask Doc", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
     await expect(page.getByRole("heading", { name: "Recent chats" })).toHaveCount(0);
     const chat = page.getByRole("link", { name: chatTitle(15) });
@@ -1488,13 +1478,15 @@ for (const { touch, fits } of [
 }
 
 test("On a computer the chats list stays open, newest first, with each chat's Central time, day or date", async (t) => {
-  const chats = [
-    ["This morning's question", "2026-11-25T15:12:00Z", "9:12 AM"],
-    ["Late last night's question", "2026-11-25T05:30:00Z", "Tue"],
-    ["Six days ago", "2026-11-19T18:00:00Z", "Thu"],
-    ["A week ago", "2026-11-18T18:00:00Z", "Nov 18"],
-    ["Last year", "2025-12-30T18:00:00Z", "Dec 30, 2025"],
-  ].map(([title, at, shown], index) => ({
+  const chats = (
+    [
+      ["This morning's question", "2026-11-25T15:12:00Z", "9:12 AM"],
+      ["Late last night's question", "2026-11-25T05:30:00Z", "Tue"],
+      ["Six days ago", "2026-11-19T18:00:00Z", "Thu"],
+      ["A week ago", "2026-11-18T18:00:00Z", "Nov 18"],
+      ["Last year", "2025-12-30T18:00:00Z", "Dec 30, 2025"],
+    ] as const
+  ).map(([title, at, shown], index) => ({
     chat: { id: `00000000-0000-4000-8000-${String(400 + index).padStart(12, "0")}`, title, created_at: at },
     shown,
   }));
@@ -1509,7 +1501,11 @@ test("On a computer the chats list stays open, newest first, with each chat's Ce
   const list = page.getByRole("complementary", { name: "Chats" });
   await expect(list.getByRole("link", { name: /^This morning's question/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Recent chats", exact: true })).toBeHidden();
-  await expect(list.locator("li")).toHaveText(chats.map(({ chat, shown }) => `${chat.title}${shown}`));
+  await expect(list.locator(".doc-chat__chat-name")).toHaveText(chats.map(({ chat }) => chat.title));
+  await expect(list.locator("time")).toHaveText(
+    chats.map(({ shown }) => shown),
+    { useInnerText: true },
+  );
   await expect(list.getByText("Chats", { exact: true })).toHaveCount(0);
   for (const row of await list.getByRole("link").all()) {
     const box = await row.boundingBox();
@@ -2392,3 +2388,199 @@ for (const [position, conflict, current, message] of [
     await expect(composer).toHaveValue("One more thing to ask");
   });
 }
+
+test("A phone chat row shows both its latest message time and its attention mark", async (t) => {
+  const chat = {
+    ...conversation,
+    title: "Which example deals are waiting on the new lease draft?",
+    last_message_at: "2026-11-25T17:05:00Z",
+    state: "waiting_ok",
+  };
+  const { page, origin } = await docChatFixture(
+    t,
+    () =>
+      Response.json({
+        conversations: [
+          chat,
+          {
+            id: "00000000-0000-4000-8000-000000000055",
+            title: "An older example",
+            created_at: "2025-12-30T18:00:00Z",
+            state: "waiting_ok",
+          },
+        ],
+        next_before: null,
+      }),
+    undefined,
+    { hasTouch: true },
+  );
+  await pausedClock(page, new Date("2026-11-25T18:00:00Z"));
+  await page.goto(`${origin}/doc-chats?mode=live`);
+  await page.getByRole("button", { name: "Recent chats" }).tap();
+  const row = page.getByRole("link", { name: new RegExp(chat.title.replace("?", "")) });
+  await expect(row.locator("time")).toHaveText("11:05a", { useInnerText: true });
+  const older = page.getByRole("link", { name: /^An older example/ });
+  await expect(older.locator("time")).toHaveText("12/30/25", { useInnerText: true });
+  await expect(older.getByText("Needs your attention")).toHaveCount(1);
+  await expect(row.getByText("Needs your attention")).toHaveCount(1);
+  const fit = await row.evaluate((link) => {
+    const title = link.firstElementChild?.getBoundingClientRect();
+    const time = link.querySelector("time")?.getBoundingClientRect();
+    const row = link.getBoundingClientRect();
+    return title && time && row.height === 44 && title.right <= time.left && time.right <= row.right;
+  });
+  assert.equal(fit, true, "the title, time and mark fit on a single 44px row");
+});
+
+for (const followUp of [false, true]) {
+  test(`The record picker sends the selected lead with a ${followUp ? "follow-up" : "new"} question`, async (t) => {
+    const lead = { kind: "lead", id: "00000000-0000-4000-8000-000000000044" };
+    const asks: unknown[] = [];
+    const nextAt = "2026-01-02T00:00:00Z";
+    const nextId = "00000000-0000-4000-8000-000000000055";
+    const newer = { id: nextId, title: "Newer chat", created_at: nextAt };
+    const { page, origin } = await docChatFixture(
+      t,
+      async (request) => {
+        const url = new URL(request.url);
+        switch (url.pathname) {
+          case "/api/engine/doc/conversations":
+            return Response.json({ conversations: followUp ? [newer, conversation] : [], next_before: null });
+          case `/api/engine/doc/conversations/${id}`:
+            return Response.json({ conversation, turns: [{ ...answeredTurn, idempotency_key: id }] });
+          case "/api/engine/doc/records":
+            assert.equal(url.searchParams.get("query"), "Example Dental");
+            return Response.json({ records: [{ ref: lead, label: "Example Dental", city: "Example City" }] });
+          case "/api/engine/doc/turns": {
+            const ask = await request.json();
+            asks.push(ask);
+            return Response.json({
+              conversation_id: id,
+              turn: {
+                ...answeredTurn,
+                id: nextId,
+                position: followUp ? 2 : 1,
+                created_at: nextAt,
+                state: "queued",
+                answer: null,
+                idempotency_key: ask.idempotency_key,
+                question: ask.question,
+                context: ask.context,
+              },
+            });
+          }
+          default:
+            return new Response(null, { status: 404 });
+        }
+      },
+      undefined,
+      { hasTouch: !followUp, ...(followUp && { viewport: { width: 1280, height: 640 } }) },
+    );
+    await page.goto(`${origin}/doc-chats?mode=live${followUp ? `&chat=${id}` : ""}`);
+    const picker = page.getByRole("button", { name: "Point Doc at a record" });
+    await picker.click();
+    const search = page.getByRole("searchbox", { name: "Find a deal, lead or client" });
+    await expect(search).toBeFocused();
+    const bounds = await page.getByRole("dialog").boundingBox();
+    assert.ok(bounds && bounds.width <= (followUp ? 480 : 390), `Record picker is ${bounds?.width}px wide`);
+    await search.fill("Example Dental");
+    await page.getByRole("button", { name: /Example Dental.*Lead.*Example City/ }).click();
+    const chip = page.getByRole("button", { name: "Remove Example Dental" });
+    await expect(chip).toBeVisible();
+    await chip.click();
+    await expect(chip).toHaveCount(0);
+    await picker.click();
+    await search.fill("Example Dental");
+    await page.getByRole("button", { name: /Example Dental.*Lead.*Example City/ }).click();
+    await page.getByLabel("Question for Doc").fill("What is next?");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(chip).toHaveCount(0);
+    expect(asks).toEqual([
+      {
+        question: "What is next?",
+        idempotency_key: expect.any(String),
+        ...(followUp && { conversation_id: id }),
+        context: lead,
+      },
+    ]);
+    if (followUp) {
+      const row = page.getByRole("complementary", { name: "Chats" }).locator("li").first();
+      await expect(row.getByRole("link", { name: /^Which example deals/ })).toBeVisible();
+      await expect(row.locator("time")).toHaveAttribute("datetime", nextAt);
+      await expect(row.getByText("Doc is working")).toHaveCount(1);
+    }
+  });
+}
+
+test("A match chip shows the city and deal count and opens the exact record", async (t) => {
+  const href = `/clients?record=${id}`;
+  const turn = {
+    ...answeredTurn,
+    idempotency_key: id,
+    answer: {
+      kind: "clarification",
+      text: "Which example client did you mean?",
+      sources: [{ ref: { kind: "client", id }, label: "Example Client", href, city: "Example City", deal_count: 2 }],
+      proposal: null,
+    },
+  };
+  const { page, origin } = await docChatFixture(t, (request) =>
+    new URL(request.url).pathname === "/api/engine/doc/conversations"
+      ? Response.json({ conversations: [conversation], next_before: null })
+      : Response.json({ conversation, turns: [turn] }),
+  );
+  await page.goto(`${origin}/doc-chats?mode=live&chat=${id}`);
+  await expect(page.getByRole("link", { name: "Example Client · Example City · 2 deals" })).toHaveAttribute(
+    "href",
+    href,
+  );
+});
+
+test("One sidebar read refreshes working chats from different pages", async (t) => {
+  const first = { ...conversation, state: "working" };
+  const second = {
+    id: "00000000-0000-4000-8000-000000000055",
+    title: "An older working chat",
+    created_at: "2025-12-29T12:00:00Z",
+    state: "working",
+  };
+  const reads: string[] = [];
+  const { page, origin } = await docChatFixture(
+    t,
+    (request) => {
+      const url = new URL(request.url);
+      if (!url.pathname.startsWith("/api/engine/doc/conversations")) return new Response(null, { status: 404 });
+      reads.push(url.pathname + url.search);
+      if (url.pathname !== "/api/engine/doc/conversations") return new Response(null, { status: 404 });
+      if (url.searchParams.has("before")) return Response.json({ conversations: [second], next_before: null });
+      const ids = url.searchParams.get("ids")?.split(",");
+      if (ids) {
+        assert.deepEqual(ids, [first.id, second.id]);
+        return Response.json({
+          conversations: [
+            { ...first, state: "waiting_ok" },
+            { ...second, state: null },
+          ],
+          next_before: null,
+        });
+      }
+      return Response.json({ conversations: [first], next_before: first.id });
+    },
+    undefined,
+    { viewport: { width: 1440, height: 900 } },
+  );
+  await pausedClock(page, new Date("2026-11-25T18:00:00Z"));
+  await page.goto(`${origin}/doc-chats?mode=live`);
+  await expect(page.getByLabel("Question for Doc")).toBeEnabled();
+  await page.getByRole("button", { name: "Older chats" }).click();
+  const list = page.getByRole("complementary", { name: "Chats" });
+  await expect(list.getByText("Doc is working", { exact: true })).toHaveCount(2);
+  await page.clock.runFor(30_000);
+  await expect(list.getByText("Needs your attention")).toHaveCount(1);
+  await expect(list.getByText("Doc is working", { exact: true })).toHaveCount(0);
+  assert.deepEqual(reads, [
+    "/api/engine/doc/conversations",
+    `/api/engine/doc/conversations?before=${first.id}`,
+    `/api/engine/doc/conversations?ids=${encodeURIComponent([first.id, second.id].join(","))}`,
+  ]);
+});

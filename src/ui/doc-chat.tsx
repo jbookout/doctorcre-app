@@ -15,6 +15,12 @@ const recordRef = z.object({
   kind: z.enum(["deal", "lead", "client", "email"]),
   id: z.guid(),
 });
+const pickerRecord = z.object({
+  ref: recordRef.extend({ kind: z.enum(["deal", "lead", "client"]) }),
+  label: z.string(),
+  city: z.string().nullable(),
+});
+const pickerResponse = z.object({ records: z.array(pickerRecord) });
 const draftRef = z.object({ kind: z.literal("reply_draft"), id: z.guid() });
 const draftVersion = z.int().positive();
 const draftRequest = draftRef.extend({ version: draftVersion });
@@ -23,6 +29,8 @@ const source = z.object({
   ref: z.union([recordRef, draftRef]),
   label: z.string(),
   href: z.string(),
+  city: z.string().nullable().optional(),
+  deal_count: z.int().nonnegative().optional(),
 });
 const noteFields = z.object({ text: z.string() });
 const stepFields = z.object({ what: z.string(), due_on: z.iso.date().nullable() });
@@ -56,6 +64,8 @@ const conversation = z.object({
   id: z.guid(),
   title: z.string(),
   created_at: z.iso.datetime({ offset: true }),
+  last_message_at: z.iso.datetime({ offset: true }).optional(),
+  state: z.enum(["working", "waiting_ok"]).nullish(),
 });
 const draftReview = z.object({
   draft_id: z.guid(),
@@ -92,6 +102,7 @@ const conversationDetail = z.object({ conversation, turns: z.array(chatTurn) });
 const sendResponse = z.object({ conversation_id: z.guid(), turn: chatTurn });
 
 type Conversation = z.infer<typeof conversation>;
+type PickerRecord = z.infer<typeof pickerRecord>;
 type Turn = z.infer<typeof chatTurn>;
 type Proposal = z.infer<typeof proposal>;
 type Confirmation = z.infer<typeof confirmation>;
@@ -200,6 +211,7 @@ const chatTimes = {
   week: centralFormat({ weekday: "short" }),
   year: centralFormat({ month: "short", day: "numeric" }),
   older: centralFormat({ month: "short", day: "numeric", year: "numeric" }),
+  olderPhone: centralFormat({ month: "numeric", day: "numeric", year: "2-digit" }),
 };
 
 function chatTime(at: string, now: Date) {
@@ -213,7 +225,14 @@ function chatTime(at: string, now: Date) {
         : centralToday(date).slice(0, 4) === centralToday(now).slice(0, 4)
           ? chatTimes.year
           : chatTimes.older;
-  return format.format(date);
+  const full = format.format(date);
+  const short =
+    format === chatTimes.today
+      ? full.replace(/\s*([AP])M$/u, (_, period: string) => period.toLowerCase())
+      : format === chatTimes.older
+        ? chatTimes.olderPhone.format(date)
+        : full;
+  return { full, short };
 }
 
 function Icon({ path }: { path: string }) {
@@ -231,6 +250,8 @@ const icons = {
   person: "M13 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0M2 21a7 7 0 0 1 14 0",
   mail: "M3 5h18v14H3zM3 7l9 6 9-6",
   spinner: "M12 3a9 9 0 1 0 9 9",
+  at: "M16 8v5a2.5 2.5 0 0 0 5 0v-1a9 9 0 1 0-3.4 7M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z",
+  remove: "M6 6l12 12M18 6 6 18",
   send: "M12 19V5M5 12l7-7 7 7",
   check: "M5 12l5 5L20 7",
 };
@@ -306,6 +327,93 @@ async function docFetch<T>(
   return result.data;
 }
 
+const pickerKind = { deal: "Deal", lead: "Lead", client: "Client" };
+type PickerResult = { term: string; records: PickerRecord[] | null };
+
+function DocRecordPicker({ onClose, onPick }: { onClose: () => void; onPick: (record: PickerRecord) => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState<PickerResult | null>(null);
+  const term = query.trim();
+  const records = result?.term === term ? result.records : undefined;
+
+  useEffect(() => {
+    dialog.current?.showModal();
+    dialog.current?.querySelector("input")?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!term) return;
+    const controller = new AbortController();
+    // eslint-disable-next-line no-restricted-syntax -- One search debounce, cleared on query change or close.
+    const timeout = window.setTimeout(() => {
+      void docFetch(`/records?${new URLSearchParams({ query: term })}`, pickerResponse, {
+        signal: controller.signal,
+        boundRead: true,
+      })
+        .then(({ records }) => {
+          if (!controller.signal.aborted) setResult({ term, records });
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setResult({ term, records: null });
+        });
+    }, 200);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [term]);
+
+  return (
+    <dialog ref={dialog} className="doc-chat__picker" aria-labelledby="docPickerTitle" onClose={onClose}>
+      <header>
+        <label id="docPickerTitle" htmlFor="docPickerQuery">
+          Find a deal, lead or client
+        </label>
+        <button
+          type="button"
+          className="doc-chat__icon"
+          aria-label="Close record picker"
+          onClick={() => dialog.current?.close()}
+        >
+          <Icon path={icons.remove} />
+        </button>
+      </header>
+      <input
+        type="search"
+        id="docPickerQuery"
+        autoComplete="off"
+        maxLength={200}
+        value={query}
+        onChange={(event) => setQuery(event.currentTarget.value)}
+      />
+      {records && records.length > 0 ? (
+        <ul aria-label="Matching records">
+          {records.map((record) => (
+            <li key={`${record.ref.kind}:${record.ref.id}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  dialog.current?.close();
+                  onPick(record);
+                }}
+              >
+                <Icon path={sourceIcon[record.ref.kind]} />
+                <span>{record.label}</span>
+                <small>{[pickerKind[record.ref.kind], record.city].filter(Boolean).join(" · ")}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p role="status">
+          {term && (records === undefined ? "Searching…" : records === null ? "Couldn’t load matches." : "No matches.")}
+        </p>
+      )}
+    </dialog>
+  );
+}
+
 const proposalCopy = {
   note: { what: "Note on", save: "Save note", saved: "Saved note on" },
   next_step: { what: "Next step on", save: "Save next step", saved: "Saved next step on" },
@@ -317,16 +425,20 @@ function keptSavedDraft(result: Confirmation) {
   return result.kind === "reply_draft" && result.existing;
 }
 
-function Sources({ sources }: { sources: z.infer<typeof source>[] }) {
+function Sources({ sources, matches }: { sources: z.infer<typeof source>[]; matches: boolean }) {
   if (sources.length === 0) return null;
   return (
-    <ul className="doc-chat__sources" aria-label="Sources">
-      {sources.map(({ ref, label, href }) => {
+    <ul className="doc-chat__sources" aria-label={matches ? "Matches" : "Sources"}>
+      {sources.map(({ ref, label, href, city, deal_count }) => {
         const path = recordHref(href);
         const chip = (
           <>
             <Icon path={sourceIcon[ref.kind]} />
-            {label}
+            {matches
+              ? [label, city, deal_count === undefined ? null : `${deal_count} ${deal_count === 1 ? "deal" : "deals"}`]
+                  .filter(Boolean)
+                  .join(" · ")
+              : label}
           </>
         );
         return <li key={`${ref.kind}:${ref.id}${href}`}>{path ? <a href={path}>{chip}</a> : <span>{chip}</span>}</li>;
@@ -652,10 +764,16 @@ function DocChat() {
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [chatsOpen, setChatsOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const otherWorkingChats = recent
+    .filter((chat) => chat.id !== id && chat.state === "working")
+    .map(({ id }) => id)
+    .join(",");
   const [olderFailed, setOlderFailed] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState("");
   const privateDraft = useRef<((field: DraftField, id: string | null) => TextDraft) | null>(null);
+  const [pickedRecord, setPickedRecord] = useState<PickerRecord | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingAsk, setPendingAsk] = useState<Ask | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -671,6 +789,7 @@ function DocChat() {
   const latest = turns.at(-1);
   const review = latest?.draft_review;
   const draftId = review?.draft_id ?? initialDraft?.id;
+  const canPick = ready && !pendingAsk && !draftId && (id !== null || !initialContext);
   const draftStatus = latest?.state === "failed" ? review?.current : undefined;
   const reviewReason = draftStatus === "changed" || draftStatus === "gone" ? draftStatus : draftSendConflict;
   const notice = status ? statusText[status] : reviewReason && draftChangeText[reviewReason];
@@ -786,6 +905,8 @@ function DocChat() {
       setTitle("");
       setQuestion("");
       setPendingAsk(null);
+      setPickedRecord(null);
+      setPickerOpen(false);
       setDraftSendConflict(undefined);
       setReady(false);
       setBusy(false);
@@ -837,6 +958,31 @@ function DocChat() {
       stop();
     };
   }, [id, waitingTurnId, showUnavailable]);
+
+  useEffect(() => {
+    if (!ready || !otherWorkingChats) return;
+    const ids = otherWorkingChats.split(",");
+    let offset = 0;
+    return refreshWhileVisible(
+      async (signal) => {
+        const batch = ids.slice(offset, offset + 30);
+        offset = (offset + batch.length) % ids.length;
+        try {
+          const { conversations } = await docFetch(
+            `/conversations?${new URLSearchParams({ ids: batch.join(",") })}`,
+            conversationList,
+            { signal, boundRead: true },
+          );
+          if (signal.aborted || retired.current) return;
+          const updates = new Map(conversations.map((chat) => [chat.id, chat]));
+          setRecent((chats) => chats.map((chat) => updates.get(chat.id) ?? chat));
+        } catch {
+          // The next refresh can update a mark after a read fails.
+        }
+      },
+      { immediate: false, delay: () => 30_000 },
+    );
+  }, [ready, otherWorkingChats]);
 
   useEffect(() => {
     if (!macCheck) return;
@@ -893,7 +1039,7 @@ function DocChat() {
       try {
         const page = await docFetch(`/conversations?before=${encodeURIComponent(nextBefore)}`, conversationList);
         if (retired.current) return;
-        setRecent((rows) => [...rows, ...page.conversations]);
+        setRecent((rows) => [...new Map([...rows, ...page.conversations].map((chat) => [chat.id, chat])).values()]);
         setNextBefore(page.next_before);
         setOlderFailed(false);
       } catch (error) {
@@ -923,16 +1069,22 @@ function DocChat() {
       });
       if (!result || retired.current) return;
       const { conversation_id, turn } = result;
-      if (id !== conversation_id) {
+      const firstQuestion = id !== conversation_id;
+      const chatTitle = firstQuestion ? [...turn.question].slice(0, 80).join("") : title;
+      if (firstQuestion) {
         history.replaceState(history.state, "", chatHref(conversation_id));
         setId(conversation_id);
-        const chat = {
-          id: conversation_id,
-          title: [...turn.question].slice(0, 80).join(""),
-          created_at: turn.created_at,
-        };
-        setRecent((rows) => [chat, ...rows]);
-        setTitle(chat.title);
+        setTitle(chatTitle);
+      }
+      if (latest?.id !== turn.id) {
+        setRecent((rows) => {
+          const chat = rows.find((row) => row.id === conversation_id) ?? {
+            id: conversation_id,
+            title: chatTitle,
+            created_at: turn.created_at,
+          };
+          return [{ ...chat, last_message_at: turn.created_at }, ...rows.filter((row) => row.id !== conversation_id)];
+        });
       }
       setTurns((rows) => [...rows.filter((row) => row.id !== turn.id), turn]);
       // The pane is column-reverse, so scrollTop 0 is the latest turn.
@@ -941,6 +1093,7 @@ function DocChat() {
       if (latest?.idempotency_key !== ask.idempotency_key) {
         privateDraft.current?.("doc-question", id ?? composerId).write("");
         setQuestion("");
+        setPickedRecord(null);
       }
     });
   }
@@ -1014,14 +1167,44 @@ function DocChat() {
         >
           {newChat("doc-chat__list-new")}
           <ul>
-            {recent.map((chat) => (
-              <li key={chat.id}>
-                <a href={chatHref(chat.id)} aria-current={chat.id === id ? "page" : undefined}>
-                  <span>{chat.title}</span>
-                  <time dateTime={chat.created_at}>{chatTime(chat.created_at, today)}</time>
-                </a>
-              </li>
-            ))}
+            {recent.map((chat) => {
+              const current = chat.id === id && ready && latest;
+              const timestamp = chat.last_message_at ?? chat.created_at;
+              const time = chatTime(timestamp, today);
+              const mark = current
+                ? waiting
+                  ? "working"
+                  : latest.answer?.kind === "clarification" ||
+                      turns.some((turn) => turn.answer?.proposal && !turn.confirmation)
+                    ? "waiting_ok"
+                    : null
+                : chat.state;
+              return (
+                <li key={chat.id}>
+                  <a href={chatHref(chat.id)} aria-current={chat.id === id ? "page" : undefined}>
+                    <span className="doc-chat__chat-name">{chat.title}</span>
+                    <time dateTime={timestamp} title={time.full}>
+                      {time.short === time.full ? (
+                        time.full
+                      ) : (
+                        <>
+                          <span className="doc-chat__time-full">{time.full}</span>
+                          <span className="doc-chat__time-short">{time.short}</span>
+                        </>
+                      )}
+                    </time>
+                    {mark && (
+                      <span className="doc-chat__chat-mark" data-mark={mark}>
+                        {mark === "working" && <Icon path={icons.spinner} />}
+                        <span className="sr-only">
+                          {mark === "working" ? "Doc is working" : "Needs your attention"}
+                        </span>
+                      </span>
+                    )}
+                  </a>
+                </li>
+              );
+            })}
           </ul>
           {noChats && <p>No conversations yet</p>}
           {nextBefore && (
@@ -1060,7 +1243,7 @@ function DocChat() {
                     {turn.answer ? (
                       <>
                         <p className="doc-chat__reply">{turn.answer.text}</p>
-                        <Sources sources={turn.answer.sources} />
+                        <Sources sources={turn.answer.sources} matches={turn.answer.kind === "clarification"} />
                         {turn.state === "answered" && turn.answered_by === "backup" && (
                           <small className="doc-chat__note">Answered by backup</small>
                         )}
@@ -1121,14 +1304,32 @@ function DocChat() {
             className="doc-chat__composer"
             onSubmit={(event) => {
               event.preventDefault();
+              const context = pickedRecord?.ref ?? (!id ? initialContext : undefined);
               if (canSend)
                 send({
                   question,
                   idempotency_key: crypto.randomUUID(),
-                  ...(id ? { conversation_id: id } : initialContext && { context: initialContext }),
+                  ...(id && { conversation_id: id }),
+                  ...(context && { context }),
                 });
             }}
           >
+            {pickedRecord && (
+              <button
+                className="doc-chat__record-chip"
+                type="button"
+                aria-label={`Remove ${pickedRecord.label}`}
+                disabled={!!pendingAsk}
+                onClick={() => {
+                  setPickedRecord(null);
+                  questionBox.current?.focus();
+                }}
+              >
+                <Icon path={sourceIcon[pickedRecord.ref.kind]} />
+                <span>{pickedRecord.label}</span>
+                <Icon path={icons.remove} />
+              </button>
+            )}
             <label className="sr-only" htmlFor="docQuestion">
               Question for Doc
             </label>
@@ -1149,6 +1350,18 @@ function DocChat() {
               onKeyDown={(event) => submitOnEnter(event.nativeEvent, () => event.currentTarget.form?.requestSubmit())}
             />
             <div className="doc-chat__tools">
+              {canPick && (
+                <button
+                  className="doc-chat__icon doc-chat__pick"
+                  type="button"
+                  aria-label="Point Doc at a record"
+                  title="Point Doc at a record"
+                  aria-haspopup="dialog"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <Icon path={icons.at} />
+                </button>
+              )}
               {showCount && (
                 <small id="docQuestionLength" data-over={questionLength > questionLimit || undefined}>
                   {questionLength.toLocaleString("en-US")} / {questionLimit.toLocaleString("en-US")}
@@ -1160,6 +1373,15 @@ function DocChat() {
             </div>
           </form>
           {ready && macStatus && <MacStatus status={macStatus} />}
+          {pickerOpen && (
+            <DocRecordPicker
+              onClose={() => setPickerOpen(false)}
+              onPick={(record) => {
+                setPickedRecord(record);
+                questionBox.current?.focus();
+              }}
+            />
+          )}
         </div>
       </div>
     </>
