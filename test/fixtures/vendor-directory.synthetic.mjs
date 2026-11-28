@@ -36,7 +36,7 @@ export function directoryFixture(url, { now = Date.now(), overrides = new Map() 
     }
     return {viewer:'joe',dataset,record,partial:null,not_in_this_read:[],recorded_field_note:'Synthetic',source};
   }
-  const parsed=parseViewState('/'+dataset,u.search), {all,no_category,relationship:_,...asked}=parsed.query, query={...asked,...(no_category&&{no_category:true}),...(asked.quiet&&{quiet:true}),q:parsed.query.q||null,page_size:PAGE_SIZE};
+  const parsed=parseViewState('/'+dataset,u.search), {all,no_category,market,relationship:_,...asked}=parsed.query, query={...asked,...(no_category&&{no_category:true}),...(asked.quiet&&{quiet:true}),q:parsed.query.q||null,page_size:PAGE_SIZE};
   for(const key of ['category','stage','disposition','status','territory']) if(key in query && !query[key]) query[key]=null;
   // Like the engine, the tile filters echo only when sent, and the app's own key never travels.
   for(const key of ['practice_type','national_account']) if(u.searchParams.has(key)) query[key]=u.searchParams.get(key); else delete query[key];
@@ -45,7 +45,7 @@ export function directoryFixture(url, { now = Date.now(), overrides = new Map() 
   const rank=row=>row.recorded_disposition==='avoid'?6:row.recorded_disposition==='parked'?5:row.relationship_level===null?4:3-row.relationship_level;
   filtered.sort((a,b)=>query.sort==='last_deal_desc'?b.last_deal_at.localeCompare(a.last_deal_at):query.sort==='last_deal_asc'?a.last_deal_at.localeCompare(b.last_deal_at):query.sort==='status'?a.recorded_status.localeCompare(b.recorded_status)||a.name.localeCompare(b.name):query.sort==='owner'?a.owner_label.localeCompare(b.owner_label)||a.name.localeCompare(b.name):['vertical','deal_type','territory'].includes(query.sort)?a[query.sort].localeCompare(b[query.sort])||a.name.localeCompare(b.name):query.sort==='relationship'?rank(a)-rank(b)||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
   // Like the engine, a vendor category answers every vendor in one page.
-  const size=dataset==='vendors'&&(query.category||query.no_category)?Math.max(filtered.length,1):PAGE_SIZE;
+  const size=dataset==='vendors'&&(query.category||query.no_category||u.searchParams.get('markets')==='true')?Math.max(filtered.length,1):PAGE_SIZE;
   const tiles=dataset==='clients'&&u.searchParams.get('tiles')==='true'?{tiles:CLIENT_TILES}:{};
   return {...tiles,viewer:'joe',dataset,query,total:filtered.length,page:query.page,page_size:size,page_count:Math.max(1,Math.ceil(filtered.length/size)),out_of_range:query.page>Math.max(1,Math.ceil(filtered.length/size)),rows:filtered.slice((query.page-1)*size,query.page*size).map(row=>allowed(row,LIST_ROW_KEYS[dataset],optional)),facets:dataset==='vendors'?{categories:[{slug:'banker',label:'Banking'}],stages:[],dispositions:[],territories:[{slug:'Demo North',label:'Demo North'},{slug:'Demo South',label:'Demo South'}]}:{statuses:[{slug:'active',label:'Active'}],types:[]},partial:null,recorded_field_note:'Synthetic',source};
 }

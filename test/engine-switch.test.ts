@@ -2577,6 +2577,7 @@ test("workspace HTML selects engine switches independently", async (t) => {
           ["deal-tours-from-engine", tourPlans ? "on" : "off"],
           ["home-from-engine", "off"],
           ["clients-vendors-from-engine", path === "/vendors" ? "on" : "off"],
+          ["vendor-territory-tiles", deals ? "on" : "off"],
           ["deals-from-engine", deals ? "on" : "off"],
           ["deals-saves-from-engine", saves ? "on" : "off"],
           ["deal-cutover-date", "2025-06-12"],
@@ -2626,6 +2627,7 @@ test("workspace HTML selects engine switches independently", async (t) => {
           ...(deals ? ["data-deals-from-engine"] : []),
           ...(saves ? ["data-deals-saves-from-engine"] : []),
           ...(home ? ["data-home-today-from-engine"] : []),
+          ...(path === "/vendors" && deals ? ["data-vendor-territory-tiles"] : []),
         ];
         assert.deepEqual(attributes, expected, path);
         const date = setAttribute.mock.calls.find(({ arguments: args }) => args[0] === "data-deals-saves-from-engine");

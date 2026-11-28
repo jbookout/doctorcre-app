@@ -258,6 +258,8 @@ ${await response.text()}`;
   const { homeToday, dealsFromEngine, dealSavesFromEngine, clientsVendorsFromEngine, dealToursFromEngine } = switches ?? await pageSwitches(env);
   const tourPlanner = path === '/pipeline.html' && dealToursFromEngine;
   const partnerSignIn = engineSignIn(env);
+  const vendorTerritoryTiles = new URL(request.url).pathname === '/vendors'
+    && (clientsVendorsFromEngine || partnerSignIn) && await switchedOn(env, 'vendor-territory-tiles');
   if (!partnerSignIn && !homeToday && !dealsFromEngine && !dealSavesFromEngine && !clientsVendorsFromEngine && !tourPlanner) return asset;
   const date = dealSavesFromEngine && ['/pipeline.html', '/lease-anniversaries.html', '/workspace.html', '/inbox.html'].includes(path)
     ? await env.ENGINE_ROUTING.get('deal-cutover-date', { cacheTtl: 30 }).catch(() => null)
@@ -270,6 +272,7 @@ ${await response.text()}`;
         node.setAttribute('data-partner-sign-in', 'engine');
       }
       if (clientsVendorsFromEngine) node.setAttribute('data-clients-vendors-from-engine', '');
+      if (vendorTerritoryTiles) node.setAttribute('data-vendor-territory-tiles', '');
       if (tourPlanner) node.setAttribute('data-deal-tours-from-engine', '');
       if (dealsFromEngine) node.setAttribute('data-deals-from-engine', '');
       if (dealSavesFromEngine) node.setAttribute('data-deals-saves-from-engine', /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '');

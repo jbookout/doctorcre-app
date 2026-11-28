@@ -22,7 +22,7 @@
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <!-- A client opens as a dialog and a vendor as a card beside the table. A
        dialog's covered background is inert so focus remains inside it. -->
-  <a class="skip" href="#main" data-panel-background>Skip to records</a>
+  <a class="skip" href="#main">Skip to records</a>
 
 
   <main id="main" class="shell business-shell">
@@ -38,7 +38,7 @@
       <button type="button" data-directory-view="meetings" aria-pressed="false">People worth meeting</button>
     </div>
 
-    <div class="search-dock glass" data-panel-background>
+    <div class="search-dock glass">
       <div class="field field-search">
         <label class="visually-hidden" for="searchInput">Search</label>
         <input id="searchInput" name="q" form="filterForm" type="search" autocomplete="off" spellcheck="false" maxlength="80" placeholder="Search by name">
@@ -64,12 +64,14 @@
         <span id="observedAt" class="observed visually-hidden">Updating…</span><button type="button" class="refresh-icon" id="refreshList" aria-label="Refresh" title="Refresh">↻</button>
       </div>
     </div>
-    <div id="chipBar" class="chip-bar" role="group" aria-label="Active filters" data-panel-background></div>
+    <div id="chipBar" class="chip-bar" role="group" aria-label="Active filters"></div>
 
-    <div id="noticeRegion" class="notice-region" role="status" aria-live="polite" data-panel-background></div>
+    <div id="vendorTerritories" class="vendor-territories" role="group" aria-label="Territories" hidden></div>
+
+    <div id="noticeRegion" class="notice-region" role="status" aria-live="polite"></div>
 
     <section class="business-body" aria-labelledby="resultsTitle">
-      <div class="result-column" data-panel-background>
+      <div class="result-column">
         <div id="directoryTiles" class="directory-tiles" aria-describedby="resultSummary" hidden></div>
         <div id="listRegion" class="list-region" aria-busy="true" aria-describedby="resultSummary">
           <ol class="record-list" id="recordList">
@@ -105,7 +107,7 @@
 
   </main>
 
-  <footer class="footer" data-panel-background><span id="pageFooter">DoctorCRE · Records</span></footer>
+  <footer class="footer"><span id="pageFooter">DoctorCRE · Records</span></footer>
 
   <script type="module" src="/js/workspace-business.js"></script>
 </body>

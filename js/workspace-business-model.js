@@ -49,7 +49,7 @@ export const LIST_ROW_KEYS = {
 };
 
 // The engine adds these to vendor rows; an engine without them still answers a valid list.
-const NEW_VENDOR_ROW_KEYS = ["categories", "quiet", "quiet_days"];
+const NEW_VENDOR_ROW_KEYS = ["categories", "quiet", "quiet_days", "markets"];
 
 export const RECORD_KEYS = {
   clients: ["id", "ref", "name", "party_kind", "city", "state", "county", "title", "specialty", "npi", "phone",
@@ -121,6 +121,8 @@ export function parseViewState(pathname, search) {
     query.quiet = params.get("quiet") === "true" ? "true" : "";
     query.no_category = params.get("no_category") === "true" && !query.category ? "true" : "";
     query.relationship = params.get("relationship") in RELATIONSHIP_WORDS ? params.get("relationship") : "";
+    const market = params.get("market");
+    if (market === "elsewhere" || market === "no_territory" || UUID.test(market ?? "")) query.market = market.toLowerCase();
   }
   query.all = params.get("all") === "true" ? "true" : "";
   query.owner = ["joe", "dell"].includes(params.get("owner")) ? params.get("owner") : "all";
@@ -151,6 +153,7 @@ export function viewHref(query, recordId = null) {
   if (query.accounts) params.set("accounts", "true");
   // Filtered in the browser over the whole category, so it never reaches the read.
   if (query.relationship) params.set("relationship", query.relationship);
+  if (query.market) params.set("market", query.market);
   if (recordId) params.set("record", recordId);
   const search = params.toString();
   return `${DATASET_ROUTE[query.dataset]}${search ? `?${search}` : ""}`;
@@ -165,6 +168,7 @@ export function listRequestUrl(query) {
     params.set("practice_type", "");
   }
   if (showsTiles(query)) params.set("tiles", "true");
+  if (query.markets) params.set("markets", "true");
   params.set("contract", query.dataset === "clients" ? "vendor-directory.v2" : "vendor-directory.v1");
   const search = params.toString();
   return `${API_PREFIX}${query.dataset}${search ? `?${search}` : ""}`;
@@ -184,8 +188,13 @@ function summaryRequestUrl(owner) {
 }
 
 const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const validMarket = (market) => isRecord(market) && typeof market.name === "string" && typeof market.id === "string" && UUID.test(market.id);
+const validMarkets = (markets) => Array.isArray(markets) && markets.every(validMarket);
+const validMarketCounts = (counts) => validMarkets(counts.markets)
+  && counts.markets.every(({ count }) => counted(count)) && counted(counts.elsewhere) && counted(counts.no_territory);
 const validCounts = (counts) => isRecord(counts) && Number.isInteger(counts.count) && Number.isInteger(counts.quiet)
-  && isRecord(counts.relationship) && Object.keys(RELATIONSHIP_WORDS).every((key) => Number.isInteger(counts.relationship[key]));
+  && isRecord(counts.relationship) && Object.keys(RELATIONSHIP_WORDS).every((key) => Number.isInteger(counts.relationship[key]))
+  && (!("markets" in counts) || validMarketCounts(counts));
 
 /** Whether an answer is the vendor summary the tiles draw. */
 function validSummary(payload) {
@@ -227,7 +236,7 @@ function tilesValid(tiles) {
 
 export function hasActiveFilters(query) {
   const base = defaultQuery(query.dataset);
-  return ["scope", "owner", "territory", "q", "sort", "relationship", ...FILTER_KEYS[query.dataset]].some((key) => query[key] !== base[key]);
+  return ["scope", "owner", "territory", "q", "sort", "relationship", "market", ...FILTER_KEYS[query.dataset]].some((key) => query[key] !== base[key]);
 }
 
 /** The national accounts the deals board lists, or null when the answer is not that list. */
@@ -479,7 +488,7 @@ function activeDealsValid(deals) {
 
 function rowValid(row, dataset) {
   return extendedKeys(row, LIST_ROW_KEYS[dataset], dataset === "vendors" ? ["relationship", "vertical", "deal_type", "last_deal_at", "territory", ...NEW_VENDOR_ROW_KEYS] : ["deal_type", "last_deal_at", "active_deals"]) && typeof row.id === "string" && UUID.test(row.id) &&
-    typeof row.name === "string" && row.name.length > 0 && relationshipValid(row.relationship) && activeDealsValid(row.active_deals);
+    typeof row.name === "string" && row.name.length > 0 && relationshipValid(row.relationship) && activeDealsValid(row.active_deals) && (row.markets === undefined || validMarkets(row.markets));
 }
 
 export function relationshipValid(value) {
@@ -503,6 +512,7 @@ export function echoesQuery(payload, query) {
   if (!echo || typeof echo !== "object" || echo.dataset !== query.dataset) return false;
   const searched = query.q ? query.q : null;
   if ((echo.q ?? null) !== searched) return false;
+  if (query.markets && (echo.markets !== true || !holdsWholeList(payload) || !payload.rows.every((row) => row.markets))) return false;
   if ((echo.owner || "all") !== (query.owner || "all") || (echo.territory || "") !== (query.territory || "")) return false;
   // An engine that predates relationship order answers the vendor default by name.
   const sorted = echo.sort === query.sort || (query.dataset === "vendors" && query.sort === "relationship" && echo.sort === "name");
