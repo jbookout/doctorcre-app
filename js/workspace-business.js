@@ -1062,7 +1062,12 @@ function relationshipControlHtml(relationship) {
   const shown = `${relationshipShape(relationship.key)}${relationship.word}`;
   const read = view.role.id === view.recordId;
   const role = read ? view.role.value : null;
-  if (!partyEditor || (read && !role)) return `<span class="rel-word" data-relationship="${relationship.key}">${shown}</span>${wantToMeetHtml(relationship)}`;
+  if (!partyEditor || (read && !role)) {
+    const label = `<span class="rel-word" data-relationship="${relationship.key}">${shown}</span>${wantToMeetHtml(relationship)}`;
+    return partyEditor
+      ? `${label}<span role="alert">Could not load the relationship.</span><button type="button" class="action secondary-action" data-retry="relationship">Try again</button>`
+      : label;
+  }
   const item = (attrs, label, current = false) => `<button type="button" class="rel-choice" ${attrs}${current ? ' aria-current="true"' : ""}>${label}</button>`;
   const choices = [
     ...LEVEL_CHOICES.map(([key, level]) => item(`data-rel-level="${level}" data-relationship="${key}"`, `${relationshipShape(key)}${RELATIONSHIP_WORDS[key]}`, key === relationship.key)),
@@ -1101,9 +1106,14 @@ async function chooseRelationship(choice) {
 }
 
 async function loadRole(id) {
-  if (!partyEditor || view.dataset !== "vendors") return;
+  if (!partyEditor || view.dataset !== "vendors" || view.record.status !== "ready") return;
+  const sequence = view.record.sequence;
+  if (view.role.id === id && !view.role.value) {
+    view.role = { id: null, value: null };
+    renderRecordPanel();
+  }
   const value = await partyEditor.vendorRole();
-  if (view.recordId !== id) return;
+  if (view.recordId !== id || !acceptsResponse(view.record.sequence, sequence)) return;
   view.role = { id, value };
   renderRecordPanel();
 }
@@ -1160,7 +1170,9 @@ function renderRecordPanel() {
   const firm = vendor && payload.record.party_kind === "person" ? payload.record.people?.find((person) => person.company)?.company.name : null;
   paintPanelHead(`${firm ? `<span>${escapeHtml(withoutRecordCodes(firm))}</span>` : ""}${category?.resolved ? `<span>${escapeHtml(category.text)}</span>` : ""}${owner.known ? `<span class="row-fact"><span class="fact-label">Owner</span><span class="fact-value">${escapeHtml(owner.text)}</span></span>` : ""}`, recordActionsHtml(), relationship ? relationshipControlHtml(relationship) : "");
   if (action >= 0) focusWithoutScrolling(actions()[action]);
-  if (relationshipFocused) focusWithoutScrolling(dom.panelRelationship.querySelector(".rel-button"));
+  if (relationshipFocused) {
+    focusWithoutScrolling(dom.panelRelationship.querySelector(".rel-button:not([disabled]), [data-retry='relationship']") ?? dom.panelRelationship);
+  }
   if (dom.panelTitle) dom.panelTitle.textContent = dom.panelTitle.title = vendor ? withoutRecordCodes(payload.record.name) : payload.record.name;
   if (relationship) dom.panelTitle.insertAdjacentHTML("afterbegin", relationshipShape(relationship.key));
   if (relationship && dom.panelTitle) dom.panelTitle.dataset.relationship = relationship.key;
@@ -1384,6 +1396,7 @@ function settleList({ status, payload = null, code = null }, sequence) {
 async function loadRecord(id, { focusOnOpen = false } = {}) {
   if (view.signedOut || view.recordId !== id) return;
   const sequence = ++view.record.sequence;
+  view.role = { id: null, value: null };
   selectDocRecord(view.dataset, id);
   const docTicket = pageDocContext?.begin('businessRecord', [{ dataset:view.dataset, id }]);
   view.record.id = id;
@@ -1622,6 +1635,7 @@ function wireControls() {
   dom.panelBack.addEventListener("click", (event) => { event.preventDefault(); closeRecord(); });
   dom.panelRelationship.addEventListener("beforetoggle", (event) => { if (event.newState === "open") showRulingQuestion(null); }, true);
   dom.panelRelationship.addEventListener("click", (event) => {
+    if (event.target.closest("[data-retry='relationship']")) return void loadRole(view.recordId);
     const level = event.target.closest("[data-rel-level]")?.dataset.relLevel;
     if (level !== undefined) return void chooseRelationship({ level: level === "null" ? null : Number(level) });
     const ruling = event.target.closest("[data-rel-ruling]")?.dataset.relRuling;

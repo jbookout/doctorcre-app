@@ -34,7 +34,7 @@ async function setup(
     // The list read, and the filter choices it carries, never arrives.
     holdList?: boolean;
     // Fields the record read adds, as a newer engine would.
-    record?: Record<string, unknown>;
+    record?: Record<string, unknown> | (() => Record<string, unknown>);
     // Filter choices the list read adds.
     facets?: Record<string, unknown>;
     // The record's activity answers once this settles.
@@ -69,7 +69,15 @@ async function setup(
       return route.fulfill({
         json: isList
           ? { ...json, facets: Object.assign({}, json.facets, facets) }
-          : { ...json, record: Object.assign({}, json.record, record, recordReads > 1 ? rereadRecord : {}) },
+          : {
+              ...json,
+              record: Object.assign(
+                {},
+                json.record,
+                typeof record === "function" ? record() : record,
+                recordReads > 1 ? rereadRecord : {},
+              ),
+            },
       });
     } catch {
       return route.fulfill({ status: 404, json: { error: "RECORD_NOT_FOUND" } });
@@ -872,31 +880,99 @@ test("The relationship button on a vendor card changes the level, parks with a r
     disposition_reason: null,
     is_target: false,
   });
-  const { page, sent } = await setup(t, `/vendors?all=true&record=${vendor}`, fake.answer);
+  const roleReread = Promise.withResolvers<void>();
+  t.after(() => roleReread.resolve());
+  const { page, sent } = await setup(
+    t,
+    `/vendors?all=true&record=${vendor}`,
+    async (call) => {
+      if (
+        call.method === "GET" &&
+        call.path === `/api/engine/parties/${vendor}` &&
+        fake.state.profile.relationship_level === 2
+      )
+        await roleReread.promise;
+      return fake.answer(call);
+    },
+    {
+      record: () => ({
+        relationship_level: fake.state.profile.relationship_level,
+        recorded_disposition: fake.state.profile.disposition ?? "active",
+        is_target: fake.state.profile.is_target,
+      }),
+    },
+  );
   const panel = page.locator("#recordPanel");
-  const button = panel.locator(".rel-button:not([disabled])");
+  const button = panel.locator(".rel-button");
   const saves = () => posts(sent).map((call) => [call.path, withoutKey(call.body ?? {})]);
-  const saved = () => page.waitForResponse((response) => response.request().method() === "POST");
 
-  await button.click();
-  await Promise.all([saved(), panel.getByRole("button", { name: "Established", exact: true }).click()]);
+  await button.filter({ hasText: "Building" }).click();
+  await panel.getByRole("button", { name: "Established", exact: true }).click();
+  const established = button.filter({ hasText: "Established" });
+  await established.waitFor();
+  assert.equal(await established.isEnabled(), false, "the control waits for the refreshed role");
+  assert.ok(await panel.locator("#recordRelationship").evaluate((control) => control === document.activeElement));
+  roleReread.resolve();
+  await page.waitForFunction(() =>
+    document.activeElement?.matches('.rel-button:not([disabled])[data-relationship="established"]'),
+  );
   assert.deepEqual(saves(), [[`/api/engine/vendors/${vendor}`, { relationship_level: { from: 1, to: 2 } }]]);
 
-  await button.click();
+  await established.click();
   await panel.getByRole("button", { name: "Park…" }).click();
   const why = panel.getByLabel("Why park Demo Partner 01?");
   await why.fill("  Slow to reply  ");
-  await Promise.all([saved(), panel.getByRole("button", { name: "Park", exact: true }).click()]);
+  await panel.getByRole("button", { name: "Park", exact: true }).click();
   await panel.locator(".rel-reason", { hasText: "Slow to reply" }).waitFor();
   assert.deepEqual(saves()[1], [
     `/api/engine/vendors/${vendor}`,
     { disposition: { from: null, to: "parked" }, disposition_reason: { from: null, to: "Slow to reply" } },
   ]);
 
-  await button.click();
-  await Promise.all([saved(), panel.getByRole("button", { name: "Want to meet" }).click()]);
+  await button.filter({ hasText: "Parked" }).click();
+  await panel.getByRole("button", { name: "Want to meet" }).click();
+  await panel.locator(".want-tag", { hasText: "Want to meet" }).waitFor();
   assert.deepEqual(saves()[2], [`/api/engine/vendors/${vendor}`, { is_target: { from: false, to: true } }]);
   assert.equal(saves().length, 3);
+});
+
+test("A vendor card can retry a failed relationship refresh after a save", async (t) => {
+  const fake = engine(vendorParty, "vendor", { ...vendorProfile, relationship_level: 1 });
+  let refreshes = 0;
+  const { page, sent } = await setup(
+    t,
+    `/vendors?all=true&record=${vendor}`,
+    (call) => {
+      if (
+        call.method === "GET" &&
+        call.path === `/api/engine/parties/${vendor}` &&
+        fake.state.profile.relationship_level === 2 &&
+        ++refreshes === 1
+      )
+        return { status: 503, json: {} };
+      return fake.answer(call);
+    },
+    { record: () => ({ relationship_level: fake.state.profile.relationship_level }) },
+  );
+  const relationship = page.locator("#recordRelationship");
+  const established = relationship.locator(".rel-button", { hasText: "Established" });
+  await relationship.locator(".rel-button", { hasText: "Building" }).click();
+  await relationship.getByRole("button", { name: "Established", exact: true }).click();
+
+  const alert = relationship.getByRole("alert");
+  await alert.filter({ hasText: "Could not load the relationship." }).waitFor();
+  assert.equal(await established.isVisible(), false);
+  const retry = relationship.getByRole("button", { name: "Try again" });
+  await retry.focus();
+  await page.keyboard.press("Enter");
+  await alert.waitFor({ state: "hidden" });
+  await page.waitForFunction(() =>
+    document.activeElement?.matches('.rel-button:not([disabled])[data-relationship="established"]'),
+  );
+  assert.equal(refreshes, 2);
+  assert.equal(posts(sent).length, 1);
+  await established.click();
+  await relationship.getByRole("button", { name: "Park…" }).waitFor();
 });
 
 test("Park opens as a question, and Escape closes it without saving or closing the card", async (t) => {
