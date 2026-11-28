@@ -233,8 +233,182 @@ export function CardTile({
 }
 
 type Anchor = { node: Element; top: number };
+
+function revealColumnFocus(column: HTMLElement, control: HTMLElement) {
+  if (column.scrollHeight <= column.clientHeight || !control.matches(":focus-visible")) return;
+
+  const { top, bottom } = control.getBoundingClientRect();
+  const edge = column.getBoundingClientRect().top + column.clientTop;
+  const style = getComputedStyle(control);
+  const ring =
+    style.outlineStyle === "none" ? 0 : Math.max(0, parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset));
+  const above = top - ring - edge;
+  const below = bottom + ring - (edge + column.clientHeight);
+  if (above < 0) column.scrollTop += Math.floor(above);
+  else if (below > 0) column.scrollTop += Math.ceil(below);
+}
+
+function homePreview(group: HTMLElement): HTMLElement[] {
+  const preview: HTMLElement[] = [];
+  for (const child of group.children) {
+    if (!(child instanceof HTMLElement) || !child.offsetHeight || child.matches("header, h2, h3, hr")) continue;
+    if (group.hasAttribute("data-open") && child.matches(".home-short-fold-line")) continue;
+    const rows = child.matches("section, ul, ol") ? homePreview(child) : [child];
+    preview.push(...(rows.length ? rows : [child]));
+    if (!preview.at(-1)?.matches('[role="status"]')) break;
+  }
+  return preview;
+}
+
+function fitHomeTiles(grid: HTMLDivElement) {
+  const watched = new Set<Element>([grid]);
+  const openFolds = new WeakSet<HTMLElement>();
+  const fonts = grid.ownerDocument.fonts;
+  let frame = 0;
+  let focusFrame = 0;
+  let active = true;
+  const resize = new ResizeObserver(schedule);
+  const mutations = new MutationObserver(() => {
+    cancelAnimationFrame(frame);
+    fit();
+  });
+
+  function fit() {
+    frame = 0;
+    const next = new Set<Element>([grid]);
+    const sizes =
+      getComputedStyle(grid).flexDirection === "row"
+        ? Array.from(grid.querySelectorAll<HTMLElement>(":scope > .home-column > .home-slice"), (tile) => {
+            const header = tile.querySelector<HTMLElement>(":scope > header");
+            const fold = tile.querySelector<HTMLElement>(":scope > [data-home-fold]");
+            const control = fold?.querySelector<HTMLButtonElement>(":scope > button");
+            const open = control?.offsetHeight && fold?.hasAttribute("data-open") ? fold : null;
+            const preview = homePreview(open ?? tile);
+            const last = preview.at(-1);
+
+            const css = getComputedStyle(tile);
+            const paddingStart = Number.parseFloat(css.paddingBlockStart);
+            const paddingEnd = Number.parseFloat(css.paddingBlockEnd);
+            // Sticky controls can cover the tile padding as well as the rows.
+            const stickyStart = header?.offsetHeight
+              ? paddingStart + header.offsetHeight + Number.parseFloat(getComputedStyle(header).top)
+              : 0;
+            const footerHeight = open ? 0 : (control?.getBoundingClientRect().height ?? 0);
+            const stickyEnd = footerHeight ? footerHeight + paddingEnd : 0;
+            const targets = footerHeight
+              ? Array.from(tile.querySelectorAll<HTMLElement>("a[href], button, summary")).filter(
+                  (target) => target.offsetHeight && !header?.contains(target) && !fold?.contains(target),
+                )
+              : [];
+            for (const node of [header, control, ...preview, ...targets]) if (node) next.add(node);
+
+            const targetHeight = Math.max(
+              0,
+              ...Array.from(targets, (target) => {
+                const style = getComputedStyle(target);
+                return (
+                  target.getBoundingClientRect().height +
+                  Number.parseFloat(style.scrollMarginBlockStart) +
+                  Number.parseFloat(style.scrollMarginBlockEnd)
+                );
+              }),
+            );
+            // An open fold can scroll past the phases, but its first result and control fit together.
+            const previewStart = open
+              ? open.getBoundingClientRect().top - stickyStart
+              : tile.getBoundingClientRect().top - tile.scrollTop;
+            const minimum = last
+              ? Math.ceil(
+                  Math.max(last.getBoundingClientRect().bottom - previewStart, stickyStart + targetHeight) +
+                    paddingEnd +
+                    footerHeight,
+                )
+              : null;
+            const reveal = last && open && !openFolds.has(open) ? open : null;
+            if (fold) {
+              if (last && open) openFolds.add(open);
+              else openFolds.delete(fold);
+            }
+            return { tile, minimum, stickyStart, stickyEnd, reveal };
+          })
+        : [];
+    for (const node of watched) {
+      if (next.has(node)) continue;
+      resize.unobserve(node);
+      watched.delete(node);
+    }
+    for (const node of next) {
+      if (watched.has(node)) continue;
+      resize.observe(node);
+      watched.add(node);
+    }
+    for (const { tile, minimum, stickyStart, stickyEnd } of sizes) {
+      for (const [property, value] of [
+        ["--home-preview-size", minimum],
+        ["--home-sticky-start", stickyStart],
+        ["--home-sticky-end", stickyEnd],
+      ] as const) {
+        const pixels = value === null ? "" : `${value}px`;
+        if (tile.style.getPropertyValue(property) !== pixels) tile.style.setProperty(property, pixels);
+      }
+    }
+    for (const { tile, minimum, stickyStart, stickyEnd, reveal } of sizes) {
+      tile.toggleAttribute(
+        "data-home-fitted",
+        minimum !== null && stickyEnd > 0 && tile.getBoundingClientRect().height >= minimum,
+      );
+      if (reveal) {
+        tile.scrollTop += reveal.getBoundingClientRect().top - tile.getBoundingClientRect().top - stickyStart;
+        tile.scrollIntoView({ block: "nearest", behavior: "instant" });
+      }
+    }
+  }
+
+  function schedule() {
+    // eslint-disable-next-line no-restricted-syntax -- At most one pending frame to fit the visible tiles, canceled on unmount.
+    if (active && !frame) frame = requestAnimationFrame(fit);
+  }
+
+  function onFocus(event: FocusEvent) {
+    const control = event.target;
+    if (!(control instanceof HTMLElement) || control.closest(".home-inline-review")) return;
+    const column = control.closest<HTMLElement>(".home-column");
+    if (column?.parentElement !== grid) return;
+    cancelAnimationFrame(focusFrame);
+    // eslint-disable-next-line no-restricted-syntax -- One frame after native focus scrolling, canceled on unmount.
+    focusFrame = requestAnimationFrame(() => {
+      if (grid.ownerDocument.activeElement === control) revealColumnFocus(column, control);
+    });
+  }
+
+  resize.observe(grid);
+  mutations.observe(grid, { childList: true, subtree: true, characterData: true, attributeFilter: ["data-open"] });
+  grid.addEventListener("focusin", onFocus);
+  fonts.addEventListener("loadingdone", schedule);
+  void fonts.ready.then(schedule);
+  fit();
+  return () => {
+    active = false;
+    resize.disconnect();
+    mutations.disconnect();
+    grid.removeEventListener("focusin", onFocus);
+    fonts.removeEventListener("loadingdone", schedule);
+    cancelAnimationFrame(frame);
+    cancelAnimationFrame(focusFrame);
+  };
+}
+
 export class HomeGrid extends Component<{ children: ReactNode; snapshot: unknown; calendar?: unknown }> {
   private grid: HTMLDivElement | null = null;
+  private stopFitting: (() => void) | undefined;
+
+  componentDidMount() {
+    if (this.grid) this.stopFitting = fitHomeTiles(this.grid);
+  }
+
+  componentWillUnmount() {
+    this.stopFitting?.();
+  }
 
   getSnapshotBeforeUpdate(previous: Readonly<typeof this.props>): Anchor[] | null {
     if (

@@ -110,8 +110,12 @@ export function TodayMeetings({ data, today }: { data: MeetingRead; today: strin
           Calendar
         </a>
       </header>
-      {tours.isError && <p className="home-tile-status">Tours unavailable.</p>}
-      <div className="home-today-list">
+      {tours.isError && (
+        <p className="home-tile-status" role="status">
+          Tours unavailable.
+        </p>
+      )}
+      <section className="home-today-list">
         {tourRows.map((tour) => {
           const deal = href(tour.records[0]?.url);
           const body = (
@@ -139,7 +143,7 @@ export function TodayMeetings({ data, today }: { data: MeetingRead; today: strin
           </Fragment>
         ))}
         {timed && line === rows.length && <hr className="home-now" aria-label="Now" />}
-      </div>
+      </section>
     </section>
   );
 }

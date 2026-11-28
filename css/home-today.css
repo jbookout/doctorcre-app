@@ -31,7 +31,7 @@ details.home-today-row > :not(summary) { margin: 0 0 var(--space-1); padding-inl
 .home-deals ul, .home-coming-up ul { margin: 0; padding: 0; list-style: none; }
 /* Two phase columns when the tile has room, else one. */
 .home-phases { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); column-gap: var(--space-2); }
-.home-deals :is(li > a, .home-deals-line), .home-coming-up li > a, .inbox-shell .home-short-fold-line { display: flex; align-items: center; gap: var(--space-2); min-height: 34px; padding: 0 var(--space-2); border-radius: var(--radius-2); color: var(--fg); text-decoration: none; transition: background-color var(--duration-hover) var(--ease-out); }
+.home-deals :is(li > a, .home-deals-line), .home-coming-up li > a, .inbox-shell .home-short-fold-line { display: flex; align-items: center; gap: var(--space-2); min-height: max(34px, var(--touch)); padding: 0 var(--space-2); border-radius: var(--radius-2); color: var(--fg); text-decoration: none; transition: background-color var(--duration-hover) var(--ease-out); }
 .home-deals :is(li > a, .home-deals-line):hover, .home-coming-up li > a:hover, .inbox-shell .home-short-fold-line:hover { background: var(--surface-2); }
 .home-phases a { justify-content: space-between; color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; }
 .home-phases a span { color: var(--fg); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; }
@@ -49,14 +49,15 @@ details.home-today-row > :not(summary) { margin: 0 0 var(--space-1); padding-inl
 .home-coming-up li > a > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-coming-up li span span { color: var(--fg-muted); }
 .inbox-shell .home-short-fold-line { display: none; width: 100%; border: 0; background: transparent; font: inherit; text-align: start; }
-.home-short-fold-line strong { margin-inline-end: auto; font-weight: var(--font-weight-strong); }
+.home-short-fold-line strong { margin-inline-end: auto; font-weight: var(--font-weight-strong); white-space: nowrap; }
 /* A short computer screen folds the attention list and Coming up to one counted line each. */
 @container home (min-width: 936px) { @media (max-height: 720px) {
+  .home-column.home-side { gap: var(--space-3); }
   .inbox-shell .home-short-fold-line { display: flex; }
   .home-short-fold:not([data-open]) > :not(.home-short-fold-line) { display: none; }
   .home-coming-up:has(.home-short-fold:not([data-open])) > header { display: none; }
-  .home-deals .home-phases a { min-height: 30px; }
+  [data-home-fitted] > [data-home-fold]:not([data-open]) { position: sticky; inset-block-end: 0; z-index: 1; background: var(--surface-1); }
+  .home-deals > .home-phases { padding-block-end: var(--space-2); }
+  .home-phases a { scroll-margin-block: var(--space-2); }
+  .home-coming-up:has(.home-short-fold[data-open]) { flex: 1 1 0; }
 } }
-@media (pointer: coarse) {
-  .home-deals :is(li > a, .home-deals-line), .home-coming-up li > a { min-height: var(--touch); }
-}

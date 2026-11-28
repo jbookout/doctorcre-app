@@ -83,7 +83,11 @@ export function DealsTile() {
         ))}
       </ul>
       {data.attention.length > 0 && (
-        <Fold label="Needs attention" line={counted(data.attention.length, "needs attention", "need attention")}>
+        <Fold
+          label="Needs attention"
+          line={counted(data.attention.length, "needs attention", "need attention")}
+          keepCollapsedVisible
+        >
           <h3>Needs attention</h3>
           <ul className="home-deals-attention">
             {data.attention.map((deal) => (

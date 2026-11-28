@@ -96,15 +96,29 @@ body{margin:0;min-height:100vh;background:var(--ground);color:var(--fg);font-fam
 .home-placeholder .skeleton-line { margin: 0; }
 .home-placeholder > header .skeleton-line { width: 40%; height: 14px; }
 .home-placeholder-row { display: grid; gap: var(--space-2); padding: var(--space-3) 0; border-top: 1px solid var(--hairline); }
-/* Home is three columns once its own box is as wide as a 1000px window leaves it, whatever else takes room beside it, and then exactly the screen tall with each tile scrolling its own rows. */
+/* In three columns, notices and the grid share the space below the app bar. */
 @container home (min-width: 936px) {
-  .home-sections { flex-direction: row; }
-  .home-column { display: flex; flex: 1 1 0; flex-direction: column; gap: var(--space-4); min-width: 0; }
+  .app-layout-main > main:has(.home-inbox),
+  .has-app-layout main:has(.home-inbox) .inbox-shell,
+  .home-inbox { block-size: 100%; }
+  .has-app-layout main:has(.home-inbox) .inbox-shell { padding-bottom: 0; }
+  .home-inbox { display: flex; flex-direction: column; }
+  .home-sections { flex: 1 1 0; min-block-size: 0; flex-direction: row; position: relative; }
+  .home-column { display: flex; flex: 1 1 0; flex-direction: column; gap: var(--space-4); min-width: 0; min-block-size: 0; overflow: auto; overscroll-behavior: contain; }
   .home-column:first-child { flex-grow: 1.15; }
   .home-column.home-side { flex-grow: 0.75; }
   .home-column:empty { display: none; }
+  /* Expanded dates reach their measured minimum first. Other lists yield in proportion to their size. */
+  .home-column > * {
+    /* When the minimums do not fit, the column scrolls rather than squeezing the tiles. */
+    flex: 0 1 auto;
+    min-block-size: var(--home-preview-size, min-content);
+    overflow-y: auto;
+    scroll-padding-block: var(--home-sticky-start, 0px) var(--home-sticky-end, 0px);
+  }
+  .home-column:not(.home-side) > :first-child { flex-grow: 1; }
+  .home-slice > header { position: sticky; top: calc(-1 * var(--space-3)); z-index: 1; margin-top: calc(-1 * var(--space-3)); padding-top: var(--space-3); background: var(--surface-1); }
   /* An opened item covers the middle and right columns beside Reminders; it stays in its row for reading order. */
-  .home-sections { position: relative; }
   .home-sections:has(.home-inline-review) > .home-column:not(:first-child) :is(.home-column > :not(:has(.home-inline-review)), .inbox-row:not(:has(.home-inline-review))) { visibility: hidden; }
   .home-sections .home-slice .inbox-row:has(> .home-inline-review) { position: static; }
   .home-sections .home-inline-review { visibility: visible; position: absolute; z-index: 2; inset-block: 0; inset-inline-end: 0; inset-inline-start: calc((100% - 2 * var(--space-4)) * 1.15 / 2.9 + var(--space-4)); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-3) var(--space-4); border-top: 0; background: var(--surface-1); border-radius: var(--panel-radius); }
@@ -113,13 +127,6 @@ body{margin:0;min-height:100vh;background:var(--ground);color:var(--fg);font-fam
 @container home (max-width: 935.98px) {
   .home-sections .home-inline-review { position: fixed; inset: 0 0 var(--layout-bottom) var(--layout-rail); z-index: 1150; overflow-y: auto; overscroll-behavior: contain; padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4); border-top: 0; background: var(--surface-1); }
 }
-@container home (min-width: 936px) { @media (min-height: 600px) {
-  .has-app-layout main:has(.home-inbox) .inbox-shell { padding-bottom: 0; }
-  .home-sections { height: calc(100dvh - var(--topbar-height) - 2 * var(--pad)); }
-  .home-column > * { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-  .home-column:not(.home-side) > :first-child { flex-grow: 1; }
-  .home-slice > header { position: sticky; top: calc(-1 * var(--space-3)); z-index: 1; margin-top: calc(-1 * var(--space-3)); padding-top: var(--space-3); background: var(--surface-1); }
-} }
 .home-inline-review{flex-basis:100%;min-width:0;padding:18px;border-top:1px solid var(--hairline);overflow-wrap:anywhere}.home-inline-review header{display:flex;justify-content:space-between;align-items:center;gap:12px}.home-inline-review h4{margin:0;min-width:0;font-size:16px}.home-inline-review header h4{flex:1}.home-inline-review header>button{flex:none;white-space:nowrap}.home-review-position{color:var(--fg-muted);font-size:12px;white-space:nowrap}.home-inline-review fieldset{border:0;padding:0;min-width:0}.home-inline-review legend{padding:14px 0;font-weight:600}.home-inline-review label{display:grid;gap:6px;margin:12px 0;font-size:13px}.home-inline-review input,.home-inline-review textarea,.home-inline-review select{box-sizing:border-box;width:100%;height:auto;min-height:var(--touch);padding:var(--space-1) 10px;color:var(--fg);background:var(--surface-1);border:1px solid var(--hairline);border-radius:6px;font:inherit}.home-inline-review textarea{padding-block:10px;resize:vertical}.home-inline-review .inbox-actions{margin:14px 0;width:auto}.home-inline-review p,.home-inline-review blockquote{font-size:13px;line-height:1.6;white-space:pre-wrap}.home-inline-review blockquote{margin:12px 0;padding-left:14px;border-left:2px solid var(--hairline)}.home-inline-review button{min-height:var(--touch)}.home-inline-review :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .home-inline-review .home-suggestion-instruction { field-sizing: content; resize: none; }
 .home-watch-slot{min-height:var(--touch)}

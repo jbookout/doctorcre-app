@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import test, { after, before, type TestContext } from "node:test";
+import type { Locator, Page } from "playwright";
 import { buildArtifact } from "../scripts/artifact.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { chromium } from "./browser-harness.mjs";
@@ -154,6 +155,7 @@ const criticalDate = (n: number, due_on: string) => ({
   done: false,
 });
 const comingUpDates = [criticalDate(1, "2026-11-27"), criticalDate(2, today), criticalDate(3, "2026-12-10")];
+const sampleMeeting = { title: "Sample site visit", start: "2026-11-25T20:00:00Z", end: "2026-11-25T21:00:00Z" };
 
 // Names of any Leads board or Quiet list read Home makes.
 const leadReads: string[] = [];
@@ -166,13 +168,28 @@ async function openHome(
   dates = comingUpDates,
   home: typeof dashboard = dashboard,
   leadCounts: unknown = { schema_version: "lead-counts.v1", new_from_email: 2, follow_ups_late: 1 },
+  right: {
+    deals?: typeof deals;
+    meetings?: (typeof sampleMeeting)[];
+    touch?: boolean;
+    theme?: "light";
+    failedRead?: "weekly review" | "critical dates";
+    beforeLoad?: (page: Page) => Promise<void>;
+    waitForReady?: false;
+  } = {},
 ) {
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height }, timezoneId: "America/Chicago" });
+  const page = await browser.newPage({
+    viewport: { width, height },
+    timezoneId: "America/Chicago",
+    hasTouch: right.touch ?? width <= 760,
+  });
   await page.clock.setFixedTime(new Date("2026-11-25T16:00:00Z"));
-  await page.addInitScript(() =>
-    localStorage.setItem("doctorcre.visual-preferences", JSON.stringify({ walkthroughSeen: { joe: true } })),
+  await page.addInitScript(
+    (theme) =>
+      localStorage.setItem("doctorcre.visual-preferences", JSON.stringify({ walkthroughSeen: { joe: true }, theme })),
+    right.theme,
   );
   await page.route("**/auth/session", (route) =>
     route.fulfill({ json: { actor: { slug: "joe" }, csrf_token: "synthetic" } }),
@@ -197,7 +214,7 @@ async function openHome(
         viewer: null,
         meetings: {
           state: "ready",
-          items: [{ title: "Sample site visit", start: "2026-11-25T20:00:00Z", end: "2026-11-25T21:00:00Z" }],
+          items: right.meetings ?? [sampleMeeting],
         },
       },
     }),
@@ -213,10 +230,14 @@ async function openHome(
       }),
     );
   await page.route("**/api/engine/weekly-reviews?week_of=2026-11-23", (route) =>
-    route.fulfill({ json: { items: reviewItems } }),
+    route.fulfill(right.failedRead === "weekly review" ? { status: 503 } : { json: { items: reviewItems } }),
   );
   await page.route("**/api/engine/calendar/critical-dates", (route) =>
-    route.fulfill({ json: { schema_version: "calendar-critical-dates.v1", critical_dates: dates } }),
+    route.fulfill(
+      right.failedRead === "critical dates"
+        ? { status: 503 }
+        : { json: { schema_version: "calendar-critical-dates.v1", critical_dates: dates } },
+    ),
   );
   await page.route("**/api/engine/leads/counts", (route) => route.fulfill({ json: leadCounts }));
   await page.route("**/mcp", async (route) => {
@@ -226,11 +247,15 @@ async function openHome(
       json: {
         jsonrpc: "2.0",
         id: call.id,
-        result: { content: [{ type: "text", text: JSON.stringify({ board_from_engine: true, deals }) }] },
+        result: {
+          content: [{ type: "text", text: JSON.stringify({ board_from_engine: true, deals: right.deals ?? deals }) }],
+        },
       },
     });
   });
+  await right.beforeLoad?.(page);
   await page.goto(`${server.origin}/?mode=live`);
+  if (right.waitForReady === false) return page;
   await page.getByRole("region", { name: "Reminders", exact: true }).waitFor();
   await page.waitForFunction(() => !document.querySelector(".home-placeholder"));
   return page;
@@ -268,6 +293,11 @@ for (const [width, height] of [
         return Math.abs(next.x - right.x) < 1 && (!above || next.y >= above.y + above.height);
       }),
       "meetings, Deals, Coming up and Leads stack in the right column",
+    );
+    assert.equal(
+      await page.locator("#appMainSlot").evaluate((main) => main.scrollHeight <= main.clientHeight),
+      true,
+      "the main area does not scroll",
     );
     assert.ok(leadsLine.y + leadsLine.height <= height, "Leads is on the first screen");
     assert.equal(
@@ -503,6 +533,692 @@ test("At 1280x640 every right-column tile shows whole, and each Leads count keep
   for (const part of await parts.all()) {
     const lines = await part.evaluate((node) => node.getClientRects().length);
     assert.equal(lines, 1);
+  }
+});
+
+test("Crowded Home tiles keep their headings and first rows readable", async (t) => {
+  const wrappedTitle =
+    "Confirm whether the practice wants the revised lease language, parking instructions, and second-floor buildout scope added to the proposal before the next site visit.";
+  const records = Array.from({ length: 42 }, (_, index) => index + 1);
+  const dates = records.map((n) => criticalDate(n, today));
+  const busyDeals = records.map((n) =>
+    deal(n, "Research", { attention: { reason: "A next step is late.", since: "2026-11-23" } }),
+  );
+  const meetings = records.map((n) => ({ ...sampleMeeting, title: `Sample visit ${n}` }));
+  const waiting = records.map((n) =>
+    card(700 + n, `Sample waiting item ${n}`, {
+      section: "snoozed",
+      disposition: "snoozed",
+      returns_at: "2026-12-01T15:00:00Z",
+      waiting_reason: "Snoozed",
+    }),
+  );
+
+  const viewports = [
+    { width: 1280, height: 599, waitingCount: 42, inboxCount: 42 },
+    { width: 1280, height: 599, waitingCount: 42, inboxCount: 1 },
+    { width: 1280, height: 599, waitingCount: 1, inboxCount: 42 },
+    { width: 1280, height: 640, waitingCount: 1, inboxCount: 42, touch: true },
+    { width: 390, height: 844, waitingCount: 42, inboxCount: 42 },
+  ];
+  for (const { width, height, waitingCount, inboxCount, touch } of viewports) {
+    await t.test(`${width}x${height} with ${inboxCount} in Inbox and ${waitingCount} waiting`, async (t) => {
+      const page = await openHome(
+        t,
+        width,
+        height,
+        [],
+        dates,
+        {
+          ...dashboard,
+          reminders: group(records.map((n) => card(500 + n, `Sample reminder ${n}`))),
+          inbox: group(
+            inboxCount === 1
+              ? [reply(601, wrappedTitle)]
+              : records.map((n) => reply(600 + n, `Sample inbox item ${n}`)),
+          ),
+          waiting: group(waiting.slice(0, waitingCount)),
+        },
+        { schema_version: "lead-counts.v1", new_from_email: 42, follow_ups_late: 42 },
+        { deals: busyDeals, meetings, ...(touch ? { touch } : {}) },
+      );
+      const phone = width === 390;
+      const tile = (name: string) => page.getByRole("region", { name, exact: true });
+      const comingUp = tile("Coming up");
+      if (!phone) {
+        const deals = tile("Deals");
+        await deals.getByRole("button", { name: "42 need attention" }).click();
+        await comingUp.getByRole("button", { name: "Coming up 42 dates in the next 14 days" }).click();
+      }
+
+      const tiles = [
+        ["Today's meetings", "summary"],
+        ["Reminders", "article"],
+        ["Inbox", "article"],
+        ["Deals", phone ? ".home-deals-counts a" : ".home-deals-attention a"],
+        ["Coming up", "li a"],
+        ["Leads", ".home-door"],
+        ["In motion and waiting", "article"],
+      ] as const;
+      for (const [name, selector] of tiles) {
+        const region = tile(name);
+        const heading = region.locator(name === "Leads" ? "strong" : ":scope > header");
+        const first = region.locator(selector).first();
+        if (phone) await first.evaluate((row) => row.scrollIntoView({ block: "center" }));
+        else await region.evaluate((tile) => tile.scrollIntoView({ block: "nearest", behavior: "instant" }));
+        const [bounds, head, row, column] = await Promise.all([
+          region.boundingBox(),
+          heading.boundingBox(),
+          first.boundingBox(),
+          phone ? null : region.locator("..").boundingBox(),
+        ]);
+        assert.ok(bounds && head && row, `${name} draws its heading and first row`);
+        const visibleTop = Math.max(bounds.y, column?.y ?? 0);
+        const visibleBottom = Math.min(bounds.y + bounds.height, column ? column.y + column.height : height);
+        assert.ok(head.y >= visibleTop && head.y + head.height <= visibleBottom, `${name} heading fits`);
+        assert.ok(row.y >= (name === "Leads" ? visibleTop : head.y + head.height), `${name} row clears the heading`);
+        assert.ok(row.y + row.height <= visibleBottom + 1, `${name} first row fits`);
+      }
+
+      const viewport = await page.evaluate(() => ({
+        width: document.documentElement.scrollWidth,
+        height: document.scrollingElement?.scrollHeight ?? 0,
+      }));
+      assert.equal(viewport.width, width, "the page does not scroll sideways");
+      if (phone) assert.ok(viewport.height > height, "the stacked phone page scrolls vertically");
+      else {
+        assert.equal(viewport.height, height, "the desktop page does not scroll");
+        await comingUp.locator("li a").last().scrollIntoViewIfNeeded();
+        assert.ok(await comingUp.evaluate((region) => region.scrollTop > 0), "dates scroll inside Coming up");
+        assert.ok(
+          await page.locator("#appMainSlot").evaluate((main) => main.scrollHeight <= main.clientHeight),
+          "the main area does not scroll",
+        );
+      }
+      await tile("In motion and waiting").getByRole("link", { name: "Sample waiting item 1", exact: true }).click();
+      await tile("Details for Sample waiting item 1").waitFor();
+    });
+  }
+
+  await t.test("1280x599 touch shows the whole Deals attention button on load", async (t) => {
+    const page = await openHome(t, 1280, 599, [], comingUpDates, dashboard, undefined, { touch: true, theme: "light" });
+    assert.ok(await page.evaluate(() => matchMedia("(pointer: coarse)").matches));
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
+    const deals = page.getByRole("region", { name: "Deals", exact: true });
+    const attention = deals.getByRole("button", { name: "2 need attention" });
+    await attention.waitFor();
+    const [tile, button] = await Promise.all([deals.boundingBox(), attention.boundingBox()]);
+    assert.ok(tile && button && button.height >= 44, "the attention button has a full touch target");
+    assert.ok(
+      button.y >= tile.y && button.y + button.height <= tile.y + tile.height,
+      "the whole button fits before scrolling",
+    );
+    await attention.tap();
+    const first = deals.getByRole("link", { name: /Example Deal 1 A next step is late/ });
+    const [openedTile, row] = await Promise.all([deals.boundingBox(), first.boundingBox()]);
+    assert.ok(
+      openedTile && row && row.y + row.height <= openedTile.y + openedTile.height,
+      "opening the fold exposes the first deal",
+    );
+  });
+});
+
+const busyMeetings = Array.from({ length: 42 }, (_, index) => ({
+  ...sampleMeeting,
+  title: `Sample visit ${index + 1}`,
+}));
+const wrappedDeal = deal(1, "Research", {
+  name: "Sample practice",
+  attention: {
+    reason:
+      "The practice asked us to confirm the revised lease terms, parking instructions, the second-floor buildout scope, the updated tour schedule, and which documents are needed before the next site visit.",
+  },
+});
+
+test("At 1280x599 an offline notice fits without scrolling Home's main area", async (t) => {
+  const page = await openHome(t, 1280, 599);
+  await page.context().setOffline(true);
+  const notice = page.getByText("Offline. Showing the last available update.", { exact: true });
+  await notice.waitFor();
+  const main = page.locator("#appMainSlot");
+  const bounds = (await main.boundingBox()) ?? assert.fail("Home's main area is drawn");
+  await page.mouse.move(bounds.x + 2, bounds.y + bounds.height - 3);
+  await page.mouse.wheel(0, 300);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.deepEqual(
+    await main.evaluate((slot) => [scrollY, slot.scrollTop, slot.scrollHeight - slot.clientHeight]),
+    [0, 0, 0],
+    "the page and main area stay still and fit the viewport",
+  );
+  const [bar, heading, message] = await Promise.all([
+    page.locator("#appTopbar").boundingBox(),
+    page.getByRole("heading", { name: /^Reminders/ }).boundingBox(),
+    notice.boundingBox(),
+  ]);
+  assert.ok(bar && heading && message, "the heading and notice are drawn");
+  assert.ok(heading.y >= bar.y + bar.height, "the app bar does not cover the heading");
+  assert.ok(message.y + message.height <= bounds.y + bounds.height, "the notice stays in the viewport");
+});
+
+test("At 1280x599 Tab keeps the Deals phases and their focus rings clear of the closed fold", async (t) => {
+  const page = await openHome(t, 1280, 599, [], comingUpDates, dashboard, undefined, {
+    meetings: busyMeetings,
+  });
+  const tile = page.getByRole("region", { name: "Deals", exact: true });
+  const phases = tile.locator(".home-phases a");
+  await phases.last().waitFor();
+  assert.equal(await phases.count(), 7);
+  await tile.locator(".home-deals-counts a").focus();
+  for (const phase of await phases.all()) {
+    await page.keyboard.press("Tab");
+    const [result, header, fold, bounds] = await Promise.all([
+      phase.evaluate((link) => {
+        const css = getComputedStyle(link);
+        const { top, bottom, left, right } = link.getBoundingClientRect();
+        const outset = Number.parseFloat(css.outlineWidth) + Number.parseFloat(css.outlineOffset);
+        return {
+          name: link.textContent,
+          focused: link.matches(":focus-visible") && css.outlineStyle !== "none",
+          outset,
+          top,
+          bottom,
+          left,
+          right,
+        };
+      }),
+      tile.locator("header").boundingBox(),
+      tile.getByRole("button", { name: "2 need attention" }).boundingBox(),
+      tile.boundingBox(),
+    ]);
+    assert.ok(result.focused && result.outset > 0 && header && fold && bounds, `Tab draws a ring on ${result.name}`);
+    assert.ok(result.top - result.outset >= header.y + header.height, `${result.name}'s ring is below the heading`);
+    assert.ok(result.bottom + result.outset <= fold.y, `${result.name}'s ring is above the fold`);
+    assert.ok(
+      result.left - result.outset >= bounds.x && result.right + result.outset <= bounds.x + bounds.width,
+      `both sides of ${result.name}'s ring fit`,
+    );
+  }
+});
+
+test("At 1280x599 every phase is a full touch target under the closed Deals fold", async (t) => {
+  const page = await openHome(t, 1280, 599, [], comingUpDates, dashboard, undefined, {
+    touch: true,
+    meetings: busyMeetings,
+  });
+  const phases = page.getByRole("region", { name: "Deals", exact: true }).locator(".home-phases a");
+  await phases.last().waitFor();
+  assert.equal(await phases.count(), 7);
+  for (const phase of await phases.all()) {
+    const hit = await phase.evaluate((link) => {
+      link.scrollIntoView({ block: "center", behavior: "instant" });
+      const box = link.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      return (
+        box.height >= 44 && [box.top + 1, box.bottom - 1].every((y) => link.contains(document.elementFromPoint(x, y)))
+      );
+    });
+    assert.ok(hit, `Both edges of ${await phase.textContent()} are tappable`);
+  }
+});
+
+test("At 1280x599 opening Deals attention shows both edges of a wrapped result", async (t) => {
+  const page = await openHome(t, 1280, 599, [], comingUpDates, dashboard, undefined, {
+    touch: true,
+    deals: [wrappedDeal],
+    meetings: busyMeetings,
+  });
+  const tile = page.getByRole("region", { name: "Deals", exact: true });
+  await tile.getByRole("button", { name: "1 needs attention" }).tap();
+  const result = tile.getByRole("link", { name: /Sample practice The practice asked/ });
+  const [row, head, bounds] = await Promise.all([
+    result.boundingBox(),
+    tile.locator("header").boundingBox(),
+    tile.boundingBox(),
+  ]);
+  assert.ok(row && head && bounds && row.height > 100, "the result wraps");
+  assert.ok(
+    row.y >= head.y + head.height && row.y + row.height <= Math.min(bounds.y + bounds.height, 599),
+    "the complete result fits under the heading",
+  );
+});
+
+test("At 1280x599 Deals refits wrapped counts after a late font load", async (t) => {
+  const page = await openHome(t, 1280, 599, [], comingUpDates, dashboard, undefined, {
+    touch: true,
+    meetings: busyMeetings,
+  });
+  const tile = page.getByRole("region", { name: "Deals", exact: true });
+  const counts = tile.locator(".home-deals-counts");
+  const loops: string[] = [];
+  page.on("pageerror", (error) => {
+    if (error.message.includes("ResizeObserver loop")) loops.push(error.message);
+  });
+  const fold = tile.getByRole("button", { name: "2 need attention" });
+  await fold.waitFor();
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  const before = (await counts.boundingBox()) ?? assert.fail("Deal counts are drawn");
+  await page.addStyleTag({
+    content: `
+    @font-face { font-family: HomeCountsTest; src: local("Arial"), local("Liberation Sans"), local("DejaVu Sans"); size-adjust: 250%; }
+    .home-deals-counts { font-family: HomeCountsTest, sans-serif; }
+  `,
+  });
+  await page.evaluate(async () => {
+    await document.fonts.load("12px HomeCountsTest");
+    await document.fonts.ready;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  const [after, button, bounds, minimum] = await Promise.all([
+    counts.boundingBox(),
+    fold.boundingBox(),
+    tile.boundingBox(),
+    tile.evaluate((region) => Number.parseFloat(getComputedStyle(region).minBlockSize)),
+  ]);
+  assert.ok(after && button && bounds && after.height > before.height, "the loaded font wraps the counts");
+  assert.ok(
+    minimum >= after.y + after.height - bounds.y + button.height,
+    "the tile reserves space for the wrapped counts and fold",
+  );
+  assert.ok(after.y + after.height <= button.y, "the fold stays below the wrapped counts");
+  assert.deepEqual(loops, [], "refitting the column does not cause a resize loop");
+});
+
+test("At 1280x599 wheel and touch carry from a finished tile to Leads", async (t) => {
+  const dates = Array.from({ length: 42 }, (_, index) => criticalDate(index + 1, today));
+  for (const touch of [false, true]) {
+    await t.test(touch ? "touch swipe" : "mouse wheel", async (t) => {
+      const page = await openHome(t, 1280, 599, [], dates, dashboard, undefined, {
+        touch,
+        deals: [wrappedDeal],
+        meetings: busyMeetings,
+      });
+      await page.getByRole("button", { name: "Coming up 42 dates in the next 14 days" }).click();
+      await page.getByRole("button", { name: "1 needs attention" }).click();
+      const meetings = page.getByRole("region", { name: "Today's meetings", exact: true });
+      const column = page.locator(".home-side");
+      const leads = page.getByRole("region", { name: "Leads", exact: true }).locator("strong");
+      await column.evaluate((region) => {
+        region.scrollTop = 0;
+      });
+      await meetings.evaluate((tile) => {
+        tile.scrollTop = tile.scrollHeight;
+      });
+      const [list, right, heading] = await Promise.all([
+        meetings.boundingBox(),
+        column.boundingBox(),
+        leads.boundingBox(),
+      ]);
+      assert.ok(
+        list && right && heading && heading.y + heading.height > right.y + right.height,
+        "Leads starts below the column viewport",
+      );
+      assert.ok(
+        await meetings.evaluate(
+          (tile) => tile.scrollTop > 0 && Math.abs(tile.scrollHeight - tile.clientHeight - tile.scrollTop) <= 1,
+        ),
+        "the input starts at the tile's lower limit",
+      );
+      const x = Math.round(list.x + list.width / 2);
+      const y = Math.round(list.y + list.height - 8);
+      if (touch) {
+        const input = await page.context().newCDPSession(page);
+        await input.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+        for (const offset of [30, 75, 125])
+          await input.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - offset }] });
+        await input.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      } else {
+        await page.mouse.move(x, y);
+        await page.mouse.wheel(0, 600);
+      }
+      await page.waitForFunction(() => {
+        const column = document.querySelector(".home-side");
+        const heading = column?.querySelector('[aria-label="Leads"] strong');
+        if (!column?.scrollTop || !heading) return false;
+        const visible = column.getBoundingClientRect();
+        const label = heading.getBoundingClientRect();
+        return label.top >= visible.top && label.bottom <= visible.bottom;
+      });
+      assert.deepEqual(
+        await page.evaluate(() => [scrollY, document.querySelector("#appMainSlot")?.scrollTop]),
+        [0, 0],
+        "the page stays put",
+      );
+    });
+  }
+});
+
+test("Crowded touch columns keep every tile heading reachable at 599, 640 and 900", async (t) => {
+  for (const height of [599, 640, 900]) {
+    await t.test(`1280x${height}`, async (t) => {
+      const dates = Array.from({ length: 42 }, (_, index) => criticalDate(index + 1, today));
+      const page = await openHome(t, 1280, height, [], dates, dashboard, undefined, {
+        touch: true,
+        deals: [wrappedDeal],
+        meetings: busyMeetings,
+      });
+      if (height < 900) {
+        await page.getByRole("button", { name: "Coming up 42 dates in the next 14 days" }).tap();
+        await page.getByRole("button", { name: "1 needs attention" }).tap();
+        const right = page.locator(".home-side");
+        assert.ok(
+          await right.evaluate((column) => column.scrollHeight > column.clientHeight),
+          "the column scrolls when the previews cannot fit",
+        );
+      }
+      for (const name of [
+        "Reminders",
+        "Inbox",
+        "In motion and waiting",
+        "Today's meetings",
+        "Deals",
+        "Coming up",
+        "Leads",
+      ]) {
+        const tile = page.getByRole("region", { name, exact: true });
+        const heading = tile.locator(name === "Leads" ? "strong" : "header h2");
+        await tile.evaluate((region) => region.scrollIntoView({ block: "start", behavior: "instant" }));
+        const box = (await heading.boundingBox()) ?? assert.fail(`${name} draws a heading`);
+        assert.ok(box.y >= 0 && box.y + box.height <= height, `${name} heading is reachable`);
+      }
+      assert.equal(
+        await page.evaluate(() => document.scrollingElement?.scrollHeight),
+        height,
+        "the page itself does not scroll",
+      );
+    });
+  }
+});
+
+test("At 1280x599 every control in the scrolling column stays visible in both Tab directions", async (t) => {
+  const dates = Array.from({ length: 42 }, (_, index) => criticalDate(index + 1, today));
+  for (const touch of [false, true]) {
+    await t.test(touch ? "touch layout" : "pointer layout", async (t) => {
+      const page = await openHome(t, 1280, 599, [], dates, dashboard, undefined, {
+        touch,
+        deals: [wrappedDeal],
+        meetings: busyMeetings,
+      });
+      await page.context().setOffline(true);
+      await page.getByText("Offline. Showing the last available update.", { exact: true }).waitFor();
+      await page.getByRole("button", { name: "Coming up 42 dates in the next 14 days" }).click();
+      await page.getByRole("button", { name: "1 needs attention" }).click();
+      const column = page.locator(".home-side");
+      assert.ok(await column.evaluate((region) => region.scrollHeight > region.clientHeight));
+      const controls = await column.locator("a[href]:visible, button:enabled:visible, summary:visible").all();
+      const leads = controls.at(-1) ?? assert.fail("Leads is the last control");
+      assert.equal(await leads.getAttribute("href"), "/leads");
+      await leads.focus();
+
+      for (const [key, targets] of [
+        ["Shift+Tab", controls.slice(0, -1).reverse()],
+        ["Tab", controls.slice(1)],
+      ] as const) {
+        for (const target of targets) {
+          await page.keyboard.press(key);
+          const result = await target.evaluate(async (control) => {
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            const region = control.closest(".home-column");
+            if (!region) throw Error("Missing Home column");
+            const visible = region.getBoundingClientRect();
+            const { top, bottom, left, right } = control.getBoundingClientRect();
+            const edgeTop = visible.top + region.clientTop;
+            const edgeLeft = visible.left + region.clientLeft;
+            return {
+              label: control.textContent?.trim(),
+              focused: document.activeElement === control,
+              clipped: Math.max(
+                edgeTop - top,
+                bottom - (edgeTop + region.clientHeight),
+                edgeLeft - left,
+                right - (edgeLeft + region.clientWidth),
+              ),
+            };
+          });
+          assert.ok(result.focused, `${key} focuses ${result.label}`);
+          assert.ok(result.clipped <= 0.5, `${key} clips ${result.label} by ${result.clipped}px`);
+        }
+      }
+      assert.deepEqual(
+        await page.evaluate(() => [scrollY, document.querySelector("#appMainSlot")?.scrollTop]),
+        [0, 0],
+        "the page and main area stay put",
+      );
+    });
+  }
+});
+
+async function assertHomePreview(tile: Locator, label: string, ...selectors: string[]) {
+  const { clipped, height } = await tile.evaluate((node, selectors) => {
+    node.scrollIntoView({ block: "start", behavior: "instant" });
+    const bounds = node.getBoundingClientRect();
+    const parent = node.closest(".home-column, #appMainSlot");
+    if (!parent) throw Error("Missing Home layout");
+    const column = parent.getBoundingClientRect();
+    const top = Math.max(bounds.top, column.top + parent.clientTop);
+    const bottom = Math.min(bounds.bottom, column.top + parent.clientTop + parent.clientHeight);
+    const parts = selectors.length ? selectors.map((selector) => node.querySelector(selector)) : [node];
+    const clipped = parts.map((part, index) => {
+      const box = part?.getBoundingClientRect();
+      if (!box?.height || !part) return `${selectors[index]} is missing`;
+      const cut = Math.max(top - box.top, box.bottom - bottom, part.scrollHeight - part.clientHeight);
+      return cut > 0.5 ? `${selectors[index] ?? "notice"} is clipped by ${cut}px` : null;
+    });
+    return { clipped: clipped.filter(Boolean), height: bounds.height };
+  }, selectors);
+  assert.equal(clipped.length, 0, `${label} (${height}px): ${clipped.join(", ")}`);
+}
+
+test("Home protects each rendered tile preview as reads change state", async (t) => {
+  const dates = Array.from({ length: 42 }, (_, index) => criticalDate(index + 1, today));
+  const attentionDeals = Array.from({ length: 42 }, (_, index) =>
+    deal(index + 1, "Research", { attention: { reason: "A next step is late." } }),
+  );
+  const crowded = {
+    ...dashboard,
+    reminders: group(dates.map((_, index) => card(600 + index, `Sample reminder ${index + 1}`))),
+    inbox: group(dates.map((_, index) => reply(700 + index, `Sample Inbox item ${index + 1}`))),
+    waiting: group(
+      dates.map((_, index) =>
+        card(800 + index, `Sample waiting item ${index + 1}`, {
+          section: "snoozed",
+          disposition: "snoozed",
+          returns_at: "2026-12-01T15:00:00Z",
+          waiting_reason: "Snoozed",
+        }),
+      ),
+    ),
+  };
+  const todayPath = "**/api/engine/home/today";
+  const emptyReads = [
+    [todayPath, { ok: true, schema_version: "home-today.v1", today, meetings: { state: "empty", items: [] } }],
+    [
+      "**/api/engine/home/inbox?view=dashboard&contract=home-inbox.v6",
+      { ...dashboard, reminders: group([]), inbox: group([]), waiting: group([]) },
+    ],
+    ["**/api/engine/weekly-reviews?week_of=2026-11-23", { items: [] }],
+    ["**/api/engine/calendar/critical-dates", { schema_version: "calendar-critical-dates.v1", critical_dates: [] }],
+    ["**/api/engine/leads/counts", { schema_version: "lead-counts.v1", new_from_email: 0, follow_ups_late: 0 }],
+  ] as const;
+  const tiles = [
+    ["Reminders", "article"],
+    ["Inbox", "article"],
+    ["In motion and waiting", "article"],
+    ["Today's meetings", "summary"],
+    ["Deals", ".home-deals-counts"],
+    ["Coming up", "li"],
+    ["Leads", ".home-door"],
+  ] as const;
+
+  for (const height of [599, 640, 900]) {
+    for (const touch of [false, true]) {
+      await t.test(`1280x${height} ${touch ? "touch" : "pointer"}`, async (t) => {
+        const todayRead = Promise.withResolvers<void>();
+        const holds = new Map([[todayPath, todayRead.promise]]);
+        let response: "fixture" | "failed" | "empty" = "fixture";
+        const page = await openHome(t, 1280, height, [], dates, crowded, undefined, {
+          touch,
+          deals: attentionDeals,
+          meetings: busyMeetings,
+          waitForReady: false,
+          beforeLoad: async (page) => {
+            for (const [path, json] of emptyReads) {
+              await page.route(path, async (route) => {
+                if (response === "failed") return route.fulfill({ status: 503 });
+                if (response === "empty") return route.fulfill({ json });
+                await holds.get(path);
+                return route.fallback();
+              });
+            }
+          },
+        });
+        const tile = (name: string) => page.getByRole("region", { name, exact: true });
+        const notice = (text: string) => page.getByText(text, { exact: true });
+        const skeletons = page.locator(".home-column > .home-placeholder");
+        const short = height < 900;
+        const attention = tile("Deals").getByRole("button", { name: "42 need attention" });
+        const datesFold = tile("Coming up").getByRole("button", { name: "Coming up 42 dates in the next 14 days" });
+        async function openFolds() {
+          if (!short) return;
+          await attention.click();
+          await datesFold.click();
+        }
+        try {
+          await tile("Leads").waitFor();
+          await openFolds();
+          await tile("Deals").locator(".home-deals-attention li").first().waitFor();
+          await tile("Coming up").waitFor();
+          await assertHomePreview(
+            page.locator(".home-side > .home-placeholder"),
+            "Meetings skeleton",
+            "header",
+            ".home-placeholder-row",
+          );
+        } finally {
+          todayRead.resolve();
+        }
+        for (const offline of [false, true]) {
+          if (offline) {
+            await page.context().setOffline(true);
+            await assertHomePreview(notice("Offline. Showing the last available update."), "Offline notice");
+          }
+          for (const [name, row] of tiles) {
+            const preview = short && name === "Deals" ? ".home-deals-attention li" : row;
+            const parts = name === "Leads" ? [preview] : ["header", preview];
+            if (short && (name === "Deals" || name === "Coming up")) parts.push(".home-short-fold-line");
+            await assertHomePreview(tile(name), name, ...parts);
+          }
+        }
+        await page.context().setOffline(false);
+        if (short) {
+          await attention.click();
+          await datesFold.click();
+          await tile("Deals").evaluate((node) => {
+            node.scrollTop = 0;
+          });
+          await assertHomePreview(
+            tile("Deals"),
+            "Closed Deals",
+            "header",
+            ".home-deals-counts",
+            ".home-short-fold-line",
+          );
+          await assertHomePreview(tile("Coming up"), "Closed Coming up", ".home-short-fold-line");
+        }
+        assert.deepEqual(
+          await page.evaluate(() => [scrollY, document.querySelector("#appMainSlot")?.scrollTop]),
+          [0, 0],
+        );
+
+        const toursPath = "**/api/engine/calendar/meetings?*";
+        await page.route(toursPath, (route) => route.fulfill({ status: 503 }));
+        await page.reload();
+        await notice("Tours unavailable.").waitFor();
+        await openFolds();
+        await assertHomePreview(
+          tile("Today's meetings"),
+          "Meetings with tours unavailable",
+          "header",
+          "[role=status]",
+          "summary",
+        );
+        await page.unroute(toursPath);
+
+        const otherReads = Promise.withResolvers<void>();
+        for (const [path] of emptyReads) if (path !== todayPath) holds.set(path, otherReads.promise);
+        try {
+          await page.reload();
+          await tile("Today's meetings").waitFor();
+          assert.equal(await tile("Leads").count(), 0, "Leads is omitted until its counts arrive");
+          const loading = await skeletons.all();
+          assert.equal(loading.length, 4, "Reminders, Inbox, Deals and Coming up show loading previews");
+          for (const skeleton of loading)
+            await assertHomePreview(skeleton, "Loading tile", "header", ".home-placeholder-row");
+        } finally {
+          otherReads.resolve();
+        }
+        await tile("Leads").waitFor();
+
+        response = "failed";
+        await page.reload();
+        await assertHomePreview(
+          page.getByRole("alert").filter({ hasText: "Reminders and Inbox unavailable" }),
+          "Inbox read failure",
+          "h2",
+          "p",
+          "button",
+        );
+        for (const text of ["Meetings unavailable.", "Deals unavailable.", "Coming up unavailable."])
+          await assertHomePreview(notice(text), text);
+        await assertHomePreview(tile("Leads"), "Leads read failure", ".home-door", ".home-door-detail");
+        assert.equal(await notice("Lead counts unavailable").count(), 1);
+
+        response = "empty";
+        await page.reload();
+        await page.locator(".home-sections").waitFor({ state: "attached" });
+        await page.waitForFunction(
+          () => !document.querySelector(".home-placeholder, .home-tile-status, .home-read-status"),
+        );
+        for (const [name] of tiles) assert.equal(await tile(name).count(), 0, `${name} is omitted when empty`);
+      });
+    }
+  }
+});
+
+test("At 1280x599 failed-read notices are readable beside expanded lists", async (t) => {
+  const dates = Array.from({ length: 42 }, (_, index) => criticalDate(index + 1, today));
+  const attentionDeals = Array.from({ length: 42 }, (_, index) =>
+    deal(index + 1, "Research", { attention: { reason: "A next step is late." } }),
+  );
+  for (const [failedRead, notice, fold] of [
+    ["weekly review", "Deals unavailable.", "Coming up 42 dates in the next 14 days"],
+    ["critical dates", "Coming up unavailable.", "42 need attention"],
+  ] as const) {
+    await t.test(notice, async (t) => {
+      const page = await openHome(t, 1280, 599, [], dates, dashboard, undefined, {
+        failedRead,
+        meetings: busyMeetings,
+        deals: attentionDeals,
+      });
+      await page.getByRole("button", { name: fold, exact: true }).click();
+      const status = page.getByText(notice, { exact: true });
+      await status.evaluate((node) => node.scrollIntoView({ block: "center", behavior: "instant" }));
+      const { height, contentHeight, clippedByColumn } = await status.evaluate((node) => {
+        const column = node.closest(".home-column");
+        if (!column) throw Error("Missing Home column");
+        const { top, bottom } = node.getBoundingClientRect();
+        const columnTop = column.getBoundingClientRect().top + column.clientTop;
+        return {
+          height: node.clientHeight,
+          contentHeight: node.scrollHeight,
+          clippedByColumn: Math.max(columnTop - top, bottom - (columnTop + column.clientHeight)),
+        };
+      });
+      assert.ok(height >= contentHeight, `${notice} shows only ${height}px of ${contentHeight}px`);
+      assert.ok(clippedByColumn <= 0.5, `${notice} fits inside the column`);
+    });
   }
 });
 
